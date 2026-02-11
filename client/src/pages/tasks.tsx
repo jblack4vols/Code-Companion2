@@ -9,19 +9,22 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, ClipboardList, CheckCircle2, Circle } from "lucide-react";
+import { Plus, ClipboardList, CheckCircle2, Circle, X } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Task, Physician, User } from "@shared/schema";
-import { format, isPast } from "date-fns";
+import { format, isPast, isAfter, isBefore, startOfDay, endOfDay, parseISO } from "date-fns";
 
 export default function TasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const urlParams = new URLSearchParams(window.location.search);
   const [statusFilter, setStatusFilter] = useState<string>(urlParams.get("status") || "OPEN");
+  const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [assigneeFilter, setAssigneeFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: tasks, isLoading } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
@@ -65,8 +68,24 @@ export default function TasksPage() {
     });
   };
 
+  const hasActiveFilters = statusFilter !== "all" || priorityFilter !== "all" || assigneeFilter !== "all" || dateFrom !== "" || dateTo !== "";
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setPriorityFilter("all");
+    setAssigneeFilter("all");
+    setDateFrom("");
+    setDateTo("");
+  };
+
   const filtered = tasks?.filter(t => {
-    return statusFilter === "all" || t.status === statusFilter;
+    const matchStatus = statusFilter === "all" || t.status === statusFilter;
+    const matchPriority = priorityFilter === "all" || t.priority === priorityFilter;
+    const matchAssignee = assigneeFilter === "all" || t.assignedToUserId === assigneeFilter;
+    const dueDate = t.dueAt ? startOfDay(new Date(t.dueAt)) : null;
+    const matchDateFrom = !dateFrom || (dueDate && !isBefore(dueDate, startOfDay(parseISO(dateFrom))));
+    const matchDateTo = !dateTo || (dueDate && !isAfter(dueDate, endOfDay(parseISO(dateTo))));
+    return matchStatus && matchPriority && matchAssignee && matchDateFrom && matchDateTo;
   })?.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()) || [];
 
   return (
@@ -112,6 +131,7 @@ export default function TasksPage() {
                 <div className="space-y-1.5">
                   <Label>Assign To</Label>
                   <select name="assignedToUserId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-task-assignee">
+                    <option value="">Myself</option>
                     {users?.map(u => <option key={u.id} value={u.id}>{u.name}</option>)}
                   </select>
                 </div>
@@ -127,7 +147,7 @@ export default function TasksPage() {
         )}
       </div>
 
-      <div className="flex items-center gap-3">
+      <div className="flex flex-wrap items-center gap-3">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-[130px]" data-testid="select-filter-task-status">
             <SelectValue placeholder="Status" />
@@ -138,6 +158,48 @@ export default function TasksPage() {
             <SelectItem value="DONE">Done</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+          <SelectTrigger className="w-[130px]" data-testid="select-filter-task-priority">
+            <SelectValue placeholder="Priority" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Priority</SelectItem>
+            <SelectItem value="HIGH">High</SelectItem>
+            <SelectItem value="MEDIUM">Medium</SelectItem>
+            <SelectItem value="LOW">Low</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={assigneeFilter} onValueChange={setAssigneeFilter}>
+          <SelectTrigger className="w-[150px]" data-testid="select-filter-task-assignee">
+            <SelectValue placeholder="Assignee" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Assignees</SelectItem>
+            {users?.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-[140px]"
+            data-testid="input-filter-task-date-from"
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-[140px]"
+            data-testid="input-filter-task-date-to"
+          />
+        </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-task-filters">
+            <X className="w-3 h-3 mr-1" />Clear
+          </Button>
+        )}
       </div>
 
       {isLoading ? (

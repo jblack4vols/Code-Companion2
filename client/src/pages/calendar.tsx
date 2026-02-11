@@ -64,6 +64,7 @@ export default function CalendarPage() {
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [physicianFilter, setPhysicianFilter] = useState<string>("all");
+  const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
@@ -181,10 +182,14 @@ export default function CalendarPage() {
   const calendarEnd = endOfWeek(monthEnd);
   const calendarDays = eachDayOfInterval({ start: calendarStart, end: calendarEnd });
 
-  const getEventsForDay = (day: Date) =>
-    events?.filter((e) => isSameDay(new Date(e.startAt), day)) || [];
+  const typeFilteredEvents = eventTypeFilter === "all"
+    ? events
+    : events?.filter(e => e.eventType === eventTypeFilter);
 
-  const sortedEvents = events
+  const getEventsForDay = (day: Date) =>
+    typeFilteredEvents?.filter((e) => isSameDay(new Date(e.startAt), day)) || [];
+
+  const sortedEvents = typeFilteredEvents
     ?.slice()
     .sort((a, b) => new Date(a.startAt).getTime() - new Date(b.startAt).getTime()) || [];
 
@@ -276,6 +281,20 @@ export default function CalendarPage() {
             {physicians?.map((p) => (
               <SelectItem key={p.id} value={p.id}>Dr. {p.firstName} {p.lastName}</SelectItem>
             ))}
+          </SelectContent>
+        </Select>
+        <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
+          <SelectTrigger className="w-[160px]" data-testid="select-filter-event-type">
+            <SelectValue placeholder="Event Type" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Types</SelectItem>
+            <SelectItem value="MEETING">Meeting</SelectItem>
+            <SelectItem value="LUNCH">Lunch</SelectItem>
+            <SelectItem value="OFFICE_VISIT">Office Visit</SelectItem>
+            <SelectItem value="CALL">Call</SelectItem>
+            <SelectItem value="CONFERENCE">Conference</SelectItem>
+            <SelectItem value="OTHER">Other</SelectItem>
           </SelectContent>
         </Select>
       </div>

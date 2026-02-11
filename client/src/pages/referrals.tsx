@@ -9,12 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, FileText, Download } from "lucide-react";
+import { Search, Plus, FileText, Download, X } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Referral, Physician, Location } from "@shared/schema";
-import { format } from "date-fns";
+import { format, isAfter, isBefore, startOfDay, endOfDay, parseISO } from "date-fns";
 
 const statusBadge: Record<string, string> = {
   RECEIVED: "bg-chart-1/15 text-chart-1",
@@ -29,6 +29,9 @@ export default function ReferralsPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: referrals, isLoading } = useQuery<Referral[]>({ queryKey: ["/api/referrals"] });
@@ -67,6 +70,16 @@ export default function ReferralsPage() {
     });
   };
 
+  const hasActiveFilters = statusFilter !== "all" || locationFilter !== "all" || dateFrom !== "" || dateTo !== "";
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setLocationFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+  };
+
   const filtered = referrals?.filter(r => {
     const phys = physicians?.find(p => p.id === r.physicianId);
     const matchSearch = search === "" ||
@@ -74,7 +87,11 @@ export default function ReferralsPage() {
       (r.patientFullName && r.patientFullName.toLowerCase().includes(search.toLowerCase())) ||
       (phys && `${phys.firstName} ${phys.lastName}`.toLowerCase().includes(search.toLowerCase()));
     const matchStatus = statusFilter === "all" || r.status === statusFilter;
-    return matchSearch && matchStatus;
+    const matchLocation = locationFilter === "all" || r.locationId === locationFilter;
+    const refDate = r.referralDate ? startOfDay(parseISO(r.referralDate)) : null;
+    const matchDateFrom = !dateFrom || (refDate && !isBefore(refDate, startOfDay(parseISO(dateFrom))));
+    const matchDateTo = !dateTo || (refDate && !isAfter(refDate, endOfDay(parseISO(dateTo))));
+    return matchSearch && matchStatus && matchLocation && matchDateFrom && matchDateTo;
   })?.sort((a, b) => new Date(b.referralDate).getTime() - new Date(a.referralDate).getTime()) || [];
 
   const handleExport = () => {
@@ -223,6 +240,39 @@ export default function ReferralsPage() {
             <SelectItem value="LOST">Lost</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={locationFilter} onValueChange={setLocationFilter}>
+          <SelectTrigger className="w-[160px]" data-testid="select-filter-referral-location">
+            <SelectValue placeholder="Location" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Locations</SelectItem>
+            {locations?.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-[140px]"
+            placeholder="From"
+            data-testid="input-filter-referral-date-from"
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-[140px]"
+            placeholder="To"
+            data-testid="input-filter-referral-date-to"
+          />
+        </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-referral-filters">
+            <X className="w-3 h-3 mr-1" />Clear
+          </Button>
+        )}
       </div>
 
       <Card>

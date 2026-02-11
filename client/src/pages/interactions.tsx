@@ -9,12 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal } from "lucide-react";
+import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Interaction, Physician, User, Location } from "@shared/schema";
-import { format } from "date-fns";
+import { format, isAfter, isBefore, startOfDay, endOfDay, parseISO } from "date-fns";
 
 const typeIcons: Record<string, { icon: any; color: string }> = {
   VISIT: { icon: Users, color: "bg-chart-1/15 text-chart-1" },
@@ -30,6 +30,9 @@ export default function InteractionsPage() {
   const { toast } = useToast();
   const [search, setSearch] = useState("");
   const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [dateFrom, setDateFrom] = useState<string>("");
+  const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: interactions, isLoading } = useQuery<Interaction[]>({ queryKey: ["/api/interactions"] });
@@ -67,13 +70,27 @@ export default function InteractionsPage() {
     });
   };
 
+  const hasActiveFilters = typeFilter !== "all" || locationFilter !== "all" || dateFrom !== "" || dateTo !== "";
+
+  const clearFilters = () => {
+    setTypeFilter("all");
+    setLocationFilter("all");
+    setDateFrom("");
+    setDateTo("");
+    setSearch("");
+  };
+
   const filtered = interactions?.filter(i => {
     const phys = physicians?.find(p => p.id === i.physicianId);
     const matchSearch = search === "" ||
       (phys && `${phys.firstName} ${phys.lastName}`.toLowerCase().includes(search.toLowerCase())) ||
       i.summary.toLowerCase().includes(search.toLowerCase());
     const matchType = typeFilter === "all" || i.type === typeFilter;
-    return matchSearch && matchType;
+    const matchLocation = locationFilter === "all" || i.locationId === locationFilter;
+    const occurredDate = i.occurredAt ? startOfDay(new Date(i.occurredAt)) : null;
+    const matchDateFrom = !dateFrom || (occurredDate && !isBefore(occurredDate, startOfDay(parseISO(dateFrom))));
+    const matchDateTo = !dateTo || (occurredDate && !isAfter(occurredDate, endOfDay(parseISO(dateTo))));
+    return matchSearch && matchType && matchLocation && matchDateFrom && matchDateTo;
   })?.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()) || [];
 
   return (
@@ -161,6 +178,37 @@ export default function InteractionsPage() {
             <SelectItem value="OTHER">Other</SelectItem>
           </SelectContent>
         </Select>
+        <Select value={locationFilter} onValueChange={setLocationFilter}>
+          <SelectTrigger className="w-[160px]" data-testid="select-filter-interaction-location">
+            <SelectValue placeholder="Location" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Locations</SelectItem>
+            {locations?.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+        <div className="flex items-center gap-1.5">
+          <Input
+            type="date"
+            value={dateFrom}
+            onChange={(e) => setDateFrom(e.target.value)}
+            className="w-[140px]"
+            data-testid="input-filter-interaction-date-from"
+          />
+          <span className="text-xs text-muted-foreground">to</span>
+          <Input
+            type="date"
+            value={dateTo}
+            onChange={(e) => setDateTo(e.target.value)}
+            className="w-[140px]"
+            data-testid="input-filter-interaction-date-to"
+          />
+        </div>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-interaction-filters">
+            <X className="w-3 h-3 mr-1" />Clear
+          </Button>
+        )}
       </div>
 
       {isLoading ? (
