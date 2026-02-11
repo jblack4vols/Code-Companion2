@@ -1,10 +1,13 @@
 import ExcelJS from "exceljs";
 import { db } from "../server/db";
 import { referrals, physicians, locations } from "../shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 
 function excelDateToISO(serial: any): string | null {
-  if (!serial || typeof serial !== "number") return null;
+  if (!serial) return null;
+  if (serial instanceof Date) return serial.toISOString().split("T")[0];
+  if (typeof serial === "string") return serial.split("T")[0];
+  if (typeof serial !== "number") return null;
   const utcDays = Math.floor(serial - 25569);
   const d = new Date(utcDays * 86400000);
   return d.toISOString().split("T")[0];
