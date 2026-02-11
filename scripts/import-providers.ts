@@ -1,4 +1,4 @@
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { db } from "../server/db";
 import { physicians } from "../shared/schema";
 import { sql } from "drizzle-orm";
@@ -33,8 +33,25 @@ function titleCase(s: string): string {
 }
 
 async function main() {
-  const wb = XLSX.readFile("attached_assets/Referring_Provider_List_1770804123657.xlsx");
-  const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile("attached_assets/Referring_Provider_List_1770804123657.xlsx");
+  const worksheet = workbook.worksheets[0];
+
+  const headers: string[] = [];
+  worksheet.getRow(1).eachCell((cell, colNumber) => {
+    headers[colNumber] = String(cell.value || "");
+  });
+
+  const rows: Record<string, any>[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const obj: Record<string, any> = {};
+    row.eachCell((cell, colNumber) => {
+      obj[headers[colNumber]] = cell.value;
+    });
+    rows.push(obj);
+  });
+
   console.log(`Read ${rows.length} rows from Excel`);
 
   const seen = new Set<string>();
