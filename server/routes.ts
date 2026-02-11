@@ -6,6 +6,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
+import { sendWelcomeEmail } from "./outlook";
 
 declare module "express-session" {
   interface SessionData {
@@ -104,9 +105,20 @@ export async function registerRoutes(
       const validated = insertUserSchema.parse(req.body);
       const existing = await storage.getUserByEmail(validated.email);
       if (existing) return res.status(409).json({ message: "A user with this email already exists" });
-      const hashedPassword = await bcrypt.hash(validated.password, 10);
+      const plainPassword = validated.password;
+      const hashedPassword = await bcrypt.hash(plainPassword, 10);
       const user = await storage.createUser({ ...validated, password: hashedPassword });
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role } });
+
+      const host = req.headers.host || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
+      const protocol = req.headers["x-forwarded-proto"] || "https";
+      const loginUrl = `${protocol}://${host}/login`;
+      try {
+        await sendWelcomeEmail(user.email, user.name, plainPassword, loginUrl);
+      } catch (emailErr: any) {
+        console.error("Failed to send welcome email:", emailErr.message);
+      }
+
       const { password: _, ...safe } = user;
       res.json(safe);
     } catch (err: any) {
