@@ -28,11 +28,13 @@ client/src/
     calendar.tsx - Calendar with event management
     admin-users.tsx - User management
     admin-settings.tsx - Settings + HIPAA notice
+    sharepoint-sync.tsx - SharePoint Lists sync admin page
 server/
   index.ts - Express server entry
   db.ts - Drizzle database connection
   storage.ts - IStorage interface + DatabaseStorage class
   routes.ts - All API routes with RBAC middleware
+  sharepoint.ts - SharePoint Lists sync via Microsoft Graph API (batch operations)
   seed.ts - Database seeding (users only, real data imported)
 shared/
   schema.ts - Drizzle schema + Zod schemas + TypeScript types
@@ -51,6 +53,7 @@ scripts/
 - **Dashboard**: Charts for referral trends, top referrers, at-risk physicians
 - **Calendar**: Event management with Outlook sync capability
 - **Import**: Excel (.xlsx) import for physicians and referrals with auto column mapping, preview, deduplication/upsert, and progress tracking. Supports Referring Provider List and Created Cases Report formats. Available at /import route. OWNER/DIRECTOR role required.
+- **SharePoint Sync**: Sync all app data (physicians, referrals, interactions, tasks, locations) to SharePoint Lists via Microsoft Graph API. Uses batch operations (20 per request) with clear-and-reload approach. Async sync with status polling. Admin page at /admin/sharepoint. OWNER/DIRECTOR role required. DB tables: sharepoint_sync_status (tracks per-entity sync state), app_settings (stores site config).
 
 ## Real Data
 - **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
