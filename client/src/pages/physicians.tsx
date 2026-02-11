@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -6,15 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Physician, User } from "@shared/schema";
-import { format } from "date-fns";
 import { Link } from "wouter";
 
 const stageBadge: Record<string, string> = {
@@ -36,6 +35,15 @@ const statusBadge: Record<string, string> = {
   INACTIVE: "bg-muted text-muted-foreground",
 };
 
+function useDebounce(value: string, delay: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
+
 export default function PhysiciansPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -48,27 +56,32 @@ export default function PhysiciansPage() {
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
-  const { data: physicians, isLoading } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
+  const debouncedSearch = useDebounce(search, 300);
+
+  const buildQueryParams = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (stageFilter !== "all") params.set("stage", stageFilter);
+    if (priorityFilter !== "all") params.set("priority", priorityFilter);
+    return params.toString();
+  }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter]);
+
+  const queryParams = buildQueryParams();
+  const { data: result, isLoading } = useQuery<any>({
+    queryKey: ["/api/physicians/paginated", queryParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/physicians/paginated?${queryParams}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
 
-  const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
   const canCreate = user ? hasPermission(user.role, "create", "physician") : false;
-
-  const filtered = useMemo(() => physicians?.filter(p => {
-    const matchSearch = search === "" ||
-      `${p.firstName} ${p.lastName} ${p.practiceName || ""} ${p.specialty || ""} ${p.credentials || ""} ${p.npi || ""} ${p.city || ""}`.toLowerCase().includes(search.toLowerCase());
-    const matchStatus = statusFilter === "all" || p.status === statusFilter;
-    const matchStage = stageFilter === "all" || p.relationshipStage === stageFilter;
-    const matchPriority = priorityFilter === "all" || p.priority === priorityFilter;
-    return matchSearch && matchStatus && matchStage && matchPriority;
-  }) || [], [physicians, search, statusFilter, stageFilter, priorityFilter]);
-
-  const totalPages = Math.ceil(filtered.length / pageSize);
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
-
-  const safeSetPage = (p: number) => setPage(Math.max(1, Math.min(p, totalPages || 1)));
-
-  useEffect(() => { if (page > totalPages && totalPages > 0) setPage(1); }, [filtered.length, page, totalPages]);
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -76,7 +89,7 @@ export default function PhysiciansPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
       setShowAdd(false);
       toast({ title: "Physician added" });
     },
@@ -102,12 +115,28 @@ export default function PhysiciansPage() {
     });
   };
 
+  const physicians = result?.data || [];
+  const total = result?.total || 0;
+  const totalPages = result?.totalPages || 1;
+
+  const hasActiveFilters = statusFilter !== "all" || stageFilter !== "all" || priorityFilter !== "all" || search !== "";
+
+  const clearFilters = () => {
+    setStatusFilter("all");
+    setStageFilter("all");
+    setPriorityFilter("all");
+    setSearch("");
+    setPage(1);
+  };
+
+  const setPageSafe = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)));
+
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-physicians-title">Physicians</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Manage your physician referral sources</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">{total} referring providers</p>
         </div>
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
@@ -117,6 +146,7 @@ export default function PhysiciansPage() {
             <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
               <DialogHeader>
                 <DialogTitle>Add New Physician</DialogTitle>
+                <DialogDescription>Add a new referring provider</DialogDescription>
               </DialogHeader>
               <form onSubmit={handleAdd} className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
@@ -208,12 +238,12 @@ export default function PhysiciansPage() {
           <Input
             placeholder="Search physicians..."
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
             data-testid="input-search-physicians"
           />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[130px]" data-testid="select-filter-status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -224,7 +254,7 @@ export default function PhysiciansPage() {
             <SelectItem value="INACTIVE">Inactive</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={stageFilter} onValueChange={setStageFilter}>
+        <Select value={stageFilter} onValueChange={(v) => { setStageFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[140px]" data-testid="select-filter-stage">
             <SelectValue placeholder="Stage" />
           </SelectTrigger>
@@ -236,7 +266,7 @@ export default function PhysiciansPage() {
             <SelectItem value="AT_RISK">At Risk</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={priorityFilter} onValueChange={setPriorityFilter}>
+        <Select value={priorityFilter} onValueChange={(v) => { setPriorityFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[130px]" data-testid="select-filter-priority">
             <SelectValue placeholder="Priority" />
           </SelectTrigger>
@@ -247,6 +277,11 @@ export default function PhysiciansPage() {
             <SelectItem value="HIGH">High</SelectItem>
           </SelectContent>
         </Select>
+        {hasActiveFilters && (
+          <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+            <X className="w-3 h-3 mr-1" />Clear
+          </Button>
+        )}
       </div>
 
       <Card>
@@ -255,7 +290,7 @@ export default function PhysiciansPage() {
             <div className="p-4 space-y-3">
               {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : physicians.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
               <Stethoscope className="w-12 h-12 text-muted-foreground/30 mb-4" />
               <p className="text-sm text-muted-foreground">No physicians found</p>
@@ -276,7 +311,7 @@ export default function PhysiciansPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paged.map(p => {
+                  {physicians.map((p: Physician) => {
                     const owner = users?.find(u => u.id === p.assignedOwnerId);
                     return (
                       <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
@@ -320,28 +355,16 @@ export default function PhysiciansPage() {
       </Card>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground" data-testid="text-physician-count">{filtered.length} of {physicians?.length || 0} providers</p>
+        <p className="text-xs text-muted-foreground" data-testid="text-physician-count">{total} providers</p>
         {totalPages > 1 && (
           <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page <= 1}
-              onClick={() => safeSetPage(page - 1)}
-              data-testid="button-prev-page"
-            >
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPageSafe(page - 1)} data-testid="button-prev-page">
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="text-xs text-muted-foreground" data-testid="text-page-info">
               Page {page} of {totalPages}
             </span>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={page >= totalPages}
-              onClick={() => safeSetPage(page + 1)}
-              data-testid="button-next-page"
-            >
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPageSafe(page + 1)} data-testid="button-next-page">
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>

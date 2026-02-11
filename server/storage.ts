@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql, ilike, or } from "drizzle-orm";
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   type User, type InsertUser,
@@ -11,6 +11,35 @@ import {
   type CalendarEvent, type InsertCalendarEvent,
   type AuditLog,
 } from "@shared/schema";
+
+export interface PaginatedResult<T> {
+  data: T[];
+  total: number;
+  page: number;
+  pageSize: number;
+  totalPages: number;
+}
+
+export interface PhysicianFilters {
+  search?: string;
+  status?: string;
+  stage?: string;
+  priority?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface ReferralFilters {
+  search?: string;
+  status?: string;
+  locationId?: string;
+  discipline?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  physicianId?: string;
+  page?: number;
+  pageSize?: number;
+}
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -27,6 +56,7 @@ export interface IStorage {
   deleteLocation(id: string): Promise<boolean>;
 
   getPhysicians(): Promise<Physician[]>;
+  getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<Physician>>;
   getPhysician(id: string): Promise<Physician | undefined>;
   createPhysician(phys: InsertPhysician): Promise<Physician>;
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
@@ -35,6 +65,7 @@ export interface IStorage {
   createInteraction(inter: InsertInteraction): Promise<Interaction>;
 
   getReferrals(physicianId?: string): Promise<Referral[]>;
+  getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>>;
   createReferral(ref: InsertReferral): Promise<Referral>;
 
   getTasks(physicianId?: string): Promise<Task[]>;
@@ -128,6 +159,40 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(physicians).orderBy(asc(physicians.lastName), asc(physicians.firstName));
   }
 
+  async getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<Physician>> {
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 50;
+    const conditions: any[] = [];
+
+    if (filters.status && filters.status !== "all") conditions.push(eq(physicians.status, filters.status as any));
+    if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
+    if (filters.priority && filters.priority !== "all") conditions.push(eq(physicians.priority, filters.priority as any));
+    if (filters.search) {
+      const term = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(physicians.firstName, term),
+        ilike(physicians.lastName, term),
+        ilike(sql`coalesce(${physicians.practiceName}, '')`, term),
+        ilike(sql`coalesce(${physicians.credentials}, '')`, term),
+        ilike(sql`coalesce(${physicians.npi}, '')`, term),
+        ilike(sql`coalesce(${physicians.city}, '')`, term),
+      ));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(physicians).where(where);
+    const total = Number(countResult?.count || 0);
+
+    const data = await db.select().from(physicians)
+      .where(where)
+      .orderBy(asc(physicians.lastName), asc(physicians.firstName))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
   async getPhysician(id: string) {
     const [phys] = await db.select().from(physicians).where(eq(physicians.id, id));
     return phys;
@@ -170,6 +235,101 @@ export class DatabaseStorage implements IStorage {
         .orderBy(desc(referrals.referralDate));
     }
     return db.select().from(referrals).orderBy(desc(referrals.referralDate));
+  }
+
+  async getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>> {
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 50;
+    const conditions: any[] = [];
+
+    if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
+    if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
+    if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
+    if (filters.physicianId) conditions.push(eq(referrals.physicianId, filters.physicianId));
+    if (filters.dateFrom) conditions.push(gte(referrals.referralDate, filters.dateFrom));
+    if (filters.dateTo) conditions.push(lte(referrals.referralDate, filters.dateTo));
+    if (filters.search) {
+      const term = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(sql`coalesce(${referrals.patientFullName}, '')`, term),
+        ilike(sql`coalesce(${referrals.patientAccountNumber}, '')`, term),
+        ilike(sql`coalesce(${referrals.caseTherapist}, '')`, term),
+        ilike(sql`coalesce(${physicians.firstName} || ' ' || ${physicians.lastName}, '')`, term),
+      ));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .leftJoin(physicians, eq(referrals.physicianId, physicians.id))
+      .where(where);
+    const total = Number(countResult?.count || 0);
+
+    const activeCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .leftJoin(physicians, eq(referrals.physicianId, physicians.id))
+      .where(where ? and(where, sql`${referrals.status} != 'DISCHARGED'`) : sql`${referrals.status} != 'DISCHARGED'`);
+
+    const dischargedCount = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(referrals)
+      .leftJoin(physicians, eq(referrals.physicianId, physicians.id))
+      .where(where ? and(where, eq(referrals.status, "DISCHARGED")) : eq(referrals.status, "DISCHARGED"));
+
+    const data = await db
+      .select({
+        id: referrals.id,
+        physicianId: referrals.physicianId,
+        locationId: referrals.locationId,
+        referralDate: referrals.referralDate,
+        patientAccountNumber: referrals.patientAccountNumber,
+        patientInitialsOrAnonId: referrals.patientInitialsOrAnonId,
+        patientFullName: referrals.patientFullName,
+        patientDob: referrals.patientDob,
+        patientPhone: referrals.patientPhone,
+        caseTitle: referrals.caseTitle,
+        caseTherapist: referrals.caseTherapist,
+        dateOfInitialEval: referrals.dateOfInitialEval,
+        referralSource: referrals.referralSource,
+        dischargeDate: referrals.dischargeDate,
+        dischargeReason: referrals.dischargeReason,
+        scheduledVisits: referrals.scheduledVisits,
+        arrivedVisits: referrals.arrivedVisits,
+        discipline: referrals.discipline,
+        primaryInsurance: referrals.primaryInsurance,
+        primaryPayerType: referrals.primaryPayerType,
+        dateOfFirstScheduledVisit: referrals.dateOfFirstScheduledVisit,
+        dateOfFirstArrivedVisit: referrals.dateOfFirstArrivedVisit,
+        createdToArrived: referrals.createdToArrived,
+        payerType: referrals.payerType,
+        diagnosisCategory: referrals.diagnosisCategory,
+        status: referrals.status,
+        valueEstimate: referrals.valueEstimate,
+        physicianFirstName: physicians.firstName,
+        physicianLastName: physicians.lastName,
+        physicianCredentials: physicians.credentials,
+        locationName: locations.name,
+      })
+      .from(referrals)
+      .leftJoin(physicians, eq(referrals.physicianId, physicians.id))
+      .leftJoin(locations, eq(referrals.locationId, locations.id))
+      .where(where)
+      .orderBy(desc(referrals.referralDate))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    return {
+      data,
+      total,
+      page,
+      pageSize,
+      totalPages: Math.ceil(total / pageSize),
+      activeCount: Number(activeCount[0]?.count || 0),
+      dischargedCount: Number(dischargedCount[0]?.count || 0),
+    } as any;
   }
 
   async createReferral(ref: InsertReferral) {

@@ -191,6 +191,17 @@ export async function registerRoutes(
   });
 
   // --- Physicians ---
+  app.get("/api/physicians/paginated", requireAuth, async (req, res) => {
+    res.json(await storage.getPhysiciansPaginated({
+      search: qstr(req.query.search as any),
+      status: qstr(req.query.status as any),
+      stage: qstr(req.query.stage as any),
+      priority: qstr(req.query.priority as any),
+      page: req.query.page ? parseInt(req.query.page as string) : 1,
+      pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : 50,
+    }));
+  });
+
   app.get("/api/physicians", requireAuth, async (req, res) => {
     res.json(await storage.getPhysicians());
   });
@@ -245,6 +256,20 @@ export async function registerRoutes(
   });
 
   // --- Referrals ---
+  app.get("/api/referrals/paginated", requireAuth, async (req, res) => {
+    res.json(await storage.getReferralsPaginated({
+      search: qstr(req.query.search as any),
+      status: qstr(req.query.status as any),
+      locationId: qstr(req.query.locationId as any),
+      discipline: qstr(req.query.discipline as any),
+      dateFrom: qstr(req.query.dateFrom as any),
+      dateTo: qstr(req.query.dateTo as any),
+      physicianId: qstr(req.query.physicianId as any),
+      page: req.query.page ? parseInt(req.query.page as string) : 1,
+      pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : 50,
+    }));
+  });
+
   app.get("/api/referrals", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
     res.json(await storage.getReferrals(physicianId));

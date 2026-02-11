@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -13,8 +13,8 @@ import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight } from "
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Referral, Physician, Location } from "@shared/schema";
-import { format, isAfter, isBefore, startOfDay, endOfDay, parseISO } from "date-fns";
+import type { Physician, Location } from "@shared/schema";
+import { format } from "date-fns";
 
 const statusBadge: Record<string, string> = {
   RECEIVED: "bg-chart-1/15 text-chart-1",
@@ -23,6 +23,15 @@ const statusBadge: Record<string, string> = {
   DISCHARGED: "bg-chart-4/15 text-chart-4",
   LOST: "bg-chart-5/15 text-chart-5",
 };
+
+function useDebounce(value: string, delay: number) {
+  const [debounced, setDebounced] = useState(value);
+  useEffect(() => {
+    const timer = setTimeout(() => setDebounced(value), delay);
+    return () => clearTimeout(timer);
+  }, [value, delay]);
+  return debounced;
+}
 
 export default function ReferralsPage() {
   const { user } = useAuth();
@@ -34,27 +43,38 @@ export default function ReferralsPage() {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
-  const [selectedReferral, setSelectedReferral] = useState<Referral | null>(null);
+  const [selectedReferral, setSelectedReferral] = useState<any>(null);
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
-  const { data: referrals, isLoading } = useQuery<Referral[]>({ queryKey: ["/api/referrals"] });
-  const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
+  const debouncedSearch = useDebounce(search, 300);
+
+  const buildQueryParams = useCallback(() => {
+    const params = new URLSearchParams();
+    params.set("page", String(page));
+    params.set("pageSize", String(pageSize));
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (locationFilter !== "all") params.set("locationId", locationFilter);
+    if (disciplineFilter !== "all") params.set("discipline", disciplineFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    return params.toString();
+  }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo]);
+
+  const queryParams = buildQueryParams();
+  const { data: result, isLoading } = useQuery<any>({
+    queryKey: ["/api/referrals/paginated", queryParams],
+    queryFn: async () => {
+      const res = await fetch(`/api/referrals/paginated?${queryParams}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
+
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
   const canCreate = user ? hasPermission(user.role, "create", "referral") : false;
-
-  const physMap = useMemo(() => {
-    const m = new Map<string, { firstName: string; lastName: string; credentials: string | null }>();
-    physicians?.forEach(p => m.set(p.id, { firstName: p.firstName, lastName: p.lastName, credentials: p.credentials }));
-    return m;
-  }, [physicians]);
-
-  const locMap = useMemo(() => {
-    const m = new Map<string, string>();
-    locations?.forEach(l => m.set(l.id, l.name));
-    return m;
-  }, [locations]);
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -62,7 +82,7 @@ export default function ReferralsPage() {
       return res.json();
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/referrals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/referrals/paginated"] });
       setShowAdd(false);
       toast({ title: "Referral added" });
     },
@@ -94,56 +114,50 @@ export default function ReferralsPage() {
     setDateFrom("");
     setDateTo("");
     setSearch("");
+    setPage(1);
   };
 
-  const filtered = useMemo(() => referrals?.filter(r => {
-    const phys = r.physicianId ? physMap.get(r.physicianId) : null;
-    const matchSearch = search === "" ||
-      (r.patientFullName && r.patientFullName.toLowerCase().includes(search.toLowerCase())) ||
-      (r.patientAccountNumber && r.patientAccountNumber.toLowerCase().includes(search.toLowerCase())) ||
-      (r.caseTherapist && r.caseTherapist.toLowerCase().includes(search.toLowerCase())) ||
-      (phys && `${phys.firstName} ${phys.lastName}`.toLowerCase().includes(search.toLowerCase()));
-    const matchStatus = statusFilter === "all" || r.status === statusFilter;
-    const matchLocation = locationFilter === "all" || r.locationId === locationFilter;
-    const matchDiscipline = disciplineFilter === "all" || r.discipline === disciplineFilter;
-    const refDate = r.referralDate ? startOfDay(parseISO(r.referralDate)) : null;
-    const matchDateFrom = !dateFrom || (refDate && !isBefore(refDate, startOfDay(parseISO(dateFrom))));
-    const matchDateTo = !dateTo || (refDate && !isAfter(refDate, endOfDay(parseISO(dateTo))));
-    return matchSearch && matchStatus && matchLocation && matchDiscipline && matchDateFrom && matchDateTo;
-  })?.sort((a, b) => new Date(b.referralDate).getTime() - new Date(a.referralDate).getTime()) || [], [referrals, search, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo, physMap]);
+  const referrals = result?.data || [];
+  const total = result?.total || 0;
+  const totalPages = result?.totalPages || 1;
+  const activeCount = result?.activeCount || 0;
+  const dischargedCount = result?.dischargedCount || 0;
 
-  const totalPages = Math.ceil(filtered.length / pageSize);
-  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
-  const safeSetPage = (p: number) => setPage(Math.max(1, Math.min(p, totalPages || 1)));
+  const handleExport = async () => {
+    const params = new URLSearchParams();
+    params.set("page", "1");
+    params.set("pageSize", "99999");
+    if (debouncedSearch) params.set("search", debouncedSearch);
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (locationFilter !== "all") params.set("locationId", locationFilter);
+    if (disciplineFilter !== "all") params.set("discipline", disciplineFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
 
-  useEffect(() => { if (page > totalPages && totalPages > 0) setPage(1); }, [filtered.length, page, totalPages]);
-
-  const handleExport = () => {
+    const res = await fetch(`/api/referrals/paginated?${params.toString()}`, { credentials: "include" });
+    if (!res.ok) return;
+    const allData = await res.json();
     const csvRows = [
       ["Created Date", "Patient Acct#", "Patient Name", "Referring Doctor", "Facility", "Status", "Discipline", "Diagnosis", "Therapist", "Eval Date", "Visits (Sched)", "Visits (Arrived)", "Discharge Date", "Discharge Reason", "Referral Source", "Insurance", "Payer Type"].join(","),
-      ...filtered.map(r => {
-        const phys = r.physicianId ? physMap.get(r.physicianId) : null;
-        const loc = locMap.get(r.locationId);
-        return [
-          r.referralDate,
-          `"${r.patientAccountNumber || ""}"`,
-          `"${r.patientFullName || ""}"`,
-          phys ? `"${phys.firstName} ${phys.lastName}"` : "",
-          `"${loc || ""}"`,
-          r.status,
-          r.discipline || "",
-          `"${r.diagnosisCategory || ""}"`,
-          `"${r.caseTherapist || ""}"`,
-          r.dateOfInitialEval || "",
-          r.scheduledVisits || 0,
-          r.arrivedVisits || 0,
-          r.dischargeDate || "",
-          `"${r.dischargeReason || ""}"`,
-          `"${r.referralSource || ""}"`,
-          `"${r.primaryInsurance || ""}"`,
-          `"${r.primaryPayerType || ""}"`,
-        ].join(",");
-      }),
+      ...allData.data.map((r: any) => [
+        r.referralDate,
+        `"${r.patientAccountNumber || ""}"`,
+        `"${r.patientFullName || ""}"`,
+        r.physicianFirstName ? `"${r.physicianFirstName} ${r.physicianLastName}"` : "",
+        `"${r.locationName || ""}"`,
+        r.status,
+        r.discipline || "",
+        `"${r.diagnosisCategory || ""}"`,
+        `"${r.caseTherapist || ""}"`,
+        r.dateOfInitialEval || "",
+        r.scheduledVisits || 0,
+        r.arrivedVisits || 0,
+        r.dischargeDate || "",
+        `"${r.dischargeReason || ""}"`,
+        `"${r.referralSource || ""}"`,
+        `"${r.primaryInsurance || ""}"`,
+        `"${r.primaryPayerType || ""}"`,
+      ].join(",")),
     ];
     const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
     const url = URL.createObjectURL(blob);
@@ -153,15 +167,14 @@ export default function ReferralsPage() {
     a.click();
   };
 
-  const activeCount = filtered.filter(r => r.status !== "DISCHARGED").length;
-  const dischargedCount = filtered.filter(r => r.status === "DISCHARGED").length;
+  const setPageAndReset = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)));
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-referrals-title">Referrals</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">{filtered.length} total cases &middot; {activeCount} active &middot; {dischargedCount} discharged</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">{total} total cases &middot; {activeCount} active &middot; {dischargedCount} discharged</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-referrals">
@@ -179,13 +192,6 @@ export default function ReferralsPage() {
                 </DialogHeader>
                 <form onSubmit={handleAdd} className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label>Referring Doctor</Label>
-                    <select name="physicianId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-physician">
-                      <option value="">Select physician...</option>
-                      {physicians?.slice(0, 100).map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
                     <Label>Facility *</Label>
                     <select name="locationId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-referral-location">
                       <option value="">Select facility...</option>
@@ -198,8 +204,8 @@ export default function ReferralsPage() {
                       <Input name="referralDate" type="date" defaultValue={format(new Date(), "yyyy-MM-dd")} required data-testid="input-referral-date" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Patient ID *</Label>
-                      <Input name="patientInitialsOrAnonId" required placeholder="e.g. 12345-TRS" data-testid="input-referral-patient-id" />
+                      <Label>Patient ID</Label>
+                      <Input name="patientInitialsOrAnonId" placeholder="e.g. 12345-TRS" data-testid="input-referral-patient-id" />
                     </div>
                   </div>
                   <div className="space-y-1.5">
@@ -209,7 +215,7 @@ export default function ReferralsPage() {
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>Discipline</Label>
-                      <select name="discipline" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-discipline">
+                      <select name="discipline" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-discipline-input">
                         <option value="PT">PT</option>
                         <option value="OT">OT</option>
                       </select>
@@ -261,7 +267,7 @@ export default function ReferralsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search patient, doctor, therapist..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" data-testid="input-search-referrals" />
+          <Input placeholder="Search patient, doctor, therapist..." value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} className="pl-9" data-testid="input-search-referrals" />
         </div>
         <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[150px]" data-testid="select-filter-referral-status">
@@ -313,7 +319,7 @@ export default function ReferralsPage() {
             <div className="p-4 space-y-3">
               {[1,2,3,4].map(i => <Skeleton key={i} className="h-12 w-full" />)}
             </div>
-          ) : filtered.length === 0 ? (
+          ) : referrals.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">
               <FileText className="w-12 h-12 text-muted-foreground/30 mb-4" />
               <p className="text-sm text-muted-foreground">No referrals found</p>
@@ -335,36 +341,32 @@ export default function ReferralsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {paged.map(r => {
-                    const phys = r.physicianId ? physMap.get(r.physicianId) : null;
-                    const loc = locMap.get(r.locationId);
-                    return (
-                      <TableRow key={r.id} className="hover-elevate cursor-pointer" onClick={() => setSelectedReferral(r)} data-testid={`row-referral-${r.id}`}>
-                        <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.referralDate + "T00:00:00"), "MM/dd/yy")}</TableCell>
-                        <TableCell>
-                          <div>
-                            <p className="text-sm font-medium" data-testid={`text-patient-name-${r.id}`}>{r.patientFullName || r.patientInitialsOrAnonId || "-"}</p>
-                            {r.patientAccountNumber && <p className="text-[10px] text-muted-foreground">{r.patientAccountNumber}</p>}
-                          </div>
-                        </TableCell>
-                        <TableCell className="text-sm">{phys ? `${phys.firstName} ${phys.lastName}` : "-"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{loc?.replace("Tristar PT - ", "") || "-"}</TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>
-                            {r.status.replace("_", " ")}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm hidden md:table-cell">
-                          {r.discipline && <Badge variant="outline" className="text-[10px]">{r.discipline}</Badge>}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground hidden md:table-cell max-w-[180px] truncate">{r.diagnosisCategory || "-"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">{r.caseTherapist || "-"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground hidden lg:table-cell text-right">
-                          {r.arrivedVisits || 0}/{r.scheduledVisits || 0}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
+                  {referrals.map((r: any) => (
+                    <TableRow key={r.id} className="hover-elevate cursor-pointer" onClick={() => setSelectedReferral(r)} data-testid={`row-referral-${r.id}`}>
+                      <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.referralDate + "T00:00:00"), "MM/dd/yy")}</TableCell>
+                      <TableCell>
+                        <div>
+                          <p className="text-sm font-medium" data-testid={`text-patient-name-${r.id}`}>{r.patientFullName || r.patientInitialsOrAnonId || "-"}</p>
+                          {r.patientAccountNumber && <p className="text-[10px] text-muted-foreground">{r.patientAccountNumber}</p>}
+                        </div>
+                      </TableCell>
+                      <TableCell className="text-sm">{r.physicianFirstName ? `${r.physicianFirstName} ${r.physicianLastName}` : "-"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{r.locationName?.replace("Tristar PT - ", "") || "-"}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>
+                          {r.status.replace("_", " ")}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-sm hidden md:table-cell">
+                        {r.discipline && <Badge variant="outline" className="text-[10px]">{r.discipline}</Badge>}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground hidden md:table-cell max-w-[180px] truncate">{r.diagnosisCategory || "-"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">{r.caseTherapist || "-"}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground hidden lg:table-cell text-right">
+                        {r.arrivedVisits || 0}/{r.scheduledVisits || 0}
+                      </TableCell>
+                    </TableRow>
+                  ))}
                 </TableBody>
               </Table>
             </div>
@@ -373,14 +375,14 @@ export default function ReferralsPage() {
       </Card>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs text-muted-foreground" data-testid="text-referral-count">{filtered.length} of {referrals?.length || 0} referrals</p>
+        <p className="text-xs text-muted-foreground" data-testid="text-referral-count">{total} referrals</p>
         {totalPages > 1 && (
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => safeSetPage(page - 1)} data-testid="button-prev-page">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPageAndReset(page - 1)} data-testid="button-prev-page">
               <ChevronLeft className="w-4 h-4" />
             </Button>
             <span className="text-xs text-muted-foreground" data-testid="text-page-info">Page {page} of {totalPages}</span>
-            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => safeSetPage(page + 1)} data-testid="button-next-page">
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPageAndReset(page + 1)} data-testid="button-next-page">
               <ChevronRight className="w-4 h-4" />
             </Button>
           </div>
@@ -395,8 +397,6 @@ export default function ReferralsPage() {
           </DialogHeader>
           {selectedReferral && (() => {
             const r = selectedReferral;
-            const phys = r.physicianId ? physMap.get(r.physicianId) : null;
-            const loc = locMap.get(r.locationId);
             return (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
@@ -421,7 +421,7 @@ export default function ReferralsPage() {
                 <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Referring Doctor</p>
-                    <p>{phys ? `${phys.firstName} ${phys.lastName}${phys.credentials ? `, ${phys.credentials}` : ""}` : "-"}</p>
+                    <p>{r.physicianFirstName ? `${r.physicianFirstName} ${r.physicianLastName}${r.physicianCredentials ? `, ${r.physicianCredentials}` : ""}` : "-"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Referral Source</p>
@@ -429,7 +429,7 @@ export default function ReferralsPage() {
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Facility</p>
-                    <p>{loc || "-"}</p>
+                    <p>{r.locationName || "-"}</p>
                   </div>
                   <div>
                     <p className="text-xs text-muted-foreground">Discipline</p>
