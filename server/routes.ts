@@ -528,6 +528,220 @@ export async function registerRoutes(
     }
   });
 
+  // --- Import (Excel Upload) ---
+  const multer = (await import("multer")).default;
+  const XLSX = (await import("xlsx")).default;
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  app.post("/api/import/preview", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheetName = wb.SheetNames[0];
+      const sheet = wb.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      const headers = (rows[0] || []).map((h: any) => String(h || "").trim());
+      const sampleRows = rows.slice(1, 6).map(r =>
+        headers.reduce((acc: any, h: string, i: number) => { acc[h] = r[i] ?? null; return acc; }, {})
+      );
+      res.json({ headers, sampleRows, totalRows: rows.length - 1, sheetName });
+    } catch (err: any) {
+      res.status(400).json({ message: "Failed to parse Excel file: " + err.message });
+    }
+  });
+
+  app.post("/api/import/physicians", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const mapping = JSON.parse(req.body.mapping || "{}");
+      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+
+      const mapped = rows.map(row => {
+        const get = (field: string) => {
+          const col = mapping[field];
+          if (!col) return undefined;
+          const val = row[col];
+          return val != null ? String(val).trim() : undefined;
+        };
+        return {
+          firstName: get("firstName") || "",
+          lastName: get("lastName") || "",
+          credentials: get("credentials") || undefined,
+          npi: get("npi") || undefined,
+          practiceName: get("practiceName") || undefined,
+          primaryOfficeAddress: [get("address1"), get("address2")].filter(Boolean).join(", ") || undefined,
+          city: get("city") || undefined,
+          state: get("state") || undefined,
+          zip: get("zip") || undefined,
+          phone: get("phone") || undefined,
+          fax: get("fax") || undefined,
+          email: get("email") || undefined,
+          specialty: get("specialty") || undefined,
+          status: "PROSPECT" as const,
+          relationshipStage: "NEW" as const,
+          priority: "MEDIUM" as const,
+        };
+      }).filter(r => r.firstName && r.lastName);
+
+      const result = await storage.bulkUpsertPhysicians(mapped);
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "IMPORT",
+        entity: "physician",
+        entityId: "bulk",
+        detailJson: { inserted: result.inserted, updated: result.updated, total: mapped.length },
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/import/referrals", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const mapping = JSON.parse(req.body.mapping || "{}");
+      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+
+      const allLocations = await storage.getLocations();
+      const locationCache = new Map<string, string>();
+
+      function parseDate(val: any): string | null {
+        if (!val) return null;
+        if (val instanceof Date) {
+          const y = val.getFullYear(); const m = String(val.getMonth() + 1).padStart(2, "0"); const d = String(val.getDate()).padStart(2, "0");
+          return `${y}-${m}-${d}`;
+        }
+        if (typeof val === "number") {
+          const d = XLSX.SSF.parse_date_code(val);
+          if (d) return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
+        }
+        const s = String(val).trim();
+        if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
+        if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) {
+          const [m, d, y] = s.split("/");
+          const yr = y.length === 2 ? "20" + y : y;
+          return `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
+        }
+        return null;
+      }
+
+      async function resolveLocation(name: string): Promise<string | null> {
+        if (!name) return null;
+        if (locationCache.has(name)) return locationCache.get(name)!;
+        const found = allLocations.find(l => l.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(l.name.toLowerCase()));
+        if (found) { locationCache.set(name, found.id); return found.id; }
+        const dbFound = await storage.findLocationByName(name);
+        if (dbFound) { locationCache.set(name, dbFound.id); return dbFound.id; }
+        return null;
+      }
+
+      async function resolvePhysician(doctorName: string, npi?: string): Promise<string | null> {
+        if (!doctorName) return null;
+        const parts = doctorName.trim().split(/\s+/);
+        if (parts.length < 2) return null;
+        const firstName = parts[0];
+        const lastName = parts.slice(1).join(" ");
+        const found = await storage.findPhysicianByNameAndNpi(firstName, lastName, npi);
+        return found?.id || null;
+      }
+
+      const mapped: any[] = [];
+      const errors: string[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        const get = (field: string) => {
+          const col = mapping[field];
+          if (!col) return undefined;
+          const val = row[col];
+          return val != null ? String(val).trim() || undefined : undefined;
+        };
+        const getNum = (field: string) => {
+          const col = mapping[field];
+          if (!col) return undefined;
+          const val = row[col];
+          return val != null ? Number(val) || 0 : undefined;
+        };
+        const getRawDate = (field: string) => {
+          const col = mapping[field];
+          if (!col) return null;
+          return row[col];
+        };
+
+        const facilityName = get("facility") || "";
+        const locationId = await resolveLocation(facilityName);
+        if (!locationId) {
+          if (facilityName) errors.push(`Row ${i + 1}: Could not match facility "${facilityName}"`);
+          continue;
+        }
+
+        const doctorName = get("referringDoctor") || "";
+        const doctorNpi = get("referringDoctorNpi");
+        const physicianId = await resolvePhysician(doctorName, doctorNpi);
+
+        const referralDate = parseDate(getRawDate("createdDate"));
+        if (!referralDate) {
+          errors.push(`Row ${i + 1}: Missing or invalid created date`);
+          continue;
+        }
+
+        const statusMap: Record<string, string> = {
+          "Active": "RECEIVED", "Scheduled": "SCHEDULED", "Discharged": "DISCHARGED",
+          "Eval Completed": "EVAL_COMPLETED", "Lost": "LOST",
+        };
+        const rawStatus = get("caseStatus") || "";
+        let status = statusMap[rawStatus] || "RECEIVED";
+        if (rawStatus.toLowerCase().includes("discharg")) status = "DISCHARGED";
+        else if (rawStatus.toLowerCase().includes("eval")) status = "EVAL_COMPLETED";
+        else if (rawStatus.toLowerCase().includes("sched")) status = "SCHEDULED";
+
+        mapped.push({
+          physicianId,
+          locationId,
+          referralDate,
+          patientAccountNumber: get("patientAccountNumber"),
+          patientFullName: get("patientName"),
+          patientInitialsOrAnonId: get("patientName") ? get("patientName")!.split(" ").map((n: string) => n[0]).join("") : undefined,
+          caseTitle: get("caseTitle"),
+          caseTherapist: get("caseTherapist"),
+          dateOfInitialEval: parseDate(getRawDate("dateOfInitialEval")),
+          referralSource: get("referralSource"),
+          dischargeDate: parseDate(getRawDate("dischargeDate")),
+          dischargeReason: get("dischargeReason"),
+          scheduledVisits: getNum("scheduledVisits") ?? 0,
+          arrivedVisits: getNum("arrivedVisits") ?? 0,
+          discipline: get("discipline"),
+          primaryInsurance: get("primaryInsurance"),
+          primaryPayerType: get("primaryPayerType"),
+          dateOfFirstScheduledVisit: parseDate(getRawDate("dateOfFirstScheduledVisit")),
+          dateOfFirstArrivedVisit: parseDate(getRawDate("dateOfFirstArrivedVisit")),
+          createdToArrived: getNum("createdToArrived"),
+          diagnosisCategory: get("diagnosisCategory"),
+          referringProviderName: doctorName || undefined,
+          referringProviderNpi: doctorNpi,
+          status: status as any,
+        });
+      }
+
+      const result = await storage.bulkUpsertReferrals(mapped);
+      result.errors = [...errors, ...result.errors];
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "IMPORT",
+        entity: "referral",
+        entityId: "bulk",
+        detailJson: { inserted: result.inserted, updated: result.updated, total: mapped.length, skipped: errors.length },
+      });
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // --- Dashboard Stats ---
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     const filters = {

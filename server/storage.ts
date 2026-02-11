@@ -96,6 +96,11 @@ export interface IStorage {
   getMarketerTerritories(): Promise<any>;
   assignPhysicianToMarketer(physicianId: string, marketerId: string | null): Promise<Physician | undefined>;
   bulkAssignPhysiciansToMarketer(physicianIds: string[], marketerId: string | null): Promise<number>;
+
+  bulkUpsertPhysicians(rows: InsertPhysician[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
+  bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
+  findPhysicianByNameAndNpi(firstName: string, lastName: string, npi?: string | null): Promise<Physician | undefined>;
+  findLocationByName(name: string): Promise<Location | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -892,6 +897,89 @@ export class DatabaseStorage implements IStorage {
       referralsByMonth: refByMonth.map(r => ({ month: r.month, count: Number(r.count) })),
       topReferrers,
     };
+  }
+
+  async findPhysicianByNameAndNpi(firstName: string, lastName: string, npi?: string | null): Promise<Physician | undefined> {
+    const conditions = [
+      ilike(physicians.firstName, firstName.trim()),
+      ilike(physicians.lastName, lastName.trim()),
+    ];
+    if (npi) {
+      conditions.push(eq(physicians.npi, npi.trim()));
+    }
+    const [found] = await db.select().from(physicians).where(and(...conditions)).limit(1);
+    return found;
+  }
+
+  async findLocationByName(name: string): Promise<Location | undefined> {
+    const [found] = await db.select().from(locations).where(ilike(locations.name, `%${name.trim()}%`)).limit(1);
+    return found;
+  }
+
+  async bulkUpsertPhysicians(rows: InsertPhysician[]): Promise<{ inserted: number; updated: number; errors: string[] }> {
+    let inserted = 0, updated = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        const row = rows[i];
+        const existing = await this.findPhysicianByNameAndNpi(row.firstName, row.lastName, row.npi);
+        if (existing) {
+          const updateData: any = {};
+          if (row.credentials && !existing.credentials) updateData.credentials = row.credentials;
+          if (row.npi && !existing.npi) updateData.npi = row.npi;
+          if (row.practiceName && !existing.practiceName) updateData.practiceName = row.practiceName;
+          if (row.primaryOfficeAddress && !existing.primaryOfficeAddress) updateData.primaryOfficeAddress = row.primaryOfficeAddress;
+          if (row.city && !existing.city) updateData.city = row.city;
+          if (row.state && !existing.state) updateData.state = row.state;
+          if (row.zip && !existing.zip) updateData.zip = row.zip;
+          if (row.phone && !existing.phone) updateData.phone = row.phone;
+          if (row.fax && !existing.fax) updateData.fax = row.fax;
+          if (row.email && !existing.email) updateData.email = row.email;
+          if (row.specialty && !existing.specialty) updateData.specialty = row.specialty;
+          if (Object.keys(updateData).length > 0) {
+            await db.update(physicians).set({ ...updateData, updatedAt: new Date() }).where(eq(physicians.id, existing.id));
+            updated++;
+          }
+        } else {
+          await db.insert(physicians).values(row);
+          inserted++;
+        }
+      } catch (e: any) {
+        errors.push(`Row ${i + 1}: ${e.message}`);
+      }
+    }
+    return { inserted, updated, errors };
+  }
+
+  async bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }> {
+    let inserted = 0, updated = 0;
+    const errors: string[] = [];
+    for (let i = 0; i < rows.length; i++) {
+      try {
+        const row = rows[i];
+        if (row.patientAccountNumber) {
+          const conditions = [eq(referrals.patientAccountNumber, row.patientAccountNumber)];
+          if (row.caseTitle) {
+            conditions.push(eq(referrals.caseTitle, row.caseTitle));
+          }
+          const [existing] = await db.select().from(referrals)
+            .where(and(...conditions))
+            .limit(1);
+          if (existing) {
+            const updateData: any = { ...row };
+            delete updateData.id;
+            await db.update(referrals).set({ ...updateData, updatedAt: new Date() }).where(eq(referrals.id, existing.id));
+            updated++;
+            continue;
+          }
+        }
+        await db.insert(referrals).values(row);
+        inserted++;
+      } catch (e: any) {
+        errors.push(`Row ${i + 1}: ${e.message}`);
+      }
+    }
+    return { inserted, updated, errors };
   }
 }
 

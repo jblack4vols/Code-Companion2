@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -22,6 +22,7 @@ const navItems = [
   { title: "Tasks", url: "/tasks", icon: ClipboardList, requireView: true },
   { title: "Calendar", url: "/calendar", icon: Calendar, requireView: true },
   { title: "Territories", url: "/territories", icon: UserCheck, requireView: true },
+  { title: "Import", url: "/import", icon: Upload, requireView: true },
 ];
 
 const adminItems = [

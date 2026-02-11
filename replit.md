@@ -50,6 +50,7 @@ scripts/
 - **Tasks**: Follow-up work queue with completion tracking
 - **Dashboard**: Charts for referral trends, top referrers, at-risk physicians
 - **Calendar**: Event management with Outlook sync capability
+- **Import**: Excel (.xlsx) import for physicians and referrals with auto column mapping, preview, deduplication/upsert, and progress tracking. Supports Referring Provider List and Created Cases Report formats. Available at /import route. OWNER/DIRECTOR role required.
 
 ## Real Data
 - **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
