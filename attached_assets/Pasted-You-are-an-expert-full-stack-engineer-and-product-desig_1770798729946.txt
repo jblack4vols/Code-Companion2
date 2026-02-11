@@ -1,0 +1,308 @@
+You are an expert full‑stack engineer and product designer. Build a production-ready web app called “Tristar 360°” — a Physician Relationship Management (PRM) tool for an outpatient physical therapy business with 8 clinic locations. The app must help the team track and grow physician referral relationships, log outreach/visits, and measure referrals and outcomes with dashboards.
+
+TECH STACK (use exactly this):
+- Next.js (App Router) + TypeScript
+- Tailwind CSS + shadcn/ui for components
+- PostgreSQL database
+- Prisma ORM + migrations
+- NextAuth for authentication (email magic link OR credentials)
+- Role-based access control (RBAC)
+- Deployable on Replit (single repo, no external paid services required)
+
+CORE ENTITIES / DATA MODEL (Prisma)
+1) User
+- id (cuid), name, email (unique), role (enum: OWNER, DIRECTOR, MARKETER, FRONT_DESK, ANALYST)
+- createdAt, updatedAt
+- locations: many-to-many with Location via join table UserLocationAccess
+
+2) Location (seed 8)
+- id, name, address, city, state, phone, isActive, createdAt, updatedAt
+
+3) Physician (referral source)
+- id
+- firstName, lastName
+- specialty (string)
+- NPI (optional)
+- practiceName (string)
+- primaryOfficeAddress, city, state
+- phone, fax, email (all optional but encouraged)
+- status (enum: PROSPECT, ACTIVE, INACTIVE)
+- relationshipStage (enum: NEW, DEVELOPING, STRONG, AT_RISK)
+- priority (enum: LOW, MEDIUM, HIGH)
+- assignedOwnerId (User FK, optional)
+- lastInteractionAt (nullable)
+- nextFollowUpAt (nullable)
+- notes (rich text stored as string, e.g., markdown)
+- tags (string array or separate PhysicianTag table)
+- createdAt, updatedAt
+Indexes:
+- index on (lastName, firstName)
+- index on (status, relationshipStage, priority)
+- uniqueness not required, but support dedupe in import pipeline
+
+4) PracticeOffice (optional, if multiple offices per physician)
+- id
+- physicianId FK
+- name
+- address, city, state
+- phone, fax
+- officeManagerName, officeManagerEmail
+- createdAt, updatedAt
+
+5) Interaction (outreach touchpoint / visit / call / email / lunch)
+- id
+- physicianId FK
+- locationId FK (nullable)
+- userId FK
+- type (enum: VISIT, CALL, EMAIL, EVENT, LUNCH, OTHER)
+- occurredAt (datetime)
+- summary (string)
+- nextStep (string nullable)
+- followUpDueAt (datetime nullable)
+- createdAt, updatedAt
+
+6) Referral (NO PHI)
+- id
+- physicianId FK
+- locationId FK
+- referralDate (date)
+- patientInitialsOrAnonId (string) -- no PHI, only anonymized initials or generated ID
+- payerType (enum: COMMERCIAL, MEDICARE, MEDICAID, CASH, OTHER) (nullable)
+- diagnosisCategory (string nullable)
+- status (enum: RECEIVED, SCHEDULED, EVAL_COMPLETED, DISCHARGED, LOST)
+- valueEstimate (number nullable)
+- createdAt, updatedAt
+
+7) Task (follow-up work queue)
+- id
+- physicianId FK
+- assignedToUserId FK
+- dueAt (datetime)
+- priority (enum: LOW, MEDIUM, HIGH)
+- status (enum: OPEN, DONE)
+- description (string)
+- createdAt, updatedAt
+
+8) ImportJob (track imports)
+- id
+- createdByUserId FK
+- type (enum: PHYSICIANS, INTERACTIONS, REFERRALS)
+- sourceFileName (string)
+- sourceFileType (enum: CSV, TSV, XLSX, XLS, JSON)
+- status (enum: DRAFT, VALIDATING, READY, IMPORTING, IMPORTED, FAILED)
+- optionsJson (json) -- delimiter, headerRow, sheetName, etc.
+- mappingJson (json) -- final mapping + transforms + enum maps
+- summaryJson (json) -- counts, errors, warnings
+- createdAt, completedAt
+
+9) MappingTemplate (reusable mapping)
+- id
+- name (string)
+- importType (enum: PHYSICIANS, INTERACTIONS, REFERRALS)
+- fileType (enum: CSV, TSV, XLSX, XLS, JSON)
+- mappingJson (json) -- mapping + transforms + enum mapping
+- createdByUserId FK
+- createdAt, updatedAt
+
+10) AuditLog
+- id
+- userId FK
+- action (enum: CREATE, UPDATE, DELETE, IMPORT)
+- entity (string: Physician, Interaction, Referral, Task, ImportJob)
+- entityId (string)
+- timestamp
+- detailJson (json)
+
+SECURITY / COMPLIANCE (MUST IMPLEMENT)
+- Do NOT store PHI. Referrals allow ONLY anonymized patientInitialsOrAnonId.
+- Add server-side validation to reject obvious PHI fields/columns during import (e.g., DOB, SSN, MRN, full patient name, address of patient).
+- Add an “HIPAA safety” banner in Settings explaining:
+  - This app is for referral source relationship management (PRM)
+  - Do not enter PHI; referrals are anonymized only
+- Enforce RBAC on every server action / API route.
+
+RBAC RULES (MUST ENFORCE)
+- OWNER: full access
+- DIRECTOR: access only to permitted locations + all physicians; can manage users’ location access if allowed
+- MARKETER: can view physicians; can edit assigned physicians + log interactions; cannot manage users or global settings
+- FRONT_DESK: can create referrals; can view physicians basic info; cannot edit notes/stage/priority
+- ANALYST: read-only dashboards and exports
+
+APP FEATURES / PAGES
+A) Auth
+- /login with NextAuth
+- choose credentials auth (seeded demo login) OR email magic link
+- After login route to dashboard
+
+B) Physicians
+- /physicians list with filters:
+  status, stage, priority, specialty, owner, last interaction range, next follow-up due, tags, location
+- table columns: physician name, practice, city, stage, priority, owner, lastInteractionAt, nextFollowUpAt
+- bulk actions (role gated): assign owner, set stage, set priority, add tags
+- /physicians/[id] detail page:
+  - profile card + editable fields (role gated)
+  - timeline of interactions
+  - referrals charts: by month + by location
+  - tasks panel
+  - “Quick log interaction” modal (fast)
+  - follow-up scheduler (sets nextFollowUpAt)
+  - notes editor (role gated)
+
+C) Interactions
+- /interactions list + filters (date range, type, user, physician)
+- Route planning view: upcoming follow-ups grouped by city/area (no maps required)
+
+D) Referrals
+- /referrals “Front desk mode” entry form:
+  - physician (autocomplete)
+  - location
+  - referralDate
+  - status
+  - patientInitialsOrAnonId (must remain anonymized)
+- referrals list with export CSV and filters:
+  date range, location, physician, status
+
+E) Dashboards
+- /dashboard with:
+  - Top referring physicians (count by date range + by location)
+  - Referral trends over time
+  - At-risk physicians:
+    - high priority AND no interaction in X days OR overdue follow-up
+  - Marketer activity:
+    - interactions per week
+    - follow-up completion rate (% tasks done by due date)
+  - Simple ROI proxy:
+    - referrals by physician vs touches
+- Add “Data Quality” widgets:
+  - missing phone/email
+  - missing owner
+  - no touch in 60/90 days
+
+F) Admin / Settings
+- /admin/locations manage locations (seed 8)
+- /admin/users manage users + location access
+- /settings configure:
+  - thresholds like “at-risk after X days”
+  - stage/status labels (optional)
+  - tags list (optional)
+- show HIPAA safety banner here
+
+IMPORT CENTER (MUST SHIP) — CSV + EXCEL + IMPORT MAPPING FEATURE (REQUIRED)
+Add a full Import Center that supports:
+File types:
+- CSV, TSV
+- Excel: .xlsx and .xls
+- Optional: JSON array of objects
+
+Import types:
+- Physicians
+- Interactions
+- Referrals
+
+Create pages:
+- /import (Import Center home)
+- /import/[jobId] (Wizard)
+- /import/templates (manage templates)
+
+Libraries (use these):
+- SheetJS (xlsx) for Excel parsing
+- PapaParse (or comparable) for CSV parsing
+- Zod for validation client + server
+
+Import workflow (Wizard UI + server logic):
+Step 1 — Upload
+- Drag & drop upload
+- Save file locally (Replit filesystem) and record ImportJob(status=DRAFT)
+
+Step 2 — Parse Options
+- CSV/TSV: delimiter, quote char, header row
+- Excel: choose sheet + header row
+- Store in ImportJob.optionsJson
+
+Step 3 — Preview
+- Display first 25 rows in a table
+- Display detected columns + guessed data types
+
+Step 4 — Field Mapping (CORE FEATURE)
+- Two-column mapping UI:
+  Left: required + optional destination fields for chosen import type
+  Right: dropdown of source columns, plus “Custom” for concatenation/splitting
+- Required fields must be mapped or have a default value.
+- Transform pipeline per mapped field (stackable):
+  - trim whitespace
+  - title-case (names)
+  - normalize phone (digits, parentheses, dashes -> consistent format)
+  - parse date (support MM/DD/YYYY, YYYY-MM-DD, and Excel serial date numbers)
+  - split “Full Name” into firstName/lastName
+  - enum mapping UI:
+    - map incoming stage/status/priority strings to allowed enum values
+- Allow saving Mapping Templates:
+  - name, importType, fileType, mappingJson
+  - templates can be applied to new jobs to auto-map columns
+
+Step 5 — Validation (client + server)
+- Run Zod validation and show row-level errors/warnings
+- Errors block import; warnings can proceed
+- Provide “Download error report CSV” for error rows (include reason column)
+- PHI Guardrail:
+  - If file contains columns that appear like PHI (DOB, SSN, MRN, patient full name),
+    BLOCK import and show guidance
+  - Referrals import must only accept anonymized patientInitialsOrAnonId
+
+Step 6 — Dedupe / Merge (Physicians)
+- Detect duplicates using:
+  email OR phone OR NPI OR (firstName+lastName+practiceName+city)
+- For duplicates let user choose strategy:
+  SKIP, UPDATE existing, or CREATE new
+- Show merge preview for first 10 duplicates
+
+Step 7 — Execute Import
+- Import in batches (e.g., 200 rows) with transaction per batch
+- Store summaryJson in ImportJob:
+  createdCount, updatedCount, skippedCount, errorCount, warningCount
+- Write AuditLog entries with action=IMPORT and detailJson including jobId + counts
+- Show Results page with counts + links to imported entities
+
+EXPORT FEATURES (MUST SHIP)
+- Export physicians (respecting filters) -> CSV
+- Export interactions and referrals by date range -> CSV
+- “Download template” buttons:
+  - blank CSV templates for Physicians, Interactions, Referrals with headers matching required fields
+
+IMPLEMENTATION REQUIREMENTS
+- Use Next.js App Router best practices:
+  - Server Actions for mutations where appropriate, or API routes
+  - Ensure RBAC checks run server-side
+- Use Zod schemas shared between client/server
+- Use Prisma migrations
+- Create seed script:
+  - 8 locations
+  - 1 owner user
+  - sample physicians, interactions, referrals, tasks
+- UI/UX:
+  - healthcare business tool aesthetic
+  - fast data entry (especially referrals + interactions)
+
+TESTING (MUST INCLUDE)
+- Unit tests:
+  - RBAC guard functions
+  - import mapping transform functions (date parsing, enum mapping)
+- Integration tests:
+  - import physicians through mapping pipeline and confirm created records
+  - create a referral as FRONT_DESK user and confirm restrictions
+
+README (MUST INCLUDE)
+- Setup: env vars, DB connection, Prisma migrate, seed
+- How to run in Replit
+- Default credentials for seeded owner (if using credentials auth)
+- How imports work (supported file types, PHI restrictions)
+- How to add new mapping templates
+
+BUILD ORDER (show progress by listing files you create and what each does)
+1) Scaffold Next.js + Tailwind + shadcn/ui
+2) Prisma schema + migrations + seed
+3) Auth + RBAC enforcement helpers
+4) Import Center (upload → preview → mapping → validation → dedupe → import)
+5) CRUD pages (Physicians, Interactions, Referrals, Tasks)
+6) Dashboards + exports
+7) Tests + README
