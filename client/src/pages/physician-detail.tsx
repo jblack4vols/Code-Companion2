@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2 } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -285,7 +285,11 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
               {physician.practiceName && (
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Practice</span>
-                  <span>{physician.practiceName}</span>
+                  <Link href={`/physicians?practice=${encodeURIComponent(physician.practiceName)}`}>
+                    <span className="hover:underline text-primary/80 cursor-pointer flex items-center gap-1" data-testid="link-practice-detail">
+                      <Building2 className="w-3 h-3" />{physician.practiceName}
+                    </span>
+                  </Link>
                 </div>
               )}
               <div className="pt-2 border-t" />

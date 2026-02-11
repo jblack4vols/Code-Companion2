@@ -25,6 +25,7 @@ export interface PhysicianFilters {
   status?: string;
   stage?: string;
   priority?: string;
+  practiceName?: string;
   sortBy?: string;
   sortOrder?: string;
   page?: number;
@@ -193,6 +194,7 @@ export class DatabaseStorage implements IStorage {
     if (filters.status && filters.status !== "all") conditions.push(eq(physicians.status, filters.status as any));
     if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
     if (filters.priority && filters.priority !== "all") conditions.push(eq(physicians.priority, filters.priority as any));
+    if (filters.practiceName) conditions.push(eq(physicians.practiceName, filters.practiceName));
     if (filters.search) {
       const term = `%${filters.search}%`;
       conditions.push(or(

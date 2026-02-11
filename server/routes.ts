@@ -197,6 +197,7 @@ export async function registerRoutes(
       status: qstr(req.query.status as any),
       stage: qstr(req.query.stage as any),
       priority: qstr(req.query.priority as any),
+      practiceName: qstr(req.query.practiceName as any),
       sortBy: qstr(req.query.sortBy as any),
       sortOrder: qstr(req.query.sortOrder as any),
       page: req.query.page ? parseInt(req.query.page as string) : 1,

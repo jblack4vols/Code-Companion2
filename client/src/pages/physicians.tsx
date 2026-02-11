@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -77,7 +77,9 @@ export default function PhysiciansPage() {
   const [statusFilter, setStatusFilter] = useState<string>(urlParams.get("status") || "all");
   const [stageFilter, setStageFilter] = useState<string>(urlParams.get("stage") || "all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
+  const [practiceFilter, setPracticeFilter] = useState<string>(urlParams.get("practice") || "");
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedPractice, setSelectedPractice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortField | "">("");
   const [sortOrder, setSortOrder] = useState<string>("asc");
@@ -103,12 +105,13 @@ export default function PhysiciansPage() {
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (stageFilter !== "all") params.set("stage", stageFilter);
     if (priorityFilter !== "all") params.set("priority", priorityFilter);
+    if (practiceFilter) params.set("practiceName", practiceFilter);
     if (sortBy) {
       params.set("sortBy", sortBy);
       params.set("sortOrder", sortOrder);
     }
     return params.toString();
-  }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter, sortBy, sortOrder]);
+  }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter, practiceFilter, sortBy, sortOrder]);
 
   const queryParams = buildQueryParams();
   const { data: result, isLoading } = useQuery<any>({
@@ -160,12 +163,13 @@ export default function PhysiciansPage() {
   const total = result?.total || 0;
   const totalPages = result?.totalPages || 1;
 
-  const hasActiveFilters = statusFilter !== "all" || stageFilter !== "all" || priorityFilter !== "all" || search !== "";
+  const hasActiveFilters = statusFilter !== "all" || stageFilter !== "all" || priorityFilter !== "all" || practiceFilter !== "" || search !== "";
 
   const clearFilters = () => {
     setStatusFilter("all");
     setStageFilter("all");
     setPriorityFilter("all");
+    setPracticeFilter("");
     setSearch("");
     setPage(1);
   };
@@ -277,7 +281,7 @@ export default function PhysiciansPage() {
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Search physicians..."
+            placeholder="Search name, practice, NPI..."
             value={search}
             onChange={(e) => { setSearch(e.target.value); setPage(1); }}
             className="pl-9"
@@ -318,6 +322,15 @@ export default function PhysiciansPage() {
             <SelectItem value="HIGH">High</SelectItem>
           </SelectContent>
         </Select>
+        {practiceFilter && (
+          <Badge variant="secondary" className="gap-1 text-xs">
+            <Building2 className="w-3 h-3" />
+            {practiceFilter}
+            <button onClick={() => { setPracticeFilter(""); setPage(1); }} className="ml-1" data-testid="button-clear-practice-filter">
+              <X className="w-3 h-3" />
+            </button>
+          </Badge>
+        )}
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
             <X className="w-3 h-3 mr-1" />Clear
@@ -371,7 +384,18 @@ export default function PhysiciansPage() {
                           </Link>
                         </TableCell>
                         <TableCell className="text-sm text-muted-foreground" data-testid={`text-physician-credentials-${p.id}`}>{p.credentials || "-"}</TableCell>
-                        <TableCell className="text-sm">{p.practiceName || "-"}</TableCell>
+                        <TableCell className="text-sm">
+                          {p.practiceName ? (
+                            <button
+                              type="button"
+                              className="text-left hover:underline text-primary/80 cursor-pointer"
+                              onClick={(e) => { e.stopPropagation(); setSelectedPractice(p.practiceName); }}
+                              data-testid={`link-practice-${p.id}`}
+                            >
+                              {p.practiceName}
+                            </button>
+                          ) : "-"}
+                        </TableCell>
                         <TableCell className="text-sm text-muted-foreground">
                           {[p.city, p.state].filter(Boolean).join(", ") || "-"}
                         </TableCell>
@@ -419,6 +443,78 @@ export default function PhysiciansPage() {
           </div>
         )}
       </div>
+
+      <PracticeDetailDialog
+        practiceName={selectedPractice}
+        onClose={() => setSelectedPractice(null)}
+        onFilterByPractice={(name: string) => { setPracticeFilter(name); setPage(1); setSelectedPractice(null); }}
+      />
     </div>
+  );
+}
+
+function PracticeDetailDialog({ practiceName, onClose, onFilterByPractice }: { practiceName: string | null; onClose: () => void; onFilterByPractice: (name: string) => void }) {
+  const { data: result } = useQuery<any>({
+    queryKey: ["/api/physicians/paginated", "practice-detail", practiceName],
+    queryFn: async () => {
+      const params = new URLSearchParams();
+      params.set("practiceName", practiceName!);
+      params.set("page", "1");
+      params.set("pageSize", "100");
+      const res = await fetch(`/api/physicians/paginated?${params.toString()}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: !!practiceName,
+  });
+
+  const providers = result?.data || [];
+
+  return (
+    <Dialog open={!!practiceName} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2" data-testid="text-practice-dialog-title">
+            <Building2 className="w-4 h-4" />
+            {practiceName}
+          </DialogTitle>
+          <DialogDescription>
+            {providers.length} provider{providers.length !== 1 ? "s" : ""} at this practice
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          {providers.map((p: any) => (
+            <Link key={p.id} href={`/physicians/${p.id}`}>
+              <div className="flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer" data-testid={`practice-provider-${p.id}`}>
+                <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary text-xs font-medium shrink-0">
+                  {p.firstName[0]}{p.lastName[0]}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
+                  <p className="text-xs text-muted-foreground">{[p.specialty, p.city, p.state].filter(Boolean).join(" \u00b7 ") || "No details"}</p>
+                </div>
+                <div className="text-right shrink-0">
+                  {Number(p.referralCount) > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)} referrals</Badge>
+                  )}
+                </div>
+              </div>
+            </Link>
+          ))}
+          {providers.length === 0 && (
+            <div className="text-center py-8 text-sm text-muted-foreground">
+              <Users className="w-8 h-8 mx-auto mb-2 opacity-30" />
+              No providers found
+            </div>
+          )}
+        </div>
+        <div className="flex justify-end gap-2 pt-2">
+          <Button variant="outline" size="sm" onClick={onClose}>Close</Button>
+          <Button size="sm" onClick={() => onFilterByPractice(practiceName!)} data-testid="button-filter-by-practice">
+            <Search className="w-3 h-3 mr-1.5" />Show in Table
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
