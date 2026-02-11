@@ -20,11 +20,12 @@ client/src/
   pages/
     login.tsx - Login page
     dashboard.tsx - Dashboard with charts
-    physicians.tsx - Physician list with filters
+    physicians.tsx - Physician list with filters + pagination
     physician-detail.tsx - Physician detail with tabs
     interactions.tsx - Interactions log
-    referrals.tsx - Referral tracking
+    referrals.tsx - Referral/cases tracking with detail dialog
     tasks.tsx - Task work queue
+    calendar.tsx - Calendar with event management
     admin-users.tsx - User management
     admin-settings.tsx - Settings + HIPAA notice
 server/
@@ -32,19 +33,28 @@ server/
   db.ts - Drizzle database connection
   storage.ts - IStorage interface + DatabaseStorage class
   routes.ts - All API routes with RBAC middleware
-  seed.ts - Database seeding (8 locations, 5 users, 10 physicians, etc.)
+  seed.ts - Database seeding (users only, real data imported)
 shared/
   schema.ts - Drizzle schema + Zod schemas + TypeScript types
+scripts/
+  import-providers.ts - Import referring providers from Excel
+  import-referrals.ts - Import cases/referrals from Excel
 ```
 
 ## Key Features
 - **Authentication**: Session-based, email/password login
 - **RBAC**: OWNER (full access), DIRECTOR, MARKETER, FRONT_DESK (referrals only), ANALYST (read-only)
-- **Physicians**: List, detail, create, edit with status/stage/priority tracking
+- **Physicians**: 3,758 real referring providers imported from Excel with credentials, NPI, practice info, paginated (50/page)
+- **Referrals**: 6,041 real cases imported with full case details, click-to-view detail dialog, CSV export
 - **Interactions**: Log visits, calls, emails, events with physician timeline
-- **Referrals**: Track anonymized referrals (no PHI), CSV export
 - **Tasks**: Follow-up work queue with completion tracking
 - **Dashboard**: Charts for referral trends, top referrers, at-risk physicians
+- **Calendar**: Event management with Outlook sync capability
+
+## Real Data
+- **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
+- **Physicians**: 3,758 referring providers imported from Referring Provider List Excel
+- **Referrals**: 6,041 cases from Created Cases Report (Jan 2025 - Jan 2026)
 
 ## Default Credentials
 - Email: admin@tristar360.com
@@ -52,10 +62,11 @@ shared/
 
 ## Database
 - Uses PostgreSQL via DATABASE_URL environment variable
-- Schema managed with Drizzle ORM, push with `npm run db:push`
-- Auto-seeds on first start
+- Schema managed with Drizzle ORM
+- Real data imported via scripts in /scripts directory
 
 ## User Preferences
 - Healthcare professional aesthetic
 - Data-dense, efficient UI
 - Dark mode support
+- Pagination on large datasets (50 items per page)

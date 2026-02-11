@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, FileText, Download, X } from "lucide-react";
+import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -30,15 +30,31 @@ export default function ReferralsPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [disciplineFilter, setDisciplineFilter] = useState<string>("all");
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
+  const [selectedReferral, setSelectedReferral] = useState<Referral | null>(null);
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
 
   const { data: referrals, isLoading } = useQuery<Referral[]>({ queryKey: ["/api/referrals"] });
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
   const canCreate = user ? hasPermission(user.role, "create", "referral") : false;
+
+  const physMap = useMemo(() => {
+    const m = new Map<string, { firstName: string; lastName: string; credentials: string | null }>();
+    physicians?.forEach(p => m.set(p.id, { firstName: p.firstName, lastName: p.lastName, credentials: p.credentials }));
+    return m;
+  }, [physicians]);
+
+  const locMap = useMemo(() => {
+    const m = new Map<string, string>();
+    locations?.forEach(l => m.set(l.id, l.name));
+    return m;
+  }, [locations]);
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -57,60 +73,75 @@ export default function ReferralsPage() {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     addMutation.mutate({
-      physicianId: fd.get("physicianId"),
+      physicianId: fd.get("physicianId") || null,
       locationId: fd.get("locationId"),
       referralDate: fd.get("referralDate"),
       patientInitialsOrAnonId: fd.get("patientInitialsOrAnonId"),
       patientFullName: fd.get("patientFullName") || null,
-      patientDob: fd.get("patientDob") || null,
-      patientPhone: fd.get("patientPhone") || null,
       status: fd.get("status") || "RECEIVED",
-      payerType: fd.get("payerType") || null,
       diagnosisCategory: fd.get("diagnosisCategory") || null,
+      referralSource: fd.get("referralSource") || null,
+      discipline: fd.get("discipline") || null,
     });
   };
 
-  const hasActiveFilters = statusFilter !== "all" || locationFilter !== "all" || dateFrom !== "" || dateTo !== "";
+  const hasActiveFilters = statusFilter !== "all" || locationFilter !== "all" || disciplineFilter !== "all" || dateFrom !== "" || dateTo !== "" || search !== "";
 
   const clearFilters = () => {
     setStatusFilter("all");
     setLocationFilter("all");
+    setDisciplineFilter("all");
     setDateFrom("");
     setDateTo("");
     setSearch("");
   };
 
-  const filtered = referrals?.filter(r => {
-    const phys = physicians?.find(p => p.id === r.physicianId);
+  const filtered = useMemo(() => referrals?.filter(r => {
+    const phys = r.physicianId ? physMap.get(r.physicianId) : null;
     const matchSearch = search === "" ||
-      r.patientInitialsOrAnonId.toLowerCase().includes(search.toLowerCase()) ||
       (r.patientFullName && r.patientFullName.toLowerCase().includes(search.toLowerCase())) ||
+      (r.patientAccountNumber && r.patientAccountNumber.toLowerCase().includes(search.toLowerCase())) ||
+      (r.caseTherapist && r.caseTherapist.toLowerCase().includes(search.toLowerCase())) ||
       (phys && `${phys.firstName} ${phys.lastName}`.toLowerCase().includes(search.toLowerCase()));
     const matchStatus = statusFilter === "all" || r.status === statusFilter;
     const matchLocation = locationFilter === "all" || r.locationId === locationFilter;
+    const matchDiscipline = disciplineFilter === "all" || r.discipline === disciplineFilter;
     const refDate = r.referralDate ? startOfDay(parseISO(r.referralDate)) : null;
     const matchDateFrom = !dateFrom || (refDate && !isBefore(refDate, startOfDay(parseISO(dateFrom))));
     const matchDateTo = !dateTo || (refDate && !isAfter(refDate, endOfDay(parseISO(dateTo))));
-    return matchSearch && matchStatus && matchLocation && matchDateFrom && matchDateTo;
-  })?.sort((a, b) => new Date(b.referralDate).getTime() - new Date(a.referralDate).getTime()) || [];
+    return matchSearch && matchStatus && matchLocation && matchDiscipline && matchDateFrom && matchDateTo;
+  })?.sort((a, b) => new Date(b.referralDate).getTime() - new Date(a.referralDate).getTime()) || [], [referrals, search, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo, physMap]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+  const safeSetPage = (p: number) => setPage(Math.max(1, Math.min(p, totalPages || 1)));
+
+  useEffect(() => { if (page > totalPages && totalPages > 0) setPage(1); }, [filtered.length, page, totalPages]);
 
   const handleExport = () => {
     const csvRows = [
-      ["Date", "Patient ID", "Patient Name", "DOB", "Phone", "Physician", "Location", "Status", "Payer", "Diagnosis"].join(","),
+      ["Created Date", "Patient Acct#", "Patient Name", "Referring Doctor", "Facility", "Status", "Discipline", "Diagnosis", "Therapist", "Eval Date", "Visits (Sched)", "Visits (Arrived)", "Discharge Date", "Discharge Reason", "Referral Source", "Insurance", "Payer Type"].join(","),
       ...filtered.map(r => {
-        const phys = physicians?.find(p => p.id === r.physicianId);
-        const loc = locations?.find(l => l.id === r.locationId);
+        const phys = r.physicianId ? physMap.get(r.physicianId) : null;
+        const loc = locMap.get(r.locationId);
         return [
           r.referralDate,
-          r.patientInitialsOrAnonId,
+          `"${r.patientAccountNumber || ""}"`,
           `"${r.patientFullName || ""}"`,
-          r.patientDob || "",
-          r.patientPhone || "",
-          phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "",
-          loc?.name || "",
+          phys ? `"${phys.firstName} ${phys.lastName}"` : "",
+          `"${loc || ""}"`,
           r.status,
-          r.payerType || "",
-          r.diagnosisCategory || "",
+          r.discipline || "",
+          `"${r.diagnosisCategory || ""}"`,
+          `"${r.caseTherapist || ""}"`,
+          r.dateOfInitialEval || "",
+          r.scheduledVisits || 0,
+          r.arrivedVisits || 0,
+          r.dischargeDate || "",
+          `"${r.dischargeReason || ""}"`,
+          `"${r.referralSource || ""}"`,
+          `"${r.primaryInsurance || ""}"`,
+          `"${r.primaryPayerType || ""}"`,
         ].join(",");
       }),
     ];
@@ -122,12 +153,15 @@ export default function ReferralsPage() {
     a.click();
   };
 
+  const activeCount = filtered.filter(r => r.status !== "DISCHARGED").length;
+  const dischargedCount = filtered.filter(r => r.status === "DISCHARGED").length;
+
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-referrals-title">Referrals</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Track and manage patient referrals</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">{filtered.length} total cases &middot; {activeCount} active &middot; {dischargedCount} discharged</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-referrals">
@@ -145,69 +179,71 @@ export default function ReferralsPage() {
                 </DialogHeader>
                 <form onSubmit={handleAdd} className="space-y-4">
                   <div className="space-y-1.5">
-                    <Label>Physician *</Label>
-                    <select name="physicianId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-referral-physician">
+                    <Label>Referring Doctor</Label>
+                    <select name="physicianId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-physician">
                       <option value="">Select physician...</option>
-                      {physicians?.map(p => <option key={p.id} value={p.id}>Dr. {p.firstName} {p.lastName}</option>)}
+                      {physicians?.slice(0, 100).map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Location *</Label>
+                    <Label>Facility *</Label>
                     <select name="locationId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-referral-location">
-                      <option value="">Select location...</option>
+                      <option value="">Select facility...</option>
                       {locations?.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label>Referral Date *</Label>
+                      <Label>Created Date *</Label>
                       <Input name="referralDate" type="date" defaultValue={format(new Date(), "yyyy-MM-dd")} required data-testid="input-referral-date" />
                     </div>
                     <div className="space-y-1.5">
                       <Label>Patient ID *</Label>
-                      <Input name="patientInitialsOrAnonId" required placeholder="e.g. JD-001" data-testid="input-referral-patient-id" />
+                      <Input name="patientInitialsOrAnonId" required placeholder="e.g. 12345-TRS" data-testid="input-referral-patient-id" />
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Patient Full Name</Label>
-                    <Input name="patientFullName" placeholder="e.g. John Doe" data-testid="input-referral-patient-name" />
+                    <Label>Patient Name</Label>
+                    <Input name="patientFullName" placeholder="e.g. JOHN DOE" data-testid="input-referral-patient-name" />
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
-                      <Label>Date of Birth</Label>
-                      <Input name="patientDob" type="date" data-testid="input-referral-patient-dob" />
+                      <Label>Discipline</Label>
+                      <select name="discipline" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-discipline">
+                        <option value="PT">PT</option>
+                        <option value="OT">OT</option>
+                      </select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Phone Number</Label>
-                      <Input name="patientPhone" type="tel" placeholder="(615) 555-0100" data-testid="input-referral-patient-phone" />
+                      <Label>Referral Source</Label>
+                      <select name="referralSource" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-source">
+                        <option value="">-</option>
+                        <option value="Doctors Office">Doctor's Office</option>
+                        <option value="Former Patient">Former Patient</option>
+                        <option value="Direct Access">Direct Access</option>
+                        <option value="Walk-in">Walk-in</option>
+                        <option value="Google">Google</option>
+                        <option value="Insurance">Insurance</option>
+                        <option value="Friend">Friend</option>
+                        <option value="Employee">Employee</option>
+                        <option value="Other/Option not in list">Other</option>
+                      </select>
                     </div>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>Status</Label>
-                      <select name="status" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-status">
+                      <select name="status" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-status-input">
                         <option value="RECEIVED">Received</option>
                         <option value="SCHEDULED">Scheduled</option>
                         <option value="EVAL_COMPLETED">Eval Completed</option>
                         <option value="DISCHARGED">Discharged</option>
-                        <option value="LOST">Lost</option>
                       </select>
                     </div>
                     <div className="space-y-1.5">
-                      <Label>Payer Type</Label>
-                      <select name="payerType" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-payer">
-                        <option value="">-</option>
-                        <option value="COMMERCIAL">Commercial</option>
-                        <option value="MEDICARE">Medicare</option>
-                        <option value="MEDICAID">Medicaid</option>
-                        <option value="CASH">Cash</option>
-                        <option value="OTHER">Other</option>
-                      </select>
+                      <Label>Diagnosis</Label>
+                      <Input name="diagnosisCategory" placeholder="e.g. Post-Op" data-testid="input-referral-diagnosis" />
                     </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Diagnosis Category</Label>
-                    <Input name="diagnosisCategory" placeholder="e.g. Back Pain, Post-Op Knee" data-testid="input-referral-diagnosis" />
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
@@ -225,9 +261,9 @@ export default function ReferralsPage() {
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Search referrals..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" data-testid="input-search-referrals" />
+          <Input placeholder="Search patient, doctor, therapist..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" data-testid="input-search-referrals" />
         </div>
-        <Select value={statusFilter} onValueChange={setStatusFilter}>
+        <Select value={statusFilter} onValueChange={(v) => { setStatusFilter(v); setPage(1); }}>
           <SelectTrigger className="w-[150px]" data-testid="select-filter-referral-status">
             <SelectValue placeholder="Status" />
           </SelectTrigger>
@@ -240,33 +276,29 @@ export default function ReferralsPage() {
             <SelectItem value="LOST">Lost</SelectItem>
           </SelectContent>
         </Select>
-        <Select value={locationFilter} onValueChange={setLocationFilter}>
-          <SelectTrigger className="w-[160px]" data-testid="select-filter-referral-location">
-            <SelectValue placeholder="Location" />
+        <Select value={locationFilter} onValueChange={(v) => { setLocationFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[200px]" data-testid="select-filter-referral-location">
+            <SelectValue placeholder="Facility" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All Locations</SelectItem>
+            <SelectItem value="all">All Facilities</SelectItem>
             {locations?.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
           </SelectContent>
         </Select>
+        <Select value={disciplineFilter} onValueChange={(v) => { setDisciplineFilter(v); setPage(1); }}>
+          <SelectTrigger className="w-[120px]" data-testid="select-filter-referral-discipline">
+            <SelectValue placeholder="Discipline" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="PT">PT</SelectItem>
+            <SelectItem value="OT">OT</SelectItem>
+          </SelectContent>
+        </Select>
         <div className="flex items-center gap-1.5">
-          <Input
-            type="date"
-            value={dateFrom}
-            onChange={(e) => setDateFrom(e.target.value)}
-            className="w-[140px]"
-            placeholder="From"
-            data-testid="input-filter-referral-date-from"
-          />
+          <Input type="date" value={dateFrom} onChange={(e) => { setDateFrom(e.target.value); setPage(1); }} className="w-[140px]" data-testid="input-filter-referral-date-from" />
           <span className="text-xs text-muted-foreground">to</span>
-          <Input
-            type="date"
-            value={dateTo}
-            onChange={(e) => setDateTo(e.target.value)}
-            className="w-[140px]"
-            placeholder="To"
-            data-testid="input-filter-referral-date-to"
-          />
+          <Input type="date" value={dateTo} onChange={(e) => { setDateTo(e.target.value); setPage(1); }} className="w-[140px]" data-testid="input-filter-referral-date-to" />
         </div>
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-referral-filters">
@@ -291,40 +323,45 @@ export default function ReferralsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead>Date</TableHead>
-                    <TableHead>Patient ID</TableHead>
-                    <TableHead>Patient Name</TableHead>
-                    <TableHead className="hidden md:table-cell">DOB</TableHead>
-                    <TableHead className="hidden lg:table-cell">Phone</TableHead>
-                    <TableHead>Physician</TableHead>
-                    <TableHead className="hidden md:table-cell">Location</TableHead>
+                    <TableHead>Created</TableHead>
+                    <TableHead>Patient</TableHead>
+                    <TableHead>Referring Doctor</TableHead>
+                    <TableHead>Facility</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead className="hidden lg:table-cell">Payer</TableHead>
-                    <TableHead className="hidden xl:table-cell">Diagnosis</TableHead>
+                    <TableHead className="hidden md:table-cell">Disc.</TableHead>
+                    <TableHead className="hidden md:table-cell">Diagnosis</TableHead>
+                    <TableHead className="hidden lg:table-cell">Therapist</TableHead>
+                    <TableHead className="hidden lg:table-cell text-right">Visits</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map(r => {
-                    const phys = physicians?.find(p => p.id === r.physicianId);
-                    const loc = locations?.find(l => l.id === r.locationId);
+                  {paged.map(r => {
+                    const phys = r.physicianId ? physMap.get(r.physicianId) : null;
+                    const loc = locMap.get(r.locationId);
                     return (
-                      <TableRow key={r.id} data-testid={`row-referral-${r.id}`}>
-                        <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.referralDate), "MMM d, yyyy")}</TableCell>
-                        <TableCell className="text-sm font-medium">{r.patientInitialsOrAnonId}</TableCell>
-                        <TableCell className="text-sm" data-testid={`text-patient-name-${r.id}`}>{r.patientFullName || "-"}</TableCell>
-                        <TableCell className="text-sm hidden md:table-cell" data-testid={`text-patient-dob-${r.id}`}>
-                          {r.patientDob ? format(new Date(r.patientDob + "T00:00:00"), "MM/dd/yyyy") : "-"}
+                      <TableRow key={r.id} className="hover-elevate cursor-pointer" onClick={() => setSelectedReferral(r)} data-testid={`row-referral-${r.id}`}>
+                        <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.referralDate + "T00:00:00"), "MM/dd/yy")}</TableCell>
+                        <TableCell>
+                          <div>
+                            <p className="text-sm font-medium" data-testid={`text-patient-name-${r.id}`}>{r.patientFullName || r.patientInitialsOrAnonId || "-"}</p>
+                            {r.patientAccountNumber && <p className="text-[10px] text-muted-foreground">{r.patientAccountNumber}</p>}
+                          </div>
                         </TableCell>
-                        <TableCell className="text-sm hidden lg:table-cell" data-testid={`text-patient-phone-${r.id}`}>{r.patientPhone || "-"}</TableCell>
-                        <TableCell className="text-sm">{phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "-"}</TableCell>
-                        <TableCell className="text-sm hidden md:table-cell">{loc?.name || "-"}</TableCell>
+                        <TableCell className="text-sm">{phys ? `${phys.firstName} ${phys.lastName}` : "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{loc?.replace("Tristar PT - ", "") || "-"}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>
                             {r.status.replace("_", " ")}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">{r.payerType || "-"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground hidden xl:table-cell">{r.diagnosisCategory || "-"}</TableCell>
+                        <TableCell className="text-sm hidden md:table-cell">
+                          {r.discipline && <Badge variant="outline" className="text-[10px]">{r.discipline}</Badge>}
+                        </TableCell>
+                        <TableCell className="text-sm text-muted-foreground hidden md:table-cell max-w-[180px] truncate">{r.diagnosisCategory || "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">{r.caseTherapist || "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground hidden lg:table-cell text-right">
+                          {r.arrivedVisits || 0}/{r.scheduledVisits || 0}
+                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -334,6 +371,142 @@ export default function ReferralsPage() {
           )}
         </CardContent>
       </Card>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground" data-testid="text-referral-count">{filtered.length} of {referrals?.length || 0} referrals</p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => safeSetPage(page - 1)} data-testid="button-prev-page">
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-xs text-muted-foreground" data-testid="text-page-info">Page {page} of {totalPages}</span>
+            <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => safeSetPage(page + 1)} data-testid="button-next-page">
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+      </div>
+
+      <Dialog open={!!selectedReferral} onOpenChange={(open) => { if (!open) setSelectedReferral(null); }}>
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle data-testid="text-detail-title">Case Details</DialogTitle>
+            <DialogDescription>{selectedReferral?.patientAccountNumber || "Referral"}</DialogDescription>
+          </DialogHeader>
+          {selectedReferral && (() => {
+            const r = selectedReferral;
+            const phys = r.physicianId ? physMap.get(r.physicianId) : null;
+            const loc = locMap.get(r.locationId);
+            return (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Patient</p>
+                    <p className="font-medium" data-testid="detail-patient-name">{r.patientFullName || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Account #</p>
+                    <p className="font-mono">{r.patientAccountNumber || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Created Date</p>
+                    <p>{format(new Date(r.referralDate + "T00:00:00"), "MM/dd/yyyy")}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Status</p>
+                    <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>{r.status.replace("_", " ")}</Badge>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Referring Doctor</p>
+                    <p>{phys ? `${phys.firstName} ${phys.lastName}${phys.credentials ? `, ${phys.credentials}` : ""}` : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Referral Source</p>
+                    <p>{r.referralSource || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Facility</p>
+                    <p>{loc || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Discipline</p>
+                    <p>{r.discipline || "-"}</p>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Case Title</p>
+                    <p>{r.caseTitle || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Therapist</p>
+                    <p>{r.caseTherapist || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Diagnosis</p>
+                    <p>{r.diagnosisCategory || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Initial Eval</p>
+                    <p>{r.dateOfInitialEval ? format(new Date(r.dateOfInitialEval + "T00:00:00"), "MM/dd/yyyy") : "-"}</p>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Scheduled Visits</p>
+                    <p>{r.scheduledVisits || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Arrived Visits</p>
+                    <p>{r.arrivedVisits || 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">First Scheduled</p>
+                    <p>{r.dateOfFirstScheduledVisit ? format(new Date(r.dateOfFirstScheduledVisit + "T00:00:00"), "MM/dd/yyyy") : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">First Arrived</p>
+                    <p>{r.dateOfFirstArrivedVisit ? format(new Date(r.dateOfFirstArrivedVisit + "T00:00:00"), "MM/dd/yyyy") : "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Created to Arrived</p>
+                    <p>{r.createdToArrived != null ? `${r.createdToArrived} days` : "-"}</p>
+                  </div>
+                </div>
+
+                <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Insurance</p>
+                    <p>{r.primaryInsurance || "-"}</p>
+                  </div>
+                  <div>
+                    <p className="text-xs text-muted-foreground">Payer Type</p>
+                    <p>{r.primaryPayerType || "-"}</p>
+                  </div>
+                </div>
+
+                {r.dischargeDate && (
+                  <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                    <div>
+                      <p className="text-xs text-muted-foreground">Discharge Date</p>
+                      <p>{format(new Date(r.dischargeDate + "T00:00:00"), "MM/dd/yyyy")}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-muted-foreground">Discharge Reason</p>
+                      <p>{r.dischargeReason || "-"}</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
