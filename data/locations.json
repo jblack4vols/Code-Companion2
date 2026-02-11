@@ -1,0 +1,90 @@
+[
+  {
+    "id": "78a2e363-51b3-43dd-a8a6-8f69e3c8a7ff",
+    "name": "Tristar PT - Johnson City",
+    "address": "325 W Morris Blvd",
+    "city": "Johnson City",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "0f4114c0-a96e-4aad-9ab8-d39a8ce77863",
+    "name": "Tristar PT - Morristown",
+    "address": "325 W Morris Blvd",
+    "city": "Morristown",
+    "state": "TN",
+    "phone": "(423) 317-7772",
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "06f764ba-7752-4161-bd24-ec2eefff256e",
+    "name": "Tristar PT - Newport",
+    "address": "311 Heritage Blvd",
+    "city": "Newport",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "d06e8d70-deed-4bfd-a909-9ec7665a34ea",
+    "name": "Tristar PT - Rogersville",
+    "address": "405 Scenic Dr",
+    "city": "Rogersville",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "820211c8-2e38-4a57-b56a-e8f00c9340e2",
+    "name": "Tristar PT - Maryville",
+    "address": "217 Joule St",
+    "city": "Maryville",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "36ec3065-2f3f-45bb-9203-07bd3faa7e55",
+    "name": "Tristar PT - Jefferson City",
+    "address": "506 Patriot Dr",
+    "city": "Jefferson City",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "6da09fb0-68c3-4474-9100-c42faf5511a0",
+    "name": "Tristar PT - New Tazewell",
+    "address": "220 Old Knoxville Hwy",
+    "city": "New Tazewell",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  },
+  {
+    "id": "f4ceb9df-1228-4c2c-8508-958674738afd",
+    "name": "Tristar PT - Bean Station",
+    "address": "114 Main St",
+    "city": "Bean Station",
+    "state": "TN",
+    "phone": null,
+    "isActive": true,
+    "createdAt": "2026-02-11T10:13:04.480Z",
+    "updatedAt": "2026-02-11T10:13:04.480Z"
+  }
+]
