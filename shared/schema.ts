@@ -180,6 +180,25 @@ export const calendarEvents = pgTable("calendar_events", {
   index("calendar_event_location_idx").on(table.locationId),
 ]);
 
+export const sharepointSyncStatus = pgTable("sharepoint_sync_status", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  entity: text("entity").notNull(),
+  siteId: text("site_id"),
+  listId: text("list_id"),
+  lastSyncAt: timestamp("last_sync_at"),
+  itemsSynced: integer("items_synced").default(0),
+  itemsFailed: integer("items_failed").default(0),
+  status: text("status").notNull().default("IDLE"),
+  errorMessage: text("error_message"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: text("value").notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 36 }).references(() => users.id),

@@ -25,6 +25,7 @@ import PhysicianTieringPage from "@/pages/physician-tiering";
 import DecliningReferralsPage from "@/pages/declining-referrals";
 import TerritoriesPage from "@/pages/territories";
 import ImportPage from "@/pages/import";
+import SharePointSyncPage from "@/pages/sharepoint-sync";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRouter() {
@@ -41,6 +42,7 @@ function AuthenticatedRouter() {
       <Route path="/declining" component={DecliningReferralsPage} />
       <Route path="/territories" component={TerritoriesPage} />
       <Route path="/import" component={ImportPage} />
+      <Route path="/admin/sharepoint" component={SharePointSyncPage} />
       <Route path="/admin/users" component={AdminUsersPage} />
       <Route path="/admin/locations" component={AdminLocationsPage} />
       <Route path="/admin/settings" component={AdminSettingsPage} />

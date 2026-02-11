@@ -7,6 +7,7 @@ import bcrypt from "bcryptjs";
 import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
+import { searchSites as searchSPSites, getSiteId as getSPSiteId, setSiteId as setSPSiteId, validateSite as validateSPSite, getSyncStatuses as getSPSyncStatuses, syncEntity as syncSPEntity, syncAll as syncSPAll } from "./sharepoint";
 
 declare module "express-session" {
   interface SessionData {
@@ -858,212 +859,69 @@ export async function registerRoutes(
     }
   });
 
-  // --- SharePoint Lists Sync ---
-  app.post("/api/integrations/sharepoint/sync-referrals", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+  // --- SharePoint Sync ---
+  app.get("/api/sharepoint/sites", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const accessToken = await getSharePointAccessToken();
-      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected. Please connect your Microsoft account in Settings." });
+      const sites = await searchSPSites(qstr(req.query.q) || "*");
+      res.json(sites);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
-      const siteId = req.body.siteId as string;
+  app.get("/api/sharepoint/site", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const siteId = await getSPSiteId();
+      res.json({ siteId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/sharepoint/site", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { siteId } = req.body;
       if (!siteId) return res.status(400).json({ message: "siteId is required" });
-
-      const allReferrals = await storage.getReferrals();
-      const allPhysicians = await storage.getPhysicians();
-      const allLocations = await storage.getLocations();
-
-      const listName = "Tristar360 Referrals";
-      let listId: string | null = null;
-
-      const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (listsRes.ok) {
-        const listsData = await listsRes.json();
-        const existing = listsData.value?.find((l: any) => l.displayName === listName);
-        if (existing) {
-          listId = existing.id;
-        }
-      }
-
-      if (!listId) {
-        const createRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            displayName: listName,
-            list: { template: "genericList" },
-            columns: [
-              { name: "ReferralDate", text: {} },
-              { name: "PatientID", text: {} },
-              { name: "PatientName", text: {} },
-              { name: "PatientDOB", text: {} },
-              { name: "PatientPhone", text: {} },
-              { name: "Physician", text: {} },
-              { name: "Location", text: {} },
-              { name: "Status", text: {} },
-              { name: "PayerType", text: {} },
-              { name: "Diagnosis", text: {} },
-            ],
-          }),
-        });
-        if (!createRes.ok) {
-          const errText = await createRes.text();
-          return res.status(createRes.status).json({ message: `Failed to create SharePoint list: ${errText}` });
-        }
-        const newList = await createRes.json();
-        listId = newList.id;
-      }
-
-      let synced = 0;
-      for (const ref of allReferrals) {
-        const phys = allPhysicians.find(p => p.id === ref.physicianId);
-        const loc = allLocations.find(l => l.id === ref.locationId);
-        const itemData = {
-          fields: {
-            Title: ref.id,
-            ReferralDate: ref.referralDate,
-            PatientID: ref.patientInitialsOrAnonId,
-            PatientName: ref.patientFullName || "",
-            PatientDOB: ref.patientDob || "",
-            PatientPhone: ref.patientPhone || "",
-            Physician: phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "",
-            Location: loc?.name || "",
-            Status: ref.status,
-            PayerType: ref.payerType || "",
-            Diagnosis: ref.diagnosisCategory || "",
-          },
-        };
-
-        const addRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify(itemData),
-        });
-        if (addRes.ok) synced++;
-      }
-
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_SHAREPOINT", entity: "Referral", entityId: "bulk", detailJson: { synced, total: allReferrals.length } });
-      res.json({ success: true, synced, total: allReferrals.length, listId });
+      const site = await validateSPSite(siteId);
+      await setSPSiteId(siteId);
+      res.json({ success: true, site: { id: site.id, displayName: site.displayName, webUrl: site.webUrl } });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
 
-  app.post("/api/integrations/sharepoint/sync-physicians", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+  app.get("/api/sharepoint/status", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const accessToken = await getSharePointAccessToken();
-      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected" });
-
-      const siteId = req.body.siteId as string;
-      if (!siteId) return res.status(400).json({ message: "siteId is required" });
-
-      const allPhysicians = await storage.getPhysicians();
-      const listName = "Tristar360 Physicians";
-      let listId: string | null = null;
-
-      const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
-      if (listsRes.ok) {
-        const listsData = await listsRes.json();
-        const existing = listsData.value?.find((l: any) => l.displayName === listName);
-        if (existing) listId = existing.id;
-      }
-
-      if (!listId) {
-        const createRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            displayName: listName,
-            list: { template: "genericList" },
-            columns: [
-              { name: "FirstName", text: {} },
-              { name: "LastName", text: {} },
-              { name: "Specialty", text: {} },
-              { name: "Practice", text: {} },
-              { name: "Status", text: {} },
-              { name: "Stage", text: {} },
-              { name: "Priority", text: {} },
-              { name: "Phone", text: {} },
-              { name: "Email", text: {} },
-            ],
-          }),
-        });
-        if (!createRes.ok) {
-          const errText = await createRes.text();
-          return res.status(createRes.status).json({ message: `Failed to create SharePoint list: ${errText}` });
-        }
-        const newList = await createRes.json();
-        listId = newList.id;
-      }
-
-      let synced = 0;
-      for (const phys of allPhysicians) {
-        const addRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
-          method: "POST",
-          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
-          body: JSON.stringify({
-            fields: {
-              Title: phys.id,
-              FirstName: phys.firstName,
-              LastName: phys.lastName,
-              Specialty: phys.specialty,
-              Practice: phys.practiceName,
-              Status: phys.status,
-              Stage: phys.relationshipStage,
-              Priority: phys.priority,
-              Phone: phys.phone || "",
-              Email: phys.email || "",
-            },
-          }),
-        });
-        if (addRes.ok) synced++;
-      }
-
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_SHAREPOINT", entity: "Physician", entityId: "bulk", detailJson: { synced, total: allPhysicians.length } });
-      res.json({ success: true, synced, total: allPhysicians.length, listId });
+      const statuses = await getSPSyncStatuses();
+      const siteId = await getSPSiteId();
+      res.json({ siteId, statuses });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
   });
 
-  // --- SharePoint Documents ---
-  app.get("/api/integrations/sharepoint/sites", requireAuth, async (req, res) => {
-    try {
-      const accessToken = await getSharePointAccessToken();
-      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected" });
+  app.post("/api/sharepoint/sync/:entity", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    const entity = req.params.entity;
+    const validEntities = ['physicians', 'referrals', 'interactions', 'tasks', 'locations'];
+    if (!validEntities.includes(entity)) return res.status(400).json({ message: `Invalid entity: ${entity}` });
 
-      const result = await fetch("https://graph.microsoft.com/v1.0/sites?search=*", {
-        headers: { Authorization: `Bearer ${accessToken}` },
-      });
+    res.json({ message: `Sync started for ${entity}` });
 
-      if (!result.ok) return res.status(result.status).json({ message: "Failed to fetch SharePoint sites" });
-      const data = await result.json();
-      res.json(data.value || []);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
+    syncSPEntity(entity).then(result => {
+      console.log(`SharePoint sync complete for ${entity}: ${result.created} created, ${result.failed} failed`);
+    }).catch(err => {
+      console.error(`SharePoint sync failed for ${entity}:`, err.message);
+    });
   });
 
-  app.get("/api/integrations/sharepoint/documents", requireAuth, async (req, res) => {
-    try {
-      const siteId = req.query.siteId as string;
-      const accessToken = await getSharePointAccessToken();
-      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected" });
+  app.post("/api/sharepoint/sync-all", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    res.json({ message: "Sync started for all entities" });
 
-      let url = "https://graph.microsoft.com/v1.0/me/drive/root/children";
-      if (siteId) {
-        url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root/children`;
-      }
-
-      const result = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
-      if (!result.ok) return res.status(result.status).json({ message: "Failed to fetch documents" });
-      const data = await result.json();
-      res.json(data.value || []);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
+    syncSPAll().then(results => {
+      console.log("SharePoint sync all complete:", results);
+    }).catch(err => {
+      console.error("SharePoint sync all failed:", err.message);
+    });
   });
 
   return httpServer;
@@ -1092,25 +950,3 @@ async function getOutlookAccessToken(): Promise<string | null> {
   }
 }
 
-async function getSharePointAccessToken(): Promise<string | null> {
-  try {
-    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-    const xReplitToken = process.env.REPL_IDENTITY
-      ? "repl " + process.env.REPL_IDENTITY
-      : process.env.WEB_REPL_RENEWAL
-      ? "depl " + process.env.WEB_REPL_RENEWAL
-      : null;
-
-    if (!hostname || !xReplitToken) return null;
-
-    const response = await fetch(
-      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=sharepoint",
-      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-    );
-    const data = await response.json();
-    const settings = data?.items?.[0]?.settings;
-    return settings?.access_token || settings?.oauth?.credentials?.access_token || null;
-  } catch {
-    return null;
-  }
-}
