@@ -13,16 +13,16 @@ import { useLocation, Link } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard, requireView: true },
-  { title: "Physicians", url: "/physicians", icon: Stethoscope, requireView: true },
-  { title: "Tiering", url: "/tiering", icon: Award, requireView: true },
-  { title: "Declining", url: "/declining", icon: TrendingDown, requireView: true },
-  { title: "Interactions", url: "/interactions", icon: MessageSquare, requireView: true },
-  { title: "Referrals", url: "/referrals", icon: FileText, requireView: true },
-  { title: "Tasks", url: "/tasks", icon: ClipboardList, requireView: true },
-  { title: "Calendar", url: "/calendar", icon: Calendar, requireView: true },
-  { title: "Territories", url: "/territories", icon: UserCheck, requireView: true },
-  { title: "Import", url: "/import", icon: Upload, requireView: true },
+  { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Physicians", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Referrals", url: "/referrals", icon: FileText },
+  { title: "Tasks", url: "/tasks", icon: ClipboardList, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
+  { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
+  { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
+  { title: "Import", url: "/import", icon: Upload, roles: ["OWNER", "DIRECTOR"] as string[] },
 ];
 
 const adminItems = [
@@ -74,7 +74,9 @@ export function AppSidebar() {
           <SidebarGroupLabel>Navigation</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems.map((item) => (
+              {navItems
+                .filter((item) => !item.roles || item.roles.includes(user.role))
+                .map((item) => (
                 <SidebarMenuItem key={item.title}>
                   <SidebarMenuButton
                     asChild
