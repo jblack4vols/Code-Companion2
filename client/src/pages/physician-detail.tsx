@@ -409,19 +409,33 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                     </div>
                   )}
                 </TabsContent>
-                <TabsContent value="referrals" className="mt-0 space-y-2">
-                  {referrals?.length ? referrals.map(r => (
-                    <div key={r.id} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`card-referral-${r.id}`}>
-                      <div className="w-8 h-8 rounded-md bg-chart-2/15 flex items-center justify-center text-chart-2 text-xs font-medium">R</div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-medium">{r.patientInitialsOrAnonId}</span>
-                          <Badge variant="outline" className="text-[10px]">{r.status}</Badge>
+                <TabsContent value="referrals" className="mt-0">
+                  {referrals?.length ? (
+                    <div className="space-y-1">
+                      <p className="text-xs text-muted-foreground mb-3">{referrals.length} referral{referrals.length !== 1 ? "s" : ""}</p>
+                      {[...referrals].sort((a, b) => (b.referralDate || "").localeCompare(a.referralDate || "")).map(r => (
+                        <div key={r.id} className="flex items-start gap-3 p-3 rounded-md border" data-testid={`card-referral-${r.id}`}>
+                          <div className={`w-8 h-8 rounded-md flex items-center justify-center text-xs font-medium shrink-0 ${r.status === "DISCHARGED" ? "bg-chart-4/15 text-chart-4" : "bg-chart-2/15 text-chart-2"}`}>R</div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-medium" data-testid={`text-referral-patient-${r.id}`}>{r.patientFullName || r.patientInitialsOrAnonId || "Unknown"}</span>
+                              <Badge variant="outline" className="text-[10px]">{r.status}</Badge>
+                              {r.discipline && <Badge variant="outline" className="text-[10px]">{r.discipline}</Badge>}
+                            </div>
+                            <div className="flex flex-wrap gap-x-3 gap-y-0.5 mt-1 text-xs text-muted-foreground">
+                              <span>{format(new Date(r.referralDate + "T00:00:00"), "MMM d, yyyy")}</span>
+                              {r.patientAccountNumber && <span>Acct: {r.patientAccountNumber}</span>}
+                              {r.diagnosisCategory && <span>{r.diagnosisCategory}</span>}
+                              {r.caseTherapist && <span>Therapist: {r.caseTherapist}</span>}
+                            </div>
+                            {(r.scheduledVisits || r.arrivedVisits) && (
+                              <p className="text-xs text-muted-foreground mt-0.5">Visits: {r.arrivedVisits || 0} arrived / {r.scheduledVisits || 0} scheduled</p>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-xs text-muted-foreground">{format(new Date(r.referralDate), "MMM d, yyyy")} {r.diagnosisCategory && `· ${r.diagnosisCategory}`}</p>
-                      </div>
+                      ))}
                     </div>
-                  )) : (
+                  ) : (
                     <div className="text-center py-12 text-sm text-muted-foreground">
                       <FileText className="w-8 h-8 mx-auto mb-2 opacity-30" />
                       No referrals yet

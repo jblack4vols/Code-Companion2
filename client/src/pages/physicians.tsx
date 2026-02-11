@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +44,31 @@ function useDebounce(value: string, delay: number) {
   return debounced;
 }
 
+type SortField = "name" | "location" | "status" | "stage" | "priority" | "referrals";
+
+function SortableHead({ label, field, currentSort, currentOrder, onSort, className }: {
+  label: string;
+  field: SortField;
+  currentSort: SortField | "";
+  currentOrder: string;
+  onSort: (field: SortField) => void;
+  className?: string;
+}) {
+  const isActive = currentSort === field;
+  return (
+    <TableHead className={`cursor-pointer select-none ${className || ""}`} onClick={() => onSort(field)} data-testid={`sort-${field}`}>
+      <div className="flex items-center gap-1">
+        {label}
+        {isActive ? (
+          currentOrder === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />
+        ) : (
+          <ArrowUpDown className="w-3 h-3 text-muted-foreground/50" />
+        )}
+      </div>
+    </TableHead>
+  );
+}
+
 export default function PhysiciansPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -54,9 +79,21 @@ export default function PhysiciansPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<SortField | "">("");
+  const [sortOrder, setSortOrder] = useState<string>("asc");
   const pageSize = 50;
 
   const debouncedSearch = useDebounce(search, 300);
+
+  const handleSort = (field: SortField) => {
+    if (sortBy === field) {
+      setSortOrder(sortOrder === "asc" ? "desc" : "asc");
+    } else {
+      setSortBy(field);
+      setSortOrder("asc");
+    }
+    setPage(1);
+  };
 
   const buildQueryParams = useCallback(() => {
     const params = new URLSearchParams();
@@ -66,8 +103,12 @@ export default function PhysiciansPage() {
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (stageFilter !== "all") params.set("stage", stageFilter);
     if (priorityFilter !== "all") params.set("priority", priorityFilter);
+    if (sortBy) {
+      params.set("sortBy", sortBy);
+      params.set("sortOrder", sortOrder);
+    }
     return params.toString();
-  }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter]);
+  }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter, sortBy, sortOrder]);
 
   const queryParams = buildQueryParams();
   const { data: result, isLoading } = useQuery<any>({
@@ -301,18 +342,19 @@ export default function PhysiciansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[180px]">Provider</TableHead>
+                    <SortableHead label="Provider" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="min-w-[180px]" />
                     <TableHead>Credentials</TableHead>
                     <TableHead>Practice</TableHead>
-                    <TableHead>Location</TableHead>
-                    <TableHead>Status</TableHead>
-                    <TableHead>Stage</TableHead>
-                    <TableHead>Priority</TableHead>
+                    <SortableHead label="Location" field="location" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                    <SortableHead label="Status" field="status" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                    <SortableHead label="Stage" field="stage" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                    <SortableHead label="Priority" field="priority" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                    <SortableHead label="Referrals" field="referrals" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {physicians.map((p: Physician) => {
-                    const owner = users?.find(u => u.id === p.assignedOwnerId);
+                  {physicians.map((p: any) => {
+                    const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
                     return (
                       <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
                         <TableCell>
@@ -343,6 +385,13 @@ export default function PhysiciansPage() {
                         </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={`text-[10px] ${priorityBadge[p.priority]}`}>{p.priority}</Badge>
+                        </TableCell>
+                        <TableCell className="text-sm text-center" data-testid={`text-referral-count-${p.id}`}>
+                          {Number(p.referralCount) > 0 ? (
+                            <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)}</Badge>
+                          ) : (
+                            <span className="text-muted-foreground">0</span>
+                          )}
                         </TableCell>
                       </TableRow>
                     );

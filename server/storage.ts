@@ -25,6 +25,8 @@ export interface PhysicianFilters {
   status?: string;
   stage?: string;
   priority?: string;
+  sortBy?: string;
+  sortOrder?: string;
   page?: number;
   pageSize?: number;
 }
@@ -56,7 +58,7 @@ export interface IStorage {
   deleteLocation(id: string): Promise<boolean>;
 
   getPhysicians(): Promise<Physician[]>;
-  getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<Physician>>;
+  getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<any>>;
   getPhysician(id: string): Promise<Physician | undefined>;
   createPhysician(phys: InsertPhysician): Promise<Physician>;
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
@@ -159,7 +161,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(physicians).orderBy(asc(physicians.lastName), asc(physicians.firstName));
   }
 
-  async getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<Physician>> {
+  async getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<any>> {
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 50;
     const conditions: any[] = [];
@@ -184,9 +186,68 @@ export class DatabaseStorage implements IStorage {
     const [countResult] = await db.select({ count: sql<number>`count(*)` }).from(physicians).where(where);
     const total = Number(countResult?.count || 0);
 
-    const data = await db.select().from(physicians)
+    const refCountExpr = sql<number>`count(${referrals.id})`;
+
+    const sortDir = filters.sortOrder === "desc" ? desc : asc;
+    let orderClause: any[];
+    switch (filters.sortBy) {
+      case "name":
+        orderClause = [sortDir(physicians.lastName), sortDir(physicians.firstName)];
+        break;
+      case "location":
+        orderClause = [sortDir(physicians.city)];
+        break;
+      case "status":
+        orderClause = [sortDir(physicians.status)];
+        break;
+      case "stage":
+        orderClause = [sortDir(physicians.relationshipStage)];
+        break;
+      case "priority":
+        orderClause = [sortDir(physicians.priority)];
+        break;
+      case "referrals":
+        orderClause = [sortDir(refCountExpr)];
+        break;
+      default:
+        orderClause = [asc(physicians.lastName), asc(physicians.firstName)];
+    }
+
+    const data = await db.select({
+      id: physicians.id,
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      credentials: physicians.credentials,
+      specialty: physicians.specialty,
+      practiceName: physicians.practiceName,
+      npi: physicians.npi,
+      phone: physicians.phone,
+      fax: physicians.fax,
+      email: physicians.email,
+      primaryOfficeAddress: physicians.primaryOfficeAddress,
+      city: physicians.city,
+      state: physicians.state,
+      zip: physicians.zip,
+      status: physicians.status,
+      relationshipStage: physicians.relationshipStage,
+      priority: physicians.priority,
+      assignedOwnerId: physicians.assignedOwnerId,
+      lastInteractionAt: physicians.lastInteractionAt,
+      nextFollowUpAt: physicians.nextFollowUpAt,
+      notes: physicians.notes,
+      tags: physicians.tags,
+      createdAt: physicians.createdAt,
+      referralCount: refCountExpr,
+    })
+      .from(physicians)
+      .leftJoin(referrals, and(
+        eq(referrals.physicianId, physicians.id),
+        sql`${referrals.referralDate} >= '2025-01-01'`,
+        sql`${referrals.referralDate} <= '2026-01-31'`,
+      ))
       .where(where)
-      .orderBy(asc(physicians.lastName), asc(physicians.firstName))
+      .groupBy(physicians.id)
+      .orderBy(...orderClause)
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
