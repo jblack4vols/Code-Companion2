@@ -96,11 +96,11 @@ export default function AdminLocationsPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-6xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-6xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-locations-title">Locations</h1>
-          <p className="text-sm text-muted-foreground">Manage clinic locations</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-locations-title">Locations</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage clinic locations</p>
         </div>
         {canCreate && (
           <Dialog open={showDialog} onOpenChange={(open) => { setShowDialog(open); if (!open) setEditingLocation(null); }}>

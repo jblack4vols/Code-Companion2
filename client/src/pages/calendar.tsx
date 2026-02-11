@@ -203,11 +203,11 @@ export default function CalendarPage() {
       : format(new Date(), "yyyy-MM-dd'T'10:00");
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-calendar-title">Calendar</h1>
-          <p className="text-sm text-muted-foreground">Manage events and appointments</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-calendar-title">Calendar</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage events and appointments</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -434,7 +434,7 @@ export default function CalendarPage() {
                 <option value="OTHER">Other</option>
               </select>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>Start *</Label>
                 <Input

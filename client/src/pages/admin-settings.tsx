@@ -13,10 +13,10 @@ export default function AdminSettingsPage() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold" data-testid="text-settings-title">Settings</h1>
-        <p className="text-sm text-muted-foreground">Application configuration and compliance</p>
+        <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-settings-title">Settings</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">Application configuration and compliance</p>
       </div>
 
       <Card className="border-chart-3/30" data-testid="card-hipaa-banner">

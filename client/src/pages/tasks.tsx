@@ -20,7 +20,8 @@ import { format, isPast } from "date-fns";
 export default function TasksPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [statusFilter, setStatusFilter] = useState<string>("OPEN");
+  const urlParams = new URLSearchParams(window.location.search);
+  const [statusFilter, setStatusFilter] = useState<string>(urlParams.get("status") || "OPEN");
   const [showAdd, setShowAdd] = useState(false);
 
   const { data: tasks, isLoading } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
@@ -69,11 +70,11 @@ export default function TasksPage() {
   })?.sort((a, b) => new Date(a.dueAt).getTime() - new Date(b.dueAt).getTime()) || [];
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-tasks-title">Tasks</h1>
-          <p className="text-sm text-muted-foreground">Follow-up work queue</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-tasks-title">Tasks</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Follow-up work queue</p>
         </div>
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
@@ -94,7 +95,7 @@ export default function TasksPage() {
                   <Label>Description *</Label>
                   <Textarea name="description" required placeholder="What needs to be done?" data-testid="input-task-description" />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Due Date *</Label>
                     <Input name="dueAt" type="datetime-local" required data-testid="input-task-due" />

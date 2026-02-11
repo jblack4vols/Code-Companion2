@@ -7,17 +7,22 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList } from "lucide-react";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import type { Physician, Location } from "@shared/schema";
 import { format, subMonths } from "date-fns";
 import { getQueryFn } from "@/lib/queryClient";
+import { useLocation } from "wouter";
 
-function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
+function StatCard({ icon: Icon, label, value, sub, color, onClick }: { icon: any; label: string; value: string | number; sub?: string; color: string; onClick?: () => void }) {
   return (
-    <Card data-testid={`card-stat-${label.toLowerCase().replace(/\s+/g, '-')}`}>
+    <Card
+      className={onClick ? "cursor-pointer hover-elevate" : ""}
+      onClick={onClick}
+      data-testid={`card-stat-${label.toLowerCase().replace(/\s+/g, '-')}`}
+    >
       <CardContent className="p-4 flex items-start gap-3">
-        <div className={`flex items-center justify-center w-10 h-10 rounded-md ${color}`}>
+        <div className={`flex items-center justify-center w-10 h-10 rounded-md shrink-0 ${color}`}>
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -25,6 +30,7 @@ function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: 
           <p className="text-2xl font-bold mt-0.5">{value}</p>
           {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
         </div>
+        {onClick && <ChevronRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />}
       </CardContent>
     </Card>
   );
@@ -38,6 +44,7 @@ const stageColors: Record<string, string> = {
 };
 
 export default function DashboardPage() {
+  const [, navigate] = useLocation();
   const [startDate, setStartDate] = useState(format(subMonths(new Date(), 6), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [locationId, setLocationId] = useState("");
@@ -93,8 +100,8 @@ export default function DashboardPage() {
 
   if (loadingStats) {
     return (
-      <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="p-4 sm:p-6 space-y-6">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
           {[1,2,3,4,5].map(i => (
             <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
           ))}
@@ -108,17 +115,17 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-          <p className="text-sm text-muted-foreground mt-1">Overview of your physician referral pipeline</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Overview of your physician referral pipeline</p>
         </div>
         <div className="flex items-center gap-2">
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
               <X className="w-4 h-4 mr-1" />
-              Clear filters
+              Clear
             </Button>
           )}
           <Button
@@ -191,12 +198,43 @@ export default function DashboardPage() {
         </Card>
       )}
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatCard icon={Stethoscope} label="Active Physicians" value={stats?.activePhysicians || 0} sub={`${physicians?.length || 0} total`} color="bg-chart-1/15 text-chart-1" />
-        <StatCard icon={FileText} label="Total Referrals" value={stats?.totalReferrals || 0} color="bg-chart-2/15 text-chart-2" />
-        <StatCard icon={MessageSquare} label="Interactions" value={stats?.totalInteractions || 0} color="bg-chart-3/15 text-chart-3" />
-        <StatCard icon={AlertTriangle} label="At Risk" value={stats?.atRiskPhysicians || 0} color="bg-chart-5/15 text-chart-5" />
-        <StatCard icon={ClipboardList} label="Open Tasks" value={stats?.openTasks || 0} color="bg-chart-4/15 text-chart-4" />
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+        <StatCard
+          icon={Stethoscope}
+          label="Active Physicians"
+          value={stats?.activePhysicians || 0}
+          sub={`${physicians?.length || 0} total`}
+          color="bg-chart-1/15 text-chart-1"
+          onClick={() => navigate("/physicians?status=ACTIVE")}
+        />
+        <StatCard
+          icon={FileText}
+          label="Total Referrals"
+          value={stats?.totalReferrals || 0}
+          color="bg-chart-2/15 text-chart-2"
+          onClick={() => navigate("/referrals")}
+        />
+        <StatCard
+          icon={MessageSquare}
+          label="Interactions"
+          value={stats?.totalInteractions || 0}
+          color="bg-chart-3/15 text-chart-3"
+          onClick={() => navigate("/interactions")}
+        />
+        <StatCard
+          icon={AlertTriangle}
+          label="At Risk"
+          value={stats?.atRiskPhysicians || 0}
+          color="bg-chart-5/15 text-chart-5"
+          onClick={() => navigate("/physicians?stage=AT_RISK")}
+        />
+        <StatCard
+          icon={ClipboardList}
+          label="Open Tasks"
+          value={stats?.openTasks || 0}
+          color="bg-chart-4/15 text-chart-4"
+          onClick={() => navigate("/tasks?status=OPEN")}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -213,8 +251,8 @@ export default function DashboardPage() {
               <ResponsiveContainer width="100%" height={240}>
                 <LineChart data={referralTrendData}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="month" tick={{ fontSize: 12 }} />
-                  <YAxis tick={{ fontSize: 12 }} />
+                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                  <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
                   <Line type="monotone" dataKey="count" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 4 }} />
                 </LineChart>
@@ -240,8 +278,8 @@ export default function DashboardPage() {
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={topReferrers} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis type="number" tick={{ fontSize: 12 }} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 12 }} width={100} />
+                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
                   <Tooltip />
                   <Bar dataKey="count" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
                 </BarChart>
@@ -279,7 +317,7 @@ export default function DashboardPage() {
                 <div className="space-y-2 flex-1">
                   {stageData.map(s => (
                     <div key={s.name} className="flex items-center gap-2 text-xs">
-                      <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: s.fill }} />
+                      <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.fill }} />
                       <span className="flex-1">{s.name}</span>
                       <span className="font-medium">{s.value}</span>
                     </div>
@@ -306,8 +344,8 @@ export default function DashboardPage() {
             {physicians?.filter(p => p.relationshipStage === "AT_RISK").length ? (
               <div className="space-y-2">
                 {physicians.filter(p => p.relationshipStage === "AT_RISK").slice(0, 5).map(p => (
-                  <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover-elevate" data-testid={`card-at-risk-${p.id}`}>
-                    <div className="w-8 h-8 rounded-md bg-chart-5/15 flex items-center justify-center text-chart-5 text-xs font-medium">
+                  <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer" onClick={() => navigate(`/physicians/${p.id}`)} data-testid={`card-at-risk-${p.id}`}>
+                    <div className="w-8 h-8 rounded-md bg-chart-5/15 flex items-center justify-center text-chart-5 text-xs font-medium shrink-0">
                       {p.firstName[0]}{p.lastName[0]}
                     </div>
                     <div className="flex-1 min-w-0">

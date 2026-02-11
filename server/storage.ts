@@ -17,6 +17,8 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+  deleteUser(id: string): Promise<boolean>;
 
   getLocations(): Promise<Location[]>;
   getLocation(id: string): Promise<Location | undefined>;
@@ -69,6 +71,25 @@ export class DatabaseStorage implements IStorage {
   async createUser(user: InsertUser) {
     const [created] = await db.insert(users).values(user).returning();
     return created;
+  }
+
+  async updateUser(id: string, data: Partial<InsertUser>) {
+    const [updated] = await db.update(users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteUser(id: string) {
+    const interCount = await db.select({ count: sql<number>`count(*)` }).from(interactions).where(eq(interactions.userId, id));
+    const taskCount = await db.select({ count: sql<number>`count(*)` }).from(tasks).where(eq(tasks.assignedToUserId, id));
+    if (Number(interCount[0]?.count) > 0 || Number(taskCount[0]?.count) > 0) {
+      throw new Error("Cannot delete user that has interactions or tasks assigned. Reassign them first.");
+    }
+    await db.delete(userLocationAccess).where(eq(userLocationAccess.userId, id));
+    await db.delete(users).where(eq(users.id, id));
+    return true;
   }
 
   async getLocations() {

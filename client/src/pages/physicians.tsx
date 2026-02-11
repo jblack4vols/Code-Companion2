@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -40,9 +40,10 @@ const statusBadge: Record<string, string> = {
 export default function PhysiciansPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const urlParams = new URLSearchParams(window.location.search);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [stageFilter, setStageFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(urlParams.get("status") || "all");
+  const [stageFilter, setStageFilter] = useState<string>(urlParams.get("stage") || "all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
 
@@ -93,11 +94,11 @@ export default function PhysiciansPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-physicians-title">Physicians</h1>
-          <p className="text-sm text-muted-foreground">Manage your physician referral sources</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-physicians-title">Physicians</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage your physician referral sources</p>
         </div>
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
@@ -147,7 +148,7 @@ export default function PhysiciansPage() {
                     <Input id="state" name="state" data-testid="input-physician-state" />
                   </div>
                 </div>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="space-y-1.5">
                     <Label>Status</Label>
                     <select name="status" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-status">

@@ -4,7 +4,7 @@ import { storage } from "./storage";
 import session from "express-session";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { loginSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
+import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
 
 declare module "express-session" {
@@ -97,6 +97,53 @@ export async function registerRoutes(
   app.get("/api/users", requireAuth, async (req, res) => {
     const allUsers = await storage.getUsers();
     res.json(allUsers.map(u => { const { password: _, ...safe } = u; return safe; }));
+  });
+
+  app.post("/api/users", requireRole("OWNER"), async (req, res) => {
+    try {
+      const validated = insertUserSchema.parse(req.body);
+      const existing = await storage.getUserByEmail(validated.email);
+      if (existing) return res.status(409).json({ message: "A user with this email already exists" });
+      const hashedPassword = await bcrypt.hash(validated.password, 10);
+      const user = await storage.createUser({ ...validated, password: hashedPassword });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role } });
+      const { password: _, ...safe } = user;
+      res.json(safe);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/users/:id", requireRole("OWNER"), async (req, res) => {
+    try {
+      const body = { ...req.body };
+      if (body.password) {
+        body.password = await bcrypt.hash(body.password, 10);
+      } else {
+        delete body.password;
+      }
+      const validated = insertUserSchema.partial().parse(body);
+      const user = await storage.updateUser(req.params.id, validated);
+      if (!user) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "User", entityId: user.id, detailJson: { name: user.name, role: user.role } });
+      const { password: _, ...safe } = user;
+      res.json(safe);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/users/:id", requireRole("OWNER"), async (req, res) => {
+    try {
+      if (req.params.id === req.session.userId) {
+        return res.status(400).json({ message: "You cannot delete your own account" });
+      }
+      await storage.deleteUser(req.params.id);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id, detailJson: {} });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(409).json({ message: err.message });
+    }
   });
 
   // --- Locations ---
@@ -411,6 +458,176 @@ export async function registerRoutes(
       await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id } });
 
       res.json({ success: true, outlookEventId: data.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- SharePoint Lists Sync ---
+  app.post("/api/integrations/sharepoint/sync-referrals", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const accessToken = await getSharePointAccessToken();
+      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected. Please connect your Microsoft account in Settings." });
+
+      const siteId = req.body.siteId as string;
+      if (!siteId) return res.status(400).json({ message: "siteId is required" });
+
+      const allReferrals = await storage.getReferrals();
+      const allPhysicians = await storage.getPhysicians();
+      const allLocations = await storage.getLocations();
+
+      const listName = "Tristar360 Referrals";
+      let listId: string | null = null;
+
+      const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (listsRes.ok) {
+        const listsData = await listsRes.json();
+        const existing = listsData.value?.find((l: any) => l.displayName === listName);
+        if (existing) {
+          listId = existing.id;
+        }
+      }
+
+      if (!listId) {
+        const createRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            displayName: listName,
+            list: { template: "genericList" },
+            columns: [
+              { name: "ReferralDate", text: {} },
+              { name: "PatientID", text: {} },
+              { name: "PatientName", text: {} },
+              { name: "PatientDOB", text: {} },
+              { name: "PatientPhone", text: {} },
+              { name: "Physician", text: {} },
+              { name: "Location", text: {} },
+              { name: "Status", text: {} },
+              { name: "PayerType", text: {} },
+              { name: "Diagnosis", text: {} },
+            ],
+          }),
+        });
+        if (!createRes.ok) {
+          const errText = await createRes.text();
+          return res.status(createRes.status).json({ message: `Failed to create SharePoint list: ${errText}` });
+        }
+        const newList = await createRes.json();
+        listId = newList.id;
+      }
+
+      let synced = 0;
+      for (const ref of allReferrals) {
+        const phys = allPhysicians.find(p => p.id === ref.physicianId);
+        const loc = allLocations.find(l => l.id === ref.locationId);
+        const itemData = {
+          fields: {
+            Title: ref.id,
+            ReferralDate: ref.referralDate,
+            PatientID: ref.patientInitialsOrAnonId,
+            PatientName: ref.patientFullName || "",
+            PatientDOB: ref.patientDob || "",
+            PatientPhone: ref.patientPhone || "",
+            Physician: phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "",
+            Location: loc?.name || "",
+            Status: ref.status,
+            PayerType: ref.payerType || "",
+            Diagnosis: ref.diagnosisCategory || "",
+          },
+        };
+
+        const addRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(itemData),
+        });
+        if (addRes.ok) synced++;
+      }
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_SHAREPOINT", entity: "Referral", entityId: "bulk", detailJson: { synced, total: allReferrals.length } });
+      res.json({ success: true, synced, total: allReferrals.length, listId });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/integrations/sharepoint/sync-physicians", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const accessToken = await getSharePointAccessToken();
+      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected" });
+
+      const siteId = req.body.siteId as string;
+      if (!siteId) return res.status(400).json({ message: "siteId is required" });
+
+      const allPhysicians = await storage.getPhysicians();
+      const listName = "Tristar360 Physicians";
+      let listId: string | null = null;
+
+      const listsRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      if (listsRes.ok) {
+        const listsData = await listsRes.json();
+        const existing = listsData.value?.find((l: any) => l.displayName === listName);
+        if (existing) listId = existing.id;
+      }
+
+      if (!listId) {
+        const createRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            displayName: listName,
+            list: { template: "genericList" },
+            columns: [
+              { name: "FirstName", text: {} },
+              { name: "LastName", text: {} },
+              { name: "Specialty", text: {} },
+              { name: "Practice", text: {} },
+              { name: "Status", text: {} },
+              { name: "Stage", text: {} },
+              { name: "Priority", text: {} },
+              { name: "Phone", text: {} },
+              { name: "Email", text: {} },
+            ],
+          }),
+        });
+        if (!createRes.ok) {
+          const errText = await createRes.text();
+          return res.status(createRes.status).json({ message: `Failed to create SharePoint list: ${errText}` });
+        }
+        const newList = await createRes.json();
+        listId = newList.id;
+      }
+
+      let synced = 0;
+      for (const phys of allPhysicians) {
+        const addRes = await fetch(`https://graph.microsoft.com/v1.0/sites/${siteId}/lists/${listId}/items`, {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            fields: {
+              Title: phys.id,
+              FirstName: phys.firstName,
+              LastName: phys.lastName,
+              Specialty: phys.specialty,
+              Practice: phys.practiceName,
+              Status: phys.status,
+              Stage: phys.relationshipStage,
+              Priority: phys.priority,
+              Phone: phys.phone || "",
+              Email: phys.email || "",
+            },
+          }),
+        });
+        if (addRes.ok) synced++;
+      }
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_SHAREPOINT", entity: "Physician", entityId: "bulk", detailJson: { synced, total: allPhysicians.length } });
+      res.json({ success: true, synced, total: allPhysicians.length, listId });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

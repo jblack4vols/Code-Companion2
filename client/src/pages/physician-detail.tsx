@@ -127,7 +127,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
 
   if (isLoading) {
     return (
-      <div className="p-6 max-w-5xl mx-auto space-y-4">
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-4">
         <Skeleton className="h-8 w-64" />
         <Skeleton className="h-64 w-full" />
       </div>
@@ -136,7 +136,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
 
   if (!physician) {
     return (
-      <div className="p-6 max-w-5xl mx-auto">
+      <div className="p-4 sm:p-6 max-w-5xl mx-auto">
         <p className="text-muted-foreground">Physician not found</p>
         <Link href="/physicians"><Button variant="outline" className="mt-4">Back to Physicians</Button></Link>
       </div>
@@ -146,7 +146,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const owner = users?.find(u => u.id === physician.assignedOwnerId);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/physicians">
           <Button variant="ghost" size="icon" data-testid="button-back">

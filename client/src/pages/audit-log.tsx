@@ -58,10 +58,10 @@ export default function AuditLogPage() {
   const userMap = new Map(users?.map(u => [u.id, u.name]) || []);
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div>
-        <h1 className="text-2xl font-bold" data-testid="text-audit-log-title">Audit Log</h1>
-        <p className="text-sm text-muted-foreground">Chronological history of all system actions</p>
+        <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-audit-log-title">Audit Log</h1>
+        <p className="text-xs sm:text-sm text-muted-foreground">Chronological history of all system actions</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

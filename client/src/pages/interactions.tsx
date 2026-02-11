@@ -77,11 +77,11 @@ export default function InteractionsPage() {
   })?.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()) || [];
 
   return (
-    <div className="p-6 space-y-4 max-w-5xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-interactions-title">Interactions</h1>
-          <p className="text-sm text-muted-foreground">Track outreach and touchpoints</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-interactions-title">Interactions</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Track outreach and touchpoints</p>
         </div>
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
@@ -98,7 +98,7 @@ export default function InteractionsPage() {
                     {physicians?.map(p => <option key={p.id} value={p.id}>Dr. {p.firstName} {p.lastName}</option>)}
                   </select>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label>Type *</Label>
                     <select name="type" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-new-interaction-type">

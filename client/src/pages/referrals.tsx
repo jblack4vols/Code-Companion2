@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Search, Plus, FileText, Download } from "lucide-react";
@@ -58,6 +58,9 @@ export default function ReferralsPage() {
       locationId: fd.get("locationId"),
       referralDate: fd.get("referralDate"),
       patientInitialsOrAnonId: fd.get("patientInitialsOrAnonId"),
+      patientFullName: fd.get("patientFullName") || null,
+      patientDob: fd.get("patientDob") || null,
+      patientPhone: fd.get("patientPhone") || null,
       status: fd.get("status") || "RECEIVED",
       payerType: fd.get("payerType") || null,
       diagnosisCategory: fd.get("diagnosisCategory") || null,
@@ -68,6 +71,7 @@ export default function ReferralsPage() {
     const phys = physicians?.find(p => p.id === r.physicianId);
     const matchSearch = search === "" ||
       r.patientInitialsOrAnonId.toLowerCase().includes(search.toLowerCase()) ||
+      (r.patientFullName && r.patientFullName.toLowerCase().includes(search.toLowerCase())) ||
       (phys && `${phys.firstName} ${phys.lastName}`.toLowerCase().includes(search.toLowerCase()));
     const matchStatus = statusFilter === "all" || r.status === statusFilter;
     return matchSearch && matchStatus;
@@ -75,13 +79,16 @@ export default function ReferralsPage() {
 
   const handleExport = () => {
     const csvRows = [
-      ["Date", "Patient ID", "Physician", "Location", "Status", "Payer", "Diagnosis"].join(","),
+      ["Date", "Patient ID", "Patient Name", "DOB", "Phone", "Physician", "Location", "Status", "Payer", "Diagnosis"].join(","),
       ...filtered.map(r => {
         const phys = physicians?.find(p => p.id === r.physicianId);
         const loc = locations?.find(l => l.id === r.locationId);
         return [
           r.referralDate,
           r.patientInitialsOrAnonId,
+          `"${r.patientFullName || ""}"`,
+          r.patientDob || "",
+          r.patientPhone || "",
           phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "",
           loc?.name || "",
           r.status,
@@ -99,13 +106,13 @@ export default function ReferralsPage() {
   };
 
   return (
-    <div className="p-6 space-y-4 max-w-7xl mx-auto">
+    <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold" data-testid="text-referrals-title">Referrals</h1>
-          <p className="text-sm text-muted-foreground">Track and manage patient referrals</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-referrals-title">Referrals</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">Track and manage patient referrals</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-referrals">
             <Download className="w-3 h-3 mr-1.5" />Export CSV
           </Button>
@@ -114,8 +121,11 @@ export default function ReferralsPage() {
               <DialogTrigger asChild>
                 <Button data-testid="button-add-referral"><Plus className="w-4 h-4 mr-2" />New Referral</Button>
               </DialogTrigger>
-              <DialogContent>
-                <DialogHeader><DialogTitle>Add Referral</DialogTitle></DialogHeader>
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Add Referral</DialogTitle>
+                  <DialogDescription>Record a new patient referral</DialogDescription>
+                </DialogHeader>
                 <form onSubmit={handleAdd} className="space-y-4">
                   <div className="space-y-1.5">
                     <Label>Physician *</Label>
@@ -131,7 +141,7 @@ export default function ReferralsPage() {
                       {locations?.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>Referral Date *</Label>
                       <Input name="referralDate" type="date" defaultValue={format(new Date(), "yyyy-MM-dd")} required data-testid="input-referral-date" />
@@ -141,7 +151,21 @@ export default function ReferralsPage() {
                       <Input name="patientInitialsOrAnonId" required placeholder="e.g. JD-001" data-testid="input-referral-patient-id" />
                     </div>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label>Patient Full Name</Label>
+                    <Input name="patientFullName" placeholder="e.g. John Doe" data-testid="input-referral-patient-name" />
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Date of Birth</Label>
+                      <Input name="patientDob" type="date" data-testid="input-referral-patient-dob" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Phone Number</Label>
+                      <Input name="patientPhone" type="tel" placeholder="(615) 555-0100" data-testid="input-referral-patient-phone" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label>Status</Label>
                       <select name="status" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-status">
@@ -167,9 +191,6 @@ export default function ReferralsPage() {
                   <div className="space-y-1.5">
                     <Label>Diagnosis Category</Label>
                     <Input name="diagnosisCategory" placeholder="e.g. Back Pain, Post-Op Knee" data-testid="input-referral-diagnosis" />
-                  </div>
-                  <div className="p-3 rounded-md bg-chart-3/10 border border-chart-3/20 text-xs text-chart-3">
-                    Do not enter PHI. Use anonymized patient IDs only (initials or generated ID).
                   </div>
                   <div className="flex justify-end gap-2">
                     <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
@@ -222,11 +243,14 @@ export default function ReferralsPage() {
                   <TableRow>
                     <TableHead>Date</TableHead>
                     <TableHead>Patient ID</TableHead>
+                    <TableHead>Patient Name</TableHead>
+                    <TableHead className="hidden md:table-cell">DOB</TableHead>
+                    <TableHead className="hidden lg:table-cell">Phone</TableHead>
                     <TableHead>Physician</TableHead>
-                    <TableHead>Location</TableHead>
+                    <TableHead className="hidden md:table-cell">Location</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Payer</TableHead>
-                    <TableHead>Diagnosis</TableHead>
+                    <TableHead className="hidden lg:table-cell">Payer</TableHead>
+                    <TableHead className="hidden xl:table-cell">Diagnosis</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -235,17 +259,22 @@ export default function ReferralsPage() {
                     const loc = locations?.find(l => l.id === r.locationId);
                     return (
                       <TableRow key={r.id} data-testid={`row-referral-${r.id}`}>
-                        <TableCell className="text-sm">{format(new Date(r.referralDate), "MMM d, yyyy")}</TableCell>
+                        <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.referralDate), "MMM d, yyyy")}</TableCell>
                         <TableCell className="text-sm font-medium">{r.patientInitialsOrAnonId}</TableCell>
+                        <TableCell className="text-sm" data-testid={`text-patient-name-${r.id}`}>{r.patientFullName || "-"}</TableCell>
+                        <TableCell className="text-sm hidden md:table-cell" data-testid={`text-patient-dob-${r.id}`}>
+                          {r.patientDob ? format(new Date(r.patientDob + "T00:00:00"), "MM/dd/yyyy") : "-"}
+                        </TableCell>
+                        <TableCell className="text-sm hidden lg:table-cell" data-testid={`text-patient-phone-${r.id}`}>{r.patientPhone || "-"}</TableCell>
                         <TableCell className="text-sm">{phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "-"}</TableCell>
-                        <TableCell className="text-sm">{loc?.name || "-"}</TableCell>
+                        <TableCell className="text-sm hidden md:table-cell">{loc?.name || "-"}</TableCell>
                         <TableCell>
                           <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>
                             {r.status.replace("_", " ")}
                           </Badge>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{r.payerType || "-"}</TableCell>
-                        <TableCell className="text-sm text-muted-foreground">{r.diagnosisCategory || "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground hidden lg:table-cell">{r.payerType || "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground hidden xl:table-cell">{r.diagnosisCategory || "-"}</TableCell>
                       </TableRow>
                     );
                   })}
