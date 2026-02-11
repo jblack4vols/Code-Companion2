@@ -44,8 +44,8 @@ scripts/
 ## Key Features
 - **Authentication**: Session-based, email/password login
 - **RBAC**: OWNER (full access), DIRECTOR, MARKETER, FRONT_DESK (referrals only), ANALYST (read-only)
-- **Physicians**: 3,758 real referring providers imported from Excel with credentials, NPI, practice info, paginated (50/page)
-- **Referrals**: 6,041 real cases imported with full case details, click-to-view detail dialog, CSV export
+- **Physicians**: 3,765 referring providers (deduplicated) imported from Excel with credentials, NPI, practice info, paginated (50/page) with sortable columns
+- **Referrals**: 6,041 real cases imported with full case details, 5,842 linked to physicians by NPI, 199 self-referrals/walk-ins unlinked. Referral table includes referring_provider_name and referring_provider_npi columns.
 - **Interactions**: Log visits, calls, emails, events with physician timeline
 - **Tasks**: Follow-up work queue with completion tracking
 - **Dashboard**: Charts for referral trends, top referrers, at-risk physicians
@@ -53,8 +53,8 @@ scripts/
 
 ## Real Data
 - **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
-- **Physicians**: 3,758 referring providers imported from Referring Provider List Excel
-- **Referrals**: 6,041 cases from Created Cases Report (Jan 2025 - Jan 2026)
+- **Physicians**: 3,765 referring providers (deduplicated) imported from Referring Provider List Excel
+- **Referrals**: 6,041 cases from Created Cases Report (Jan 2025 - Jan 2026), 5,842 linked to physicians, 199 unlinked (self-referrals/walk-ins/no doctor info)
 
 ## Default Credentials
 - Email: admin@tristar360.com

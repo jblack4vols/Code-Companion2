@@ -117,6 +117,8 @@ export const referrals = pgTable("referrals", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id),
   locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  referringProviderName: text("referring_provider_name"),
+  referringProviderNpi: text("referring_provider_npi"),
   referralDate: date("referral_date").notNull(),
   patientAccountNumber: text("patient_account_number"),
   patientInitialsOrAnonId: text("patient_initials_or_anon_id"),

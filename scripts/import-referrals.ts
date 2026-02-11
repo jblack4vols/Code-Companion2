@@ -48,6 +48,7 @@ async function main() {
     }
 
     const npi = row["Referring Doctor NPI"] ? String(row["Referring Doctor NPI"]) : null;
+    const referringDoctorName = row["Referring Doctor"] || null;
     const physicianId = npi ? npiMap.get(npi) || null : null;
     if (npi && !physicianId) noPhysician++;
 
@@ -66,6 +67,8 @@ async function main() {
     toInsert.push({
       physicianId,
       locationId,
+      referringProviderName: referringDoctorName,
+      referringProviderNpi: npi,
       referralDate: createdDate,
       patientAccountNumber: row["Patient Account Number"] || null,
       patientInitialsOrAnonId: initials || "XX",
