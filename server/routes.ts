@@ -185,7 +185,10 @@ export async function registerRoutes(
 
   app.post("/api/interactions", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
-      const validated = insertInteractionSchema.parse(req.body);
+      const body = { ...req.body };
+      if (typeof body.occurredAt === "string") body.occurredAt = new Date(body.occurredAt);
+      if (typeof body.followUpDueAt === "string") body.followUpDueAt = new Date(body.followUpDueAt);
+      const validated = insertInteractionSchema.parse(body);
       const inter = await storage.createInteraction(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Interaction", entityId: inter.id, detailJson: { type: inter.type, physicianId: inter.physicianId } });
       res.json(inter);
@@ -219,7 +222,9 @@ export async function registerRoutes(
 
   app.post("/api/tasks", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
-      const validated = insertTaskSchema.parse(req.body);
+      const body = { ...req.body };
+      if (typeof body.dueAt === "string") body.dueAt = new Date(body.dueAt);
+      const validated = insertTaskSchema.parse(body);
       const task = await storage.createTask(validated);
       res.json(task);
     } catch (err: any) {
@@ -229,7 +234,9 @@ export async function registerRoutes(
 
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
     try {
-      const validated = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() }).parse(req.body);
+      const body = { ...req.body };
+      if (typeof body.dueAt === "string") body.dueAt = new Date(body.dueAt);
+      const validated = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() }).parse(body);
       const task = await storage.updateTask(req.params.id, validated);
       if (!task) return res.status(404).json({ message: "Not found" });
       res.json(task);
@@ -257,7 +264,10 @@ export async function registerRoutes(
 
   app.post("/api/calendar-events", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
-      const validated = insertCalendarEventSchema.parse(req.body);
+      const body = { ...req.body };
+      if (typeof body.startAt === "string") body.startAt = new Date(body.startAt);
+      if (typeof body.endAt === "string") body.endAt = new Date(body.endAt);
+      const validated = insertCalendarEventSchema.parse(body);
       const event = await storage.createCalendarEvent(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "CalendarEvent", entityId: event.id, detailJson: { title: event.title } });
       res.json(event);
@@ -268,7 +278,10 @@ export async function registerRoutes(
 
   app.patch("/api/calendar-events/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
-      const validated = insertCalendarEventSchema.partial().parse(req.body);
+      const body = { ...req.body };
+      if (typeof body.startAt === "string") body.startAt = new Date(body.startAt);
+      if (typeof body.endAt === "string") body.endAt = new Date(body.endAt);
+      const validated = insertCalendarEventSchema.partial().parse(body);
       const event = await storage.updateCalendarEvent(req.params.id, validated);
       if (!event) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "CalendarEvent", entityId: event.id, detailJson: req.body });
@@ -324,19 +337,27 @@ export async function registerRoutes(
         : null;
 
       if (hostname && xReplitToken) {
-        const outlookRes = await fetch(
-          "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=outlook",
-          { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-        );
-        const outlookData = await outlookRes.json();
-        outlookConnected = !!(outlookData?.items?.[0]?.settings?.access_token || outlookData?.items?.[0]?.settings?.oauth?.credentials?.access_token);
+        try {
+          const outlookRes = await fetch(
+            "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=outlook",
+            { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+          );
+          if (outlookRes.ok) {
+            const outlookData = await outlookRes.json();
+            outlookConnected = !!(outlookData?.items?.[0]?.settings?.access_token || outlookData?.items?.[0]?.settings?.oauth?.credentials?.access_token);
+          }
+        } catch { /* outlook check failed */ }
 
-        const spRes = await fetch(
-          "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=sharepoint",
-          { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
-        );
-        const spData = await spRes.json();
-        sharepointConnected = !!(spData?.items?.[0]?.settings?.access_token || spData?.items?.[0]?.settings?.oauth?.credentials?.access_token);
+        try {
+          const spRes = await fetch(
+            "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=sharepoint",
+            { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+          );
+          if (spRes.ok) {
+            const spData = await spRes.json();
+            sharepointConnected = !!(spData?.items?.[0]?.settings?.access_token || spData?.items?.[0]?.settings?.oauth?.credentials?.access_token);
+          }
+        } catch { /* sharepoint check failed */ }
       }
     } catch (e) {
       // silently fail

@@ -39,4 +39,4 @@ args = "npm run dev"
 waitForPort = 5000
 
 [agent]
-integrations = ["outlook:1.0.0"]
+integrations = ["outlook:1.0.0", "sharepoint:1.0.0"]
