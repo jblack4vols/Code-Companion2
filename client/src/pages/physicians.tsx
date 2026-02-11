@@ -1,6 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -8,9 +8,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Filter, Phone, Mail, MapPin, Stethoscope, Calendar } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +45,8 @@ export default function PhysiciansPage() {
   const [stageFilter, setStageFilter] = useState<string>(urlParams.get("stage") || "all");
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [showAdd, setShowAdd] = useState(false);
+  const [page, setPage] = useState(1);
+  const pageSize = 50;
 
   const { data: physicians, isLoading } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
@@ -53,14 +54,21 @@ export default function PhysiciansPage() {
   const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
   const canCreate = user ? hasPermission(user.role, "create", "physician") : false;
 
-  const filtered = physicians?.filter(p => {
+  const filtered = useMemo(() => physicians?.filter(p => {
     const matchSearch = search === "" ||
-      `${p.firstName} ${p.lastName} ${p.practiceName} ${p.specialty}`.toLowerCase().includes(search.toLowerCase());
+      `${p.firstName} ${p.lastName} ${p.practiceName || ""} ${p.specialty || ""} ${p.credentials || ""} ${p.npi || ""} ${p.city || ""}`.toLowerCase().includes(search.toLowerCase());
     const matchStatus = statusFilter === "all" || p.status === statusFilter;
     const matchStage = stageFilter === "all" || p.relationshipStage === stageFilter;
     const matchPriority = priorityFilter === "all" || p.priority === priorityFilter;
     return matchSearch && matchStatus && matchStage && matchPriority;
-  }) || [];
+  }) || [], [physicians, search, statusFilter, stageFilter, priorityFilter]);
+
+  const totalPages = Math.ceil(filtered.length / pageSize);
+  const paged = filtered.slice((page - 1) * pageSize, page * pageSize);
+
+  const safeSetPage = (p: number) => setPage(Math.max(1, Math.min(p, totalPages || 1)));
+
+  useEffect(() => { if (page > totalPages && totalPages > 0) setPage(1); }, [filtered.length, page, totalPages]);
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -81,8 +89,9 @@ export default function PhysiciansPage() {
     addMutation.mutate({
       firstName: fd.get("firstName"),
       lastName: fd.get("lastName"),
-      specialty: fd.get("specialty"),
-      practiceName: fd.get("practiceName"),
+      credentials: fd.get("credentials") || undefined,
+      specialty: fd.get("specialty") || undefined,
+      practiceName: fd.get("practiceName") || undefined,
       phone: fd.get("phone") || undefined,
       email: fd.get("email") || undefined,
       city: fd.get("city") || undefined,
@@ -120,13 +129,19 @@ export default function PhysiciansPage() {
                     <Input id="lastName" name="lastName" required data-testid="input-physician-last-name" />
                   </div>
                 </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="specialty">Specialty *</Label>
-                  <Input id="specialty" name="specialty" required placeholder="Orthopedics" data-testid="input-physician-specialty" />
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="credentials">Credentials</Label>
+                    <Input id="credentials" name="credentials" placeholder="M.D., DO, NP, etc." data-testid="input-physician-credentials" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="specialty">Specialty</Label>
+                    <Input id="specialty" name="specialty" placeholder="Orthopedics" data-testid="input-physician-specialty" />
+                  </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="practiceName">Practice Name *</Label>
-                  <Input id="practiceName" name="practiceName" required data-testid="input-physician-practice" />
+                  <Label htmlFor="practiceName">Practice Name</Label>
+                  <Input id="practiceName" name="practiceName" data-testid="input-physician-practice" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
@@ -251,18 +266,17 @@ export default function PhysiciansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[180px]">Physician</TableHead>
+                    <TableHead className="min-w-[180px]">Provider</TableHead>
+                    <TableHead>Credentials</TableHead>
                     <TableHead>Practice</TableHead>
-                    <TableHead>Specialty</TableHead>
+                    <TableHead>Location</TableHead>
                     <TableHead>Status</TableHead>
                     <TableHead>Stage</TableHead>
                     <TableHead>Priority</TableHead>
-                    <TableHead>Last Contact</TableHead>
-                    <TableHead>Next Follow-up</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map(p => {
+                  {paged.map(p => {
                     const owner = users?.find(u => u.id === p.assignedOwnerId);
                     return (
                       <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
@@ -273,14 +287,17 @@ export default function PhysiciansPage() {
                                 {p.firstName[0]}{p.lastName[0]}
                               </div>
                               <div>
-                                <p className="text-sm font-medium">Dr. {p.firstName} {p.lastName}</p>
+                                <p className="text-sm font-medium" data-testid={`text-physician-name-${p.id}`}>{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
                                 {owner && <p className="text-xs text-muted-foreground">{owner.name}</p>}
                               </div>
                             </div>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-sm">{p.practiceName}</TableCell>
-                        <TableCell className="text-sm">{p.specialty}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground" data-testid={`text-physician-credentials-${p.id}`}>{p.credentials || "-"}</TableCell>
+                        <TableCell className="text-sm">{p.practiceName || "-"}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">
+                          {[p.city, p.state].filter(Boolean).join(", ") || "-"}
+                        </TableCell>
                         <TableCell>
                           <Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge>
                         </TableCell>
@@ -292,12 +309,6 @@ export default function PhysiciansPage() {
                         <TableCell>
                           <Badge variant="outline" className={`text-[10px] ${priorityBadge[p.priority]}`}>{p.priority}</Badge>
                         </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {p.lastInteractionAt ? format(new Date(p.lastInteractionAt), "MMM d, yyyy") : "Never"}
-                        </TableCell>
-                        <TableCell className="text-xs text-muted-foreground">
-                          {p.nextFollowUpAt ? format(new Date(p.nextFollowUpAt), "MMM d, yyyy") : "-"}
-                        </TableCell>
                       </TableRow>
                     );
                   })}
@@ -308,7 +319,34 @@ export default function PhysiciansPage() {
         </CardContent>
       </Card>
 
-      <p className="text-xs text-muted-foreground text-right">{filtered.length} of {physicians?.length || 0} physicians</p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-xs text-muted-foreground" data-testid="text-physician-count">{filtered.length} of {physicians?.length || 0} providers</p>
+        {totalPages > 1 && (
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page <= 1}
+              onClick={() => safeSetPage(page - 1)}
+              data-testid="button-prev-page"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-xs text-muted-foreground" data-testid="text-page-info">
+              Page {page} of {totalPages}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              disabled={page >= totalPages}
+              onClick={() => safeSetPage(page + 1)}
+              data-testid="button-next-page"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

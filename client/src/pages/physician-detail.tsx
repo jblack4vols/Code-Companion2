@@ -97,8 +97,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     updateMutation.mutate({
       firstName: fd.get("firstName"),
       lastName: fd.get("lastName"),
-      specialty: fd.get("specialty"),
-      practiceName: fd.get("practiceName"),
+      credentials: fd.get("credentials") || null,
+      specialty: fd.get("specialty") || null,
+      practiceName: fd.get("practiceName") || null,
       phone: fd.get("phone") || null,
       email: fd.get("email") || null,
       city: fd.get("city") || null,
@@ -154,8 +155,8 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold" data-testid="text-physician-name">Dr. {physician.firstName} {physician.lastName}</h1>
-          <p className="text-sm text-muted-foreground">{physician.specialty} &middot; {physician.practiceName}</p>
+          <h1 className="text-xl font-bold" data-testid="text-physician-name">{physician.firstName} {physician.lastName}{physician.credentials ? `, ${physician.credentials}` : ""}</h1>
+          <p className="text-sm text-muted-foreground">{[physician.specialty, physician.practiceName].filter(Boolean).join(" · ") || "No practice info"}</p>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={stageBadge[physician.relationshipStage]}>
@@ -185,13 +186,17 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label>Specialty</Label>
-                  <Input name="specialty" defaultValue={physician.specialty} required />
+                  <Label>Credentials</Label>
+                  <Input name="credentials" defaultValue={physician.credentials || ""} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>Practice</Label>
-                  <Input name="practiceName" defaultValue={physician.practiceName} required />
+                  <Label>Specialty</Label>
+                  <Input name="specialty" defaultValue={physician.specialty || ""} />
                 </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Practice</Label>
+                <Input name="practiceName" defaultValue={physician.practiceName || ""} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
@@ -265,6 +270,25 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
               <h3 className="text-sm font-semibold">Contact Info</h3>
             </CardHeader>
             <CardContent className="space-y-3">
+              {physician.npi && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">NPI</span>
+                  <span className="font-mono">{physician.npi}</span>
+                </div>
+              )}
+              {physician.credentials && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Credentials</span>
+                  <span>{physician.credentials}</span>
+                </div>
+              )}
+              {physician.practiceName && (
+                <div className="flex justify-between text-xs">
+                  <span className="text-muted-foreground">Practice</span>
+                  <span>{physician.practiceName}</span>
+                </div>
+              )}
+              <div className="pt-2 border-t" />
               {physician.phone && (
                 <div className="flex items-center gap-2 text-sm"><Phone className="w-3.5 h-3.5 text-muted-foreground" />{physician.phone}</div>
               )}
