@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2 } from "lucide-react";
+import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -30,9 +31,7 @@ export default function LoginPage() {
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm">
         <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-md bg-primary text-primary-foreground font-bold text-xl mb-4">
-            T3
-          </div>
+          <img src={tristarLogo} alt="Tristar Physical Therapy" className="h-16 w-auto mx-auto mb-4 dark:invert" data-testid="img-login-logo" />
           <h1 className="text-2xl font-bold" data-testid="text-login-title">Tristar 360</h1>
           <p className="text-sm text-muted-foreground mt-1">Physician Relationship Management</p>
         </div>

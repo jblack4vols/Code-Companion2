@@ -1,6 +1,7 @@
 import {
   LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck,
 } from "lucide-react";
+import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
   SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarHeader, SidebarFooter,
@@ -59,9 +60,7 @@ export function AppSidebar() {
     <Sidebar data-testid="sidebar">
       <SidebarHeader className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary text-primary-foreground font-bold text-sm">
-            T3
-          </div>
+          <img src={tristarLogo} alt="Tristar Physical Therapy" className="h-9 w-auto object-contain" data-testid="img-logo" />
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-semibold truncate" data-testid="text-app-title">Tristar 360</span>
             <span className="text-xs text-muted-foreground">Physician CRM</span>
