@@ -95,11 +95,6 @@ export async function sendWelcomeEmail(
         </div>
       `
     },
-    from: {
-      emailAddress: {
-        address: "jblack@tristarpt.com"
-      }
-    },
     toRecipients: [
       {
         emailAddress: {
