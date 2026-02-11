@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -76,6 +76,46 @@ export default function ReferralsPage() {
 
   const canCreate = user ? hasPermission(user.role, "create", "referral") : false;
 
+  const [physicianSearch, setPhysicianSearch] = useState("");
+  const [physicianResults, setPhysicianResults] = useState<any[]>([]);
+  const [selectedPhysician, setSelectedPhysician] = useState<any>(null);
+  const [showPhysicianDropdown, setShowPhysicianDropdown] = useState(false);
+  const [showNewProvider, setShowNewProvider] = useState(false);
+  const [newProviderData, setNewProviderData] = useState({ firstName: "", lastName: "", credentials: "", npi: "", practiceName: "", specialty: "" });
+  const physicianSearchRef = useRef<HTMLDivElement>(null);
+  const debouncedPhysicianSearch = useDebounce(physicianSearch, 300);
+
+  useEffect(() => {
+    if (debouncedPhysicianSearch.length >= 2) {
+      fetch(`/api/physicians/search?q=${encodeURIComponent(debouncedPhysicianSearch)}`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => { setPhysicianResults(data); setShowPhysicianDropdown(true); })
+        .catch(() => setPhysicianResults([]));
+    } else {
+      setPhysicianResults([]);
+      setShowPhysicianDropdown(false);
+    }
+  }, [debouncedPhysicianSearch]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (physicianSearchRef.current && !physicianSearchRef.current.contains(e.target as Node)) {
+        setShowPhysicianDropdown(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const resetAddForm = () => {
+    setPhysicianSearch("");
+    setSelectedPhysician(null);
+    setShowNewProvider(false);
+    setNewProviderData({ firstName: "", lastName: "", credentials: "", npi: "", practiceName: "", specialty: "" });
+    setPhysicianResults([]);
+    setShowPhysicianDropdown(false);
+  };
+
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
       const res = await apiRequest("POST", "/api/referrals", data);
@@ -83,7 +123,9 @@ export default function ReferralsPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/referrals/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       setShowAdd(false);
+      resetAddForm();
       toast({ title: "Referral added" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -92,17 +134,34 @@ export default function ReferralsPage() {
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    addMutation.mutate({
-      physicianId: fd.get("physicianId") || null,
+    const patientName = (fd.get("patientFullName") as string || "").trim();
+    const nameParts = patientName.split(" ");
+    const initials = nameParts.length >= 2
+      ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
+      : patientName.slice(0, 2).toUpperCase();
+
+    const payload: any = {
       locationId: fd.get("locationId"),
       referralDate: fd.get("referralDate"),
-      patientInitialsOrAnonId: fd.get("patientInitialsOrAnonId"),
-      patientFullName: fd.get("patientFullName") || null,
+      patientInitialsOrAnonId: initials || "XX",
+      patientFullName: patientName || null,
+      patientPhone: (fd.get("patientPhone") as string || "").trim() || null,
+      patientDob: (fd.get("patientDob") as string || "").trim() || null,
       status: fd.get("status") || "RECEIVED",
-      diagnosisCategory: fd.get("diagnosisCategory") || null,
+      diagnosisCategory: (fd.get("diagnosisCategory") as string || "").trim() || null,
       referralSource: fd.get("referralSource") || null,
       discipline: fd.get("discipline") || null,
-    });
+    };
+
+    if (selectedPhysician) {
+      payload.physicianId = selectedPhysician.id;
+      payload.referringProviderName = `${selectedPhysician.firstName} ${selectedPhysician.lastName}`;
+      payload.referringProviderNpi = selectedPhysician.npi || null;
+    } else if (showNewProvider && newProviderData.firstName && newProviderData.lastName) {
+      payload.newPhysician = { ...newProviderData };
+    }
+
+    addMutation.mutate(payload);
   };
 
   const hasActiveFilters = statusFilter !== "all" || locationFilter !== "all" || disciplineFilter !== "all" || dateFrom !== "" || dateTo !== "" || search !== "";
@@ -192,25 +251,124 @@ export default function ReferralsPage() {
                 </DialogHeader>
                 <form onSubmit={handleAdd} className="space-y-4">
                   <div className="space-y-1.5">
+                    <Label>Referring Doctor</Label>
+                    {selectedPhysician ? (
+                      <div className="flex items-center gap-2 rounded-md border bg-muted/30 px-3 py-2">
+                        <Check className="w-4 h-4 text-chart-2 shrink-0" />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium truncate" data-testid="text-selected-physician">
+                            {selectedPhysician.lastName}, {selectedPhysician.firstName}{selectedPhysician.credentials ? `, ${selectedPhysician.credentials}` : ""}
+                          </p>
+                          <p className="text-[10px] text-muted-foreground truncate">
+                            {[selectedPhysician.practiceName, selectedPhysician.npi ? `NPI: ${selectedPhysician.npi}` : null].filter(Boolean).join(" \u00b7 ") || "No practice info"}
+                          </p>
+                        </div>
+                        <Button type="button" variant="ghost" size="icon" onClick={() => { setSelectedPhysician(null); setPhysicianSearch(""); }} data-testid="button-clear-physician">
+                          <X className="w-3 h-3" />
+                        </Button>
+                      </div>
+                    ) : showNewProvider ? (
+                      <div className="space-y-3 rounded-md border p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-xs font-medium text-muted-foreground">New Provider</p>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => setShowNewProvider(false)} data-testid="button-cancel-new-provider">
+                            <X className="w-3 h-3 mr-1" />Cancel
+                          </Button>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">First Name *</Label>
+                            <Input value={newProviderData.firstName} onChange={(e) => setNewProviderData(p => ({ ...p, firstName: e.target.value }))} placeholder="First" data-testid="input-new-provider-first" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Last Name *</Label>
+                            <Input value={newProviderData.lastName} onChange={(e) => setNewProviderData(p => ({ ...p, lastName: e.target.value }))} placeholder="Last" data-testid="input-new-provider-last" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Credentials</Label>
+                            <Input value={newProviderData.credentials} onChange={(e) => setNewProviderData(p => ({ ...p, credentials: e.target.value }))} placeholder="e.g. M.D." data-testid="input-new-provider-credentials" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">NPI</Label>
+                            <Input value={newProviderData.npi} onChange={(e) => setNewProviderData(p => ({ ...p, npi: e.target.value }))} placeholder="NPI #" data-testid="input-new-provider-npi" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div className="space-y-1">
+                            <Label className="text-xs">Practice Name</Label>
+                            <Input value={newProviderData.practiceName} onChange={(e) => setNewProviderData(p => ({ ...p, practiceName: e.target.value }))} placeholder="Practice" data-testid="input-new-provider-practice" />
+                          </div>
+                          <div className="space-y-1">
+                            <Label className="text-xs">Specialty</Label>
+                            <Input value={newProviderData.specialty} onChange={(e) => setNewProviderData(p => ({ ...p, specialty: e.target.value }))} placeholder="Specialty" data-testid="input-new-provider-specialty" />
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div ref={physicianSearchRef} className="relative">
+                        <div className="relative">
+                          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                          <Input
+                            value={physicianSearch}
+                            onChange={(e) => setPhysicianSearch(e.target.value)}
+                            onFocus={() => { if (physicianResults.length > 0) setShowPhysicianDropdown(true); }}
+                            placeholder="Search by name, NPI, or practice..."
+                            className="pl-9"
+                            data-testid="input-physician-search"
+                          />
+                        </div>
+                        {showPhysicianDropdown && (
+                          <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-48 overflow-y-auto">
+                            {physicianResults.length > 0 ? physicianResults.map((p: any) => (
+                              <button
+                                key={p.id}
+                                type="button"
+                                className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
+                                onClick={() => { setSelectedPhysician(p); setPhysicianSearch(""); setShowPhysicianDropdown(false); }}
+                                data-testid={`option-physician-${p.id}`}
+                              >
+                                <p className="font-medium">{p.lastName}, {p.firstName}{p.credentials ? `, ${p.credentials}` : ""}</p>
+                                <p className="text-[10px] text-muted-foreground">{[p.specialty, p.practiceName, p.npi ? `NPI: ${p.npi}` : null].filter(Boolean).join(" \u00b7 ")}</p>
+                              </button>
+                            )) : (
+                              <div className="px-3 py-3 text-sm text-muted-foreground text-center">
+                                No physicians found
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        <Button type="button" variant="outline" size="sm" className="mt-2" onClick={() => setShowNewProvider(true)} data-testid="button-add-new-provider">
+                          <UserPlus className="w-3.5 h-3.5 mr-1.5" />Add New Provider
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                  <div className="space-y-1.5">
                     <Label>Facility *</Label>
                     <select name="locationId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-referral-location">
                       <option value="">Select facility...</option>
                       {locations?.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
                     </select>
                   </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label>Created Date *</Label>
-                      <Input name="referralDate" type="date" defaultValue={format(new Date(), "yyyy-MM-dd")} required data-testid="input-referral-date" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Patient ID</Label>
-                      <Input name="patientInitialsOrAnonId" placeholder="e.g. 12345-TRS" data-testid="input-referral-patient-id" />
-                    </div>
+                  <div className="space-y-1.5">
+                    <Label>Created Date *</Label>
+                    <Input name="referralDate" type="date" defaultValue={format(new Date(), "yyyy-MM-dd")} required data-testid="input-referral-date" />
                   </div>
                   <div className="space-y-1.5">
-                    <Label>Patient Name</Label>
-                    <Input name="patientFullName" placeholder="e.g. JOHN DOE" data-testid="input-referral-patient-name" />
+                    <Label>Patient Name *</Label>
+                    <Input name="patientFullName" placeholder="e.g. JOHN DOE" required data-testid="input-referral-patient-name" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Phone Number</Label>
+                      <Input name="patientPhone" type="tel" placeholder="(555) 555-1234" data-testid="input-referral-patient-phone" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Date of Birth</Label>
+                      <Input name="patientDob" type="date" data-testid="input-referral-patient-dob" />
+                    </div>
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
@@ -252,7 +410,7 @@ export default function ReferralsPage() {
                     </div>
                   </div>
                   <div className="flex justify-end gap-2">
-                    <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+                    <Button type="button" variant="outline" onClick={() => { setShowAdd(false); resetAddForm(); }}>Cancel</Button>
                     <Button type="submit" disabled={addMutation.isPending} data-testid="button-submit-referral">
                       {addMutation.isPending ? "Adding..." : "Add Referral"}
                     </Button>

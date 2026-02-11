@@ -58,6 +58,7 @@ export interface IStorage {
   deleteLocation(id: string): Promise<boolean>;
 
   getPhysicians(): Promise<Physician[]>;
+  searchPhysiciansTypeahead(query: string, limit?: number): Promise<Pick<Physician, 'id' | 'firstName' | 'lastName' | 'credentials' | 'npi' | 'practiceName' | 'specialty'>[]>;
   getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<any>>;
   getPhysician(id: string): Promise<Physician | undefined>;
   createPhysician(phys: InsertPhysician): Promise<Physician>;
@@ -159,6 +160,29 @@ export class DatabaseStorage implements IStorage {
 
   async getPhysicians() {
     return db.select().from(physicians).orderBy(asc(physicians.lastName), asc(physicians.firstName));
+  }
+
+  async searchPhysiciansTypeahead(query: string, limit: number = 15) {
+    const term = `%${query}%`;
+    return db.select({
+      id: physicians.id,
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      credentials: physicians.credentials,
+      npi: physicians.npi,
+      practiceName: physicians.practiceName,
+      specialty: physicians.specialty,
+    })
+    .from(physicians)
+    .where(or(
+      ilike(physicians.firstName, term),
+      ilike(physicians.lastName, term),
+      ilike(sql`coalesce(${physicians.practiceName}, '')`, term),
+      ilike(sql`coalesce(${physicians.npi}, '')`, term),
+      ilike(sql`concat(${physicians.firstName}, ' ', ${physicians.lastName})`, term),
+    ))
+    .orderBy(asc(physicians.lastName), asc(physicians.firstName))
+    .limit(limit);
   }
 
   async getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<any>> {

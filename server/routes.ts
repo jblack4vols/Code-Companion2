@@ -204,6 +204,12 @@ export async function registerRoutes(
     }));
   });
 
+  app.get("/api/physicians/search", requireAuth, async (req, res) => {
+    const query = (req.query.q as string || "").trim();
+    if (query.length < 2) return res.json([]);
+    res.json(await storage.searchPhysiciansTypeahead(query));
+  });
+
   app.get("/api/physicians", requireAuth, async (req, res) => {
     res.json(await storage.getPhysicians());
   });
@@ -279,7 +285,27 @@ export async function registerRoutes(
 
   app.post("/api/referrals", requireRole("OWNER", "DIRECTOR", "MARKETER", "FRONT_DESK"), async (req, res) => {
     try {
-      const validated = insertReferralSchema.parse(req.body);
+      const body = { ...req.body };
+      if (body.newPhysician && !body.physicianId) {
+        const newPhysData = insertPhysicianSchema.parse({
+          firstName: body.newPhysician.firstName,
+          lastName: body.newPhysician.lastName,
+          credentials: body.newPhysician.credentials || null,
+          npi: body.newPhysician.npi || null,
+          practiceName: body.newPhysician.practiceName || null,
+          specialty: body.newPhysician.specialty || null,
+          status: "PROSPECT",
+          relationshipStage: "NEW",
+          priority: "MEDIUM",
+        });
+        const newPhys = await storage.createPhysician(newPhysData);
+        await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: newPhys.id, detailJson: { firstName: newPhys.firstName, lastName: newPhys.lastName, createdVia: "referral_form" } });
+        body.physicianId = newPhys.id;
+        body.referringProviderName = `${newPhys.firstName} ${newPhys.lastName}`;
+        body.referringProviderNpi = newPhys.npi || null;
+      }
+      delete body.newPhysician;
+      const validated = insertReferralSchema.parse(body);
       const ref = await storage.createReferral(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Referral", entityId: ref.id, detailJson: { physicianId: ref.physicianId } });
       res.json(ref);
