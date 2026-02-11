@@ -1,4 +1,4 @@
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { db } from "../server/db";
 import { referrals, physicians, locations } from "../shared/schema";
 import { sql, eq } from "drizzle-orm";
@@ -17,8 +17,25 @@ function mapStatus(caseStatus: string, hasEval: boolean): "RECEIVED" | "SCHEDULE
 }
 
 async function main() {
-  const wb = XLSX.readFile("attached_assets/Created_Cases_Report_-_01-01-25_to_01-31-26_1770804583361.xlsx");
-  const rows: any[] = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+  const workbook = new ExcelJS.Workbook();
+  await workbook.xlsx.readFile("attached_assets/Created_Cases_Report_-_01-01-25_to_01-31-26_1770804583361.xlsx");
+  const worksheet = workbook.worksheets[0];
+
+  const headers: string[] = [];
+  worksheet.getRow(1).eachCell((cell, colNumber) => {
+    headers[colNumber] = String(cell.value || "");
+  });
+
+  const rows: Record<string, any>[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    if (rowNumber === 1) return;
+    const obj: Record<string, any> = {};
+    row.eachCell((cell, colNumber) => {
+      obj[headers[colNumber]] = cell.value;
+    });
+    rows.push(obj);
+  });
+
   console.log(`Read ${rows.length} rows from Excel`);
 
   const allLocations = await db.select().from(locations);
