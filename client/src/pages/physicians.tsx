@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -183,6 +183,23 @@ export default function PhysiciansPage() {
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-physicians-title">Physicians</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">{total} referring providers</p>
         </div>
+        <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => {
+              const params = new URLSearchParams();
+              if (debouncedSearch) params.set("search", debouncedSearch);
+              if (statusFilter !== "all") params.set("status", statusFilter);
+              if (stageFilter !== "all") params.set("stage", stageFilter);
+              if (priorityFilter !== "all") params.set("priority", priorityFilter);
+              if (practiceFilter) params.set("practiceName", practiceFilter);
+              window.open(`/api/export/physicians?${params.toString()}`, "_blank");
+            }}
+            data-testid="button-export-physicians"
+          >
+            <Download className="w-4 h-4 mr-1.5" />Export CSV
+          </Button>
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
             <DialogTrigger asChild>
@@ -275,6 +292,7 @@ export default function PhysiciansPage() {
             </DialogContent>
           </Dialog>
         )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

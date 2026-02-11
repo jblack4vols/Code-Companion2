@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X } from "lucide-react";
+import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +41,24 @@ export default function InteractionsPage() {
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
   const canCreate = user ? hasPermission(user.role, "create", "interaction") : false;
+  const canExport = user ? ["OWNER", "DIRECTOR", "ANALYST"].includes(user.role) : false;
+
+  const handleExport = async () => {
+    const params = new URLSearchParams();
+    if (typeFilter !== "all") params.set("type", typeFilter);
+    if (locationFilter !== "all") params.set("locationId", locationFilter);
+    if (dateFrom) params.set("dateFrom", dateFrom);
+    if (dateTo) params.set("dateTo", dateTo);
+    const res = await fetch(`/api/export/interactions?${params.toString()}`, { credentials: "include" });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `interactions-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -100,6 +118,12 @@ export default function InteractionsPage() {
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-interactions-title">Interactions</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">Track outreach and touchpoints</p>
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+          {canExport && (
+            <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-interactions">
+              <Download className="w-3 h-3 mr-1.5" />Export CSV
+            </Button>
+          )}
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
             <DialogTrigger asChild>
@@ -157,6 +181,7 @@ export default function InteractionsPage() {
             </DialogContent>
           </Dialog>
         )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

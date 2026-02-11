@@ -215,6 +215,35 @@ export async function registerRoutes(
     res.json(await storage.getPhysicians());
   });
 
+  app.get("/api/physicians/tiering", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
+    const filters = {
+      period: qstr(req.query.period as any) || "year",
+      year: req.query.year ? parseInt(req.query.year as string) : undefined,
+      month: req.query.month ? parseInt(req.query.month as string) : undefined,
+    };
+    res.json(await storage.getPhysicianTiering(filters));
+  });
+
+  app.get("/api/physicians/declining", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
+    const filters = {
+      months: req.query.months ? parseInt(req.query.months as string) : 3,
+      minDrop: req.query.minDrop ? parseInt(req.query.minDrop as string) : 1,
+    };
+    res.json(await storage.getDecliningReferrals(filters));
+  });
+
+  app.post("/api/physicians/bulk-assign", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { physicianIds, marketerId } = req.body;
+      if (!Array.isArray(physicianIds) || physicianIds.length === 0) return res.status(400).json({ message: "physicianIds required" });
+      const count = await storage.bulkAssignPhysiciansToMarketer(physicianIds, marketerId || null);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_ASSIGN", entity: "Physician", entityId: "bulk", detailJson: { count, marketerId } });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.get("/api/physicians/:id", requireAuth, async (req, res) => {
     const phys = await storage.getPhysician(req.params.id);
     if (!phys) return res.status(404).json({ message: "Not found" });
@@ -411,6 +440,92 @@ export async function registerRoutes(
       limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
     };
     res.json(await storage.getAuditLogs(filters));
+  });
+
+  // --- Marketer Territories ---
+  app.get("/api/marketers", requireAuth, async (req, res) => {
+    res.json(await storage.getMarketers());
+  });
+
+  app.get("/api/territories", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    res.json(await storage.getMarketerTerritories());
+  });
+
+  app.patch("/api/physicians/:id/assign", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { marketerId } = req.body;
+      const phys = await storage.assignPhysicianToMarketer(req.params.id, marketerId || null);
+      if (!phys) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "ASSIGN", entity: "Physician", entityId: phys.id, detailJson: { marketerId } });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // --- CSV Exports ---
+  app.get("/api/export/physicians", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const data = await storage.exportPhysiciansCsv({
+        search: qstr(req.query.search as any),
+        status: qstr(req.query.status as any),
+        stage: qstr(req.query.stage as any),
+        priority: qstr(req.query.priority as any),
+        practiceName: qstr(req.query.practiceName as any),
+      });
+      const headers = ["First Name","Last Name","Credentials","Specialty","NPI","Practice","Address","City","State","Zip","Phone","Fax","Email","Status","Stage","Priority","Referrals"];
+      const csv = [headers.join(","), ...data.map(r =>
+        [r.firstName, r.lastName, r.credentials, r.specialty, r.npi, r.practiceName, r.address, r.city, r.state, r.zip, r.phone, r.fax, r.email, r.status, r.relationshipStage, r.priority, r.referralCount].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
+      )].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="physicians_export_${new Date().toISOString().slice(0,10)}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/export/referrals", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const data = await storage.exportReferralsCsv({
+        search: qstr(req.query.search as any),
+        status: qstr(req.query.status as any),
+        locationId: qstr(req.query.locationId as any),
+        discipline: qstr(req.query.discipline as any),
+        dateFrom: qstr(req.query.dateFrom as any),
+        dateTo: qstr(req.query.dateTo as any),
+        physicianId: qstr(req.query.physicianId as any),
+      });
+      const headers = ["Referral Date","Patient Name","Account #","Case Title","Therapist","Discipline","Status","Insurance","Scheduled Visits","Arrived Visits","Initial Eval","Discharge Date","Discharge Reason","Referral Source","Physician First","Physician Last","Location"];
+      const csv = [headers.join(","), ...data.map(r =>
+        [r.referralDate, r.patientFullName, r.patientAccountNumber, r.caseTitle, r.caseTherapist, r.discipline, r.status, r.primaryInsurance, r.scheduledVisits, r.arrivedVisits, r.dateOfInitialEval, r.dischargeDate, r.dischargeReason, r.referralSource, r.physicianFirstName, r.physicianLastName, r.locationName].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
+      )].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="referrals_export_${new Date().toISOString().slice(0,10)}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/export/interactions", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const data = await storage.exportInteractionsCsv({
+        physicianId: qstr(req.query.physicianId as any),
+        type: qstr(req.query.type as any),
+        dateFrom: qstr(req.query.dateFrom as any),
+        dateTo: qstr(req.query.dateTo as any),
+      });
+      const headers = ["Date","Type","Summary","Next Step","Physician First","Physician Last","User","Location"];
+      const csv = [headers.join(","), ...data.map(r =>
+        [r.occurredAt ? new Date(r.occurredAt).toISOString().slice(0,10) : '', r.type, r.summary, r.nextStep, r.physicianFirstName, r.physicianLastName, r.userName, r.locationName].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
+      )].join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", `attachment; filename="interactions_export_${new Date().toISOString().slice(0,10)}.csv"`);
+      res.send(csv);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
   });
 
   // --- Dashboard Stats ---

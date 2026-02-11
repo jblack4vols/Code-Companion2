@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -14,10 +14,13 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, requireView: true },
   { title: "Physicians", url: "/physicians", icon: Stethoscope, requireView: true },
+  { title: "Tiering", url: "/tiering", icon: Award, requireView: true },
+  { title: "Declining", url: "/declining", icon: TrendingDown, requireView: true },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, requireView: true },
   { title: "Referrals", url: "/referrals", icon: FileText, requireView: true },
   { title: "Tasks", url: "/tasks", icon: ClipboardList, requireView: true },
   { title: "Calendar", url: "/calendar", icon: Calendar, requireView: true },
+  { title: "Territories", url: "/territories", icon: UserCheck, requireView: true },
 ];
 
 const adminItems = [

@@ -86,6 +86,16 @@ export interface IStorage {
   createAuditLog(log: Omit<AuditLog, "id" | "timestamp">): Promise<void>;
 
   getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }): Promise<any>;
+
+  getPhysicianTiering(filters?: { period?: string; year?: number; month?: number }): Promise<any>;
+  getDecliningReferrals(filters?: { months?: number; minDrop?: number }): Promise<any>;
+  exportPhysiciansCsv(filters: PhysicianFilters): Promise<any[]>;
+  exportReferralsCsv(filters: ReferralFilters): Promise<any[]>;
+  exportInteractionsCsv(filters?: { physicianId?: string; type?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
+  getMarketers(): Promise<any[]>;
+  getMarketerTerritories(): Promise<any>;
+  assignPhysicianToMarketer(physicianId: string, marketerId: string | null): Promise<Physician | undefined>;
+  bulkAssignPhysiciansToMarketer(physicianIds: string[], marketerId: string | null): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -498,6 +508,320 @@ export class DatabaseStorage implements IStorage {
 
   async createAuditLog(log: Omit<AuditLog, "id" | "timestamp">) {
     await db.insert(auditLogs).values(log);
+  }
+
+  async getPhysicianTiering(filters?: { period?: string; year?: number; month?: number }) {
+    const period = filters?.period || "year";
+    const now = new Date();
+    const year = filters?.year || now.getFullYear();
+    const month = filters?.month || (now.getMonth() + 1);
+
+    let dateFrom: string;
+    let dateTo: string;
+
+    if (period === "month") {
+      dateFrom = `${year}-${String(month).padStart(2, "0")}-01`;
+      const lastDay = new Date(year, month, 0).getDate();
+      dateTo = `${year}-${String(month).padStart(2, "0")}-${lastDay}`;
+    } else {
+      dateFrom = `${year}-01-01`;
+      dateTo = `${year}-12-31`;
+    }
+
+    const tierThresholds = period === "month"
+      ? { A: 5, B: 2, C: 1 }
+      : { A: 20, B: 5, C: 1 };
+
+    const data = await db.select({
+      id: physicians.id,
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      credentials: physicians.credentials,
+      specialty: physicians.specialty,
+      practiceName: physicians.practiceName,
+      npi: physicians.npi,
+      city: physicians.city,
+      state: physicians.state,
+      assignedOwnerId: physicians.assignedOwnerId,
+      referralCount: sql<number>`count(${referrals.id})`,
+    })
+      .from(physicians)
+      .leftJoin(referrals, and(
+        eq(referrals.physicianId, physicians.id),
+        sql`${referrals.referralDate} >= ${dateFrom}`,
+        sql`${referrals.referralDate} <= ${dateTo}`,
+      ))
+      .groupBy(physicians.id)
+      .orderBy(desc(sql`count(${referrals.id})`));
+
+    const tiered = data.map(p => {
+      const count = Number(p.referralCount);
+      let tier: string;
+      if (count >= tierThresholds.A) tier = "A";
+      else if (count >= tierThresholds.B) tier = "B";
+      else if (count >= tierThresholds.C) tier = "C";
+      else tier = "D";
+      return { ...p, referralCount: count, tier };
+    });
+
+    const summary = {
+      A: tiered.filter(p => p.tier === "A").length,
+      B: tiered.filter(p => p.tier === "B").length,
+      C: tiered.filter(p => p.tier === "C").length,
+      D: tiered.filter(p => p.tier === "D").length,
+    };
+
+    return { physicians: tiered, summary, thresholds: tierThresholds, period, dateFrom, dateTo };
+  }
+
+  async getDecliningReferrals(filters?: { months?: number; minDrop?: number }) {
+    const months = filters?.months || 3;
+    const minDrop = filters?.minDrop || 1;
+    const now = new Date();
+
+    const currentEnd = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    const currentStart = new Date(now);
+    currentStart.setMonth(currentStart.getMonth() - months);
+    const currentStartStr = `${currentStart.getFullYear()}-${String(currentStart.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const priorEnd = currentStartStr;
+    const priorStart = new Date(currentStart);
+    priorStart.setMonth(priorStart.getMonth() - months);
+    const priorStartStr = `${priorStart.getFullYear()}-${String(priorStart.getMonth() + 1).padStart(2, "0")}-01`;
+
+    const currentCounts = await db.select({
+      physicianId: referrals.physicianId,
+      count: sql<number>`count(*)`,
+    }).from(referrals)
+      .where(and(
+        sql`${referrals.physicianId} IS NOT NULL`,
+        sql`${referrals.referralDate} >= ${currentStartStr}`,
+        sql`${referrals.referralDate} <= ${currentEnd}`,
+      ))
+      .groupBy(referrals.physicianId);
+
+    const priorCounts = await db.select({
+      physicianId: referrals.physicianId,
+      count: sql<number>`count(*)`,
+    }).from(referrals)
+      .where(and(
+        sql`${referrals.physicianId} IS NOT NULL`,
+        sql`${referrals.referralDate} >= ${priorStartStr}`,
+        sql`${referrals.referralDate} < ${priorEnd}`,
+      ))
+      .groupBy(referrals.physicianId);
+
+    const currentMap = new Map(currentCounts.map(c => [c.physicianId, Number(c.count)]));
+    const priorMap = new Map(priorCounts.map(c => [c.physicianId, Number(c.count)]));
+
+    const allPhysicianIds = Array.from(new Set([...Array.from(currentMap.keys()), ...Array.from(priorMap.keys())]));
+    const declining: { physicianId: string; currentCount: number; priorCount: number; change: number; changePercent: number }[] = [];
+
+    for (let i = 0; i < allPhysicianIds.length; i++) {
+      const id = allPhysicianIds[i];
+      if (!id) continue;
+      const current = currentMap.get(id) || 0;
+      const prior = priorMap.get(id) || 0;
+      const change = current - prior;
+      if (change < 0 && Math.abs(change) >= minDrop) {
+        const changePercent = prior > 0 ? Math.round((change / prior) * 100) : -100;
+        declining.push({ physicianId: id, currentCount: current, priorCount: prior, change, changePercent });
+      }
+    }
+
+    declining.sort((a, b) => a.change - b.change);
+
+    const physicianIds = declining.map(d => d.physicianId).filter(Boolean);
+    let physicianDetails: any[] = [];
+    if (physicianIds.length > 0) {
+      physicianDetails = await db.select({
+        id: physicians.id,
+        firstName: physicians.firstName,
+        lastName: physicians.lastName,
+        credentials: physicians.credentials,
+        specialty: physicians.specialty,
+        practiceName: physicians.practiceName,
+        npi: physicians.npi,
+        city: physicians.city,
+        state: physicians.state,
+        assignedOwnerId: physicians.assignedOwnerId,
+      }).from(physicians)
+        .where(sql`${physicians.id} IN (${sql.join(physicianIds.map(id => sql`${id}`), sql`, `)})`);
+    }
+
+    const physMap = new Map(physicianDetails.map(p => [p.id, p]));
+
+    const result = declining.map(d => ({
+      ...d,
+      physician: physMap.get(d.physicianId) || null,
+    })).filter(d => d.physician !== null);
+
+    return {
+      data: result,
+      period: { currentStart: currentStartStr, currentEnd, priorStart: priorStartStr, priorEnd, months },
+      total: result.length,
+    };
+  }
+
+  async exportPhysiciansCsv(filters: PhysicianFilters) {
+    const conditions: any[] = [];
+    if (filters.status && filters.status !== "all") conditions.push(eq(physicians.status, filters.status as any));
+    if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
+    if (filters.priority && filters.priority !== "all") conditions.push(eq(physicians.priority, filters.priority as any));
+    if (filters.practiceName) conditions.push(eq(physicians.practiceName, filters.practiceName));
+    if (filters.search) {
+      const term = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(physicians.firstName, term),
+        ilike(physicians.lastName, term),
+        ilike(sql`coalesce(${physicians.practiceName}, '')`, term),
+        ilike(sql`coalesce(${physicians.npi}, '')`, term),
+        ilike(sql`coalesce(${physicians.city}, '')`, term),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    return db.select({
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      credentials: physicians.credentials,
+      specialty: physicians.specialty,
+      npi: physicians.npi,
+      practiceName: physicians.practiceName,
+      address: physicians.primaryOfficeAddress,
+      city: physicians.city,
+      state: physicians.state,
+      zip: physicians.zip,
+      phone: physicians.phone,
+      fax: physicians.fax,
+      email: physicians.email,
+      status: physicians.status,
+      relationshipStage: physicians.relationshipStage,
+      priority: physicians.priority,
+      referralCount: sql<number>`count(${referrals.id})`,
+    })
+      .from(physicians)
+      .leftJoin(referrals, eq(referrals.physicianId, physicians.id))
+      .where(where)
+      .groupBy(physicians.id)
+      .orderBy(asc(physicians.lastName), asc(physicians.firstName));
+  }
+
+  async exportReferralsCsv(filters: ReferralFilters) {
+    const conditions: any[] = [];
+    if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
+    if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
+    if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
+    if (filters.physicianId) conditions.push(eq(referrals.physicianId, filters.physicianId));
+    if (filters.dateFrom) conditions.push(sql`${referrals.referralDate} >= ${filters.dateFrom}`);
+    if (filters.dateTo) conditions.push(sql`${referrals.referralDate} <= ${filters.dateTo}`);
+    if (filters.search) {
+      const term = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(sql`coalesce(${referrals.patientFullName}, '')`, term),
+        ilike(sql`coalesce(${referrals.patientAccountNumber}, '')`, term),
+        ilike(sql`coalesce(${referrals.caseTherapist}, '')`, term),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    return db.select({
+      referralDate: referrals.referralDate,
+      patientFullName: referrals.patientFullName,
+      patientAccountNumber: referrals.patientAccountNumber,
+      caseTitle: referrals.caseTitle,
+      caseTherapist: referrals.caseTherapist,
+      discipline: referrals.discipline,
+      status: referrals.status,
+      primaryInsurance: referrals.primaryInsurance,
+      scheduledVisits: referrals.scheduledVisits,
+      arrivedVisits: referrals.arrivedVisits,
+      dateOfInitialEval: referrals.dateOfInitialEval,
+      dischargeDate: referrals.dischargeDate,
+      dischargeReason: referrals.dischargeReason,
+      referralSource: referrals.referralSource,
+      physicianFirstName: physicians.firstName,
+      physicianLastName: physicians.lastName,
+      locationName: locations.name,
+    })
+      .from(referrals)
+      .leftJoin(physicians, eq(referrals.physicianId, physicians.id))
+      .leftJoin(locations, eq(referrals.locationId, locations.id))
+      .where(where)
+      .orderBy(desc(referrals.referralDate));
+  }
+
+  async exportInteractionsCsv(filters?: { physicianId?: string; type?: string; dateFrom?: string; dateTo?: string }) {
+    const conditions: any[] = [];
+    if (filters?.physicianId) conditions.push(eq(interactions.physicianId, filters.physicianId));
+    if (filters?.type && filters.type !== "all") conditions.push(eq(interactions.type, filters.type as any));
+    if (filters?.dateFrom) conditions.push(gte(interactions.occurredAt, new Date(filters.dateFrom)));
+    if (filters?.dateTo) conditions.push(lte(interactions.occurredAt, new Date(filters.dateTo)));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    return db.select({
+      occurredAt: interactions.occurredAt,
+      type: interactions.type,
+      summary: interactions.summary,
+      nextStep: interactions.nextStep,
+      physicianFirstName: physicians.firstName,
+      physicianLastName: physicians.lastName,
+      userName: users.name,
+      locationName: locations.name,
+    })
+      .from(interactions)
+      .leftJoin(physicians, eq(interactions.physicianId, physicians.id))
+      .leftJoin(users, eq(interactions.userId, users.id))
+      .leftJoin(locations, eq(interactions.locationId, locations.id))
+      .where(where)
+      .orderBy(desc(interactions.occurredAt));
+  }
+
+  async getMarketers() {
+    return db.select({ id: users.id, name: users.name, email: users.email, role: users.role })
+      .from(users)
+      .where(or(eq(users.role, "MARKETER"), eq(users.role, "DIRECTOR"), eq(users.role, "OWNER")))
+      .orderBy(asc(users.name));
+  }
+
+  async getMarketerTerritories() {
+    const assigned = await db.select({
+      marketerId: physicians.assignedOwnerId,
+      count: sql<number>`count(*)`,
+    })
+      .from(physicians)
+      .where(sql`${physicians.assignedOwnerId} IS NOT NULL`)
+      .groupBy(physicians.assignedOwnerId);
+
+    const [unassigned] = await db.select({ count: sql<number>`count(*)` })
+      .from(physicians)
+      .where(sql`${physicians.assignedOwnerId} IS NULL`);
+
+    const marketers = await this.getMarketers();
+    const assignedMap = new Map(assigned.map(a => [a.marketerId, Number(a.count)]));
+
+    const territories = marketers.map(m => ({
+      marketer: m,
+      assignedCount: assignedMap.get(m.id) || 0,
+    }));
+
+    return { territories, unassignedCount: Number(unassigned?.count || 0), totalPhysicians: await db.select({ count: sql<number>`count(*)` }).from(physicians).then(r => Number(r[0]?.count || 0)) };
+  }
+
+  async assignPhysicianToMarketer(physicianId: string, marketerId: string | null) {
+    const [updated] = await db.update(physicians)
+      .set({ assignedOwnerId: marketerId, updatedAt: new Date() })
+      .where(eq(physicians.id, physicianId))
+      .returning();
+    return updated;
+  }
+
+  async bulkAssignPhysiciansToMarketer(physicianIds: string[], marketerId: string | null) {
+    if (physicianIds.length === 0) return 0;
+    const result = await db.update(physicians)
+      .set({ assignedOwnerId: marketerId, updatedAt: new Date() })
+      .where(sql`${physicians.id} IN (${sql.join(physicianIds.map(id => sql`${id}`), sql`, `)})`);
+    return physicianIds.length;
   }
 
   async getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }) {

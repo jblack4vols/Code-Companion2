@@ -184,8 +184,6 @@ export default function ReferralsPage() {
 
   const handleExport = async () => {
     const params = new URLSearchParams();
-    params.set("page", "1");
-    params.set("pageSize", "99999");
     if (debouncedSearch) params.set("search", debouncedSearch);
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (locationFilter !== "all") params.set("locationId", locationFilter);
@@ -193,37 +191,15 @@ export default function ReferralsPage() {
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
 
-    const res = await fetch(`/api/referrals/paginated?${params.toString()}`, { credentials: "include" });
+    const res = await fetch(`/api/export/referrals?${params.toString()}`, { credentials: "include" });
     if (!res.ok) return;
-    const allData = await res.json();
-    const csvRows = [
-      ["Created Date", "Patient Acct#", "Patient Name", "Referring Doctor", "Facility", "Status", "Discipline", "Diagnosis", "Therapist", "Eval Date", "Visits (Sched)", "Visits (Arrived)", "Discharge Date", "Discharge Reason", "Referral Source", "Insurance", "Payer Type"].join(","),
-      ...allData.data.map((r: any) => [
-        r.referralDate,
-        `"${r.patientAccountNumber || ""}"`,
-        `"${r.patientFullName || ""}"`,
-        r.physicianFirstName ? `"${r.physicianFirstName} ${r.physicianLastName}"` : "",
-        `"${r.locationName || ""}"`,
-        r.status,
-        r.discipline || "",
-        `"${r.diagnosisCategory || ""}"`,
-        `"${r.caseTherapist || ""}"`,
-        r.dateOfInitialEval || "",
-        r.scheduledVisits || 0,
-        r.arrivedVisits || 0,
-        r.dischargeDate || "",
-        `"${r.dischargeReason || ""}"`,
-        `"${r.referralSource || ""}"`,
-        `"${r.primaryInsurance || ""}"`,
-        `"${r.primaryPayerType || ""}"`,
-      ].join(",")),
-    ];
-    const blob = new Blob([csvRows.join("\n")], { type: "text/csv" });
+    const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
     a.download = `referrals-${format(new Date(), "yyyy-MM-dd")}.csv`;
     a.click();
+    URL.revokeObjectURL(url);
   };
 
   const setPageAndReset = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)));
