@@ -4,13 +4,21 @@ import { storage } from "./storage";
 import session from "express-session";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { loginSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema } from "@shared/schema";
+import { loginSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
 
 declare module "express-session" {
   interface SessionData {
     userId: string;
   }
+}
+
+function qstr(val: string | string[] | undefined): string | undefined {
+  return Array.isArray(val) ? val[0] : val;
+}
+
+function qstrReq(val: string | string[] | undefined): string {
+  return (Array.isArray(val) ? val[0] : val) || "";
 }
 
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -66,15 +74,11 @@ export async function registerRoutes(
     try {
       const { email, password } = loginSchema.parse(req.body);
       const user = await storage.getUserByEmail(email);
-      if (!user) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
+      if (!user) return res.status(401).json({ message: "Invalid email or password" });
       const valid = user.password.startsWith("$2")
         ? await bcrypt.compare(password, user.password)
         : password === user.password;
-      if (!valid) {
-        return res.status(401).json({ message: "Invalid email or password" });
-      }
+      if (!valid) return res.status(401).json({ message: "Invalid email or password" });
       req.session.userId = user.id;
       const { password: _, ...safeUser } = user;
       res.json(safeUser);
@@ -92,16 +96,54 @@ export async function registerRoutes(
 
   app.get("/api/users", requireAuth, async (req, res) => {
     const allUsers = await storage.getUsers();
-    res.json(allUsers.map(u => {
-      const { password: _, ...safe } = u;
-      return safe;
-    }));
+    res.json(allUsers.map(u => { const { password: _, ...safe } = u; return safe; }));
   });
 
+  // --- Locations ---
   app.get("/api/locations", requireAuth, async (req, res) => {
     res.json(await storage.getLocations());
   });
 
+  app.get("/api/locations/:id", requireAuth, async (req, res) => {
+    const loc = await storage.getLocation(req.params.id);
+    if (!loc) return res.status(404).json({ message: "Not found" });
+    res.json(loc);
+  });
+
+  app.post("/api/locations", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const validated = insertLocationSchema.parse(req.body);
+      const loc = await storage.createLocation(validated);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Location", entityId: loc.id, detailJson: { name: loc.name } });
+      res.json(loc);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/locations/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const validated = insertLocationSchema.partial().parse(req.body);
+      const loc = await storage.updateLocation(req.params.id, validated);
+      if (!loc) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Location", entityId: loc.id, detailJson: req.body });
+      res.json(loc);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/locations/:id", requireRole("OWNER"), async (req, res) => {
+    try {
+      await storage.deleteLocation(req.params.id);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Location", entityId: req.params.id, detailJson: {} });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(409).json({ message: err.message });
+    }
+  });
+
+  // --- Physicians ---
   app.get("/api/physicians", requireAuth, async (req, res) => {
     res.json(await storage.getPhysicians());
   });
@@ -116,39 +158,26 @@ export async function registerRoutes(
     try {
       const validated = insertPhysicianSchema.parse(req.body);
       const phys = await storage.createPhysician(validated);
-      await storage.createAuditLog({
-        userId: req.session.userId!,
-        action: "CREATE",
-        entity: "Physician",
-        entityId: phys.id,
-        detailJson: { firstName: phys.firstName, lastName: phys.lastName },
-      });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: phys.id, detailJson: { firstName: phys.firstName, lastName: phys.lastName } });
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
-
-  const updatePhysicianSchema = insertPhysicianSchema.partial();
 
   app.patch("/api/physicians/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
-      const validated = updatePhysicianSchema.parse(req.body);
+      const validated = insertPhysicianSchema.partial().parse(req.body);
       const phys = await storage.updatePhysician(req.params.id, validated);
       if (!phys) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({
-        userId: req.session.userId!,
-        action: "UPDATE",
-        entity: "Physician",
-        entityId: phys.id,
-        detailJson: req.body,
-      });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Physician", entityId: phys.id, detailJson: req.body });
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
 
+  // --- Interactions ---
   app.get("/api/interactions", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
     res.json(await storage.getInteractions(physicianId));
@@ -158,19 +187,14 @@ export async function registerRoutes(
     try {
       const validated = insertInteractionSchema.parse(req.body);
       const inter = await storage.createInteraction(validated);
-      await storage.createAuditLog({
-        userId: req.session.userId!,
-        action: "CREATE",
-        entity: "Interaction",
-        entityId: inter.id,
-        detailJson: { type: inter.type, physicianId: inter.physicianId },
-      });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Interaction", entityId: inter.id, detailJson: { type: inter.type, physicianId: inter.physicianId } });
       res.json(inter);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
 
+  // --- Referrals ---
   app.get("/api/referrals", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
     res.json(await storage.getReferrals(physicianId));
@@ -180,19 +204,14 @@ export async function registerRoutes(
     try {
       const validated = insertReferralSchema.parse(req.body);
       const ref = await storage.createReferral(validated);
-      await storage.createAuditLog({
-        userId: req.session.userId!,
-        action: "CREATE",
-        entity: "Referral",
-        entityId: ref.id,
-        detailJson: { physicianId: ref.physicianId },
-      });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Referral", entityId: ref.id, detailJson: { physicianId: ref.physicianId } });
       res.json(ref);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
 
+  // --- Tasks ---
   app.get("/api/tasks", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
     res.json(await storage.getTasks(physicianId));
@@ -208,11 +227,9 @@ export async function registerRoutes(
     }
   });
 
-  const updateTaskSchema = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() });
-
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
     try {
-      const validated = updateTaskSchema.parse(req.body);
+      const validated = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() }).parse(req.body);
       const task = await storage.updateTask(req.params.id, validated);
       if (!task) return res.status(404).json({ message: "Not found" });
       res.json(task);
@@ -221,5 +238,246 @@ export async function registerRoutes(
     }
   });
 
+  // --- Calendar Events ---
+  app.get("/api/calendar-events", requireAuth, async (req, res) => {
+    const filters = {
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      locationId: req.query.locationId as string | undefined,
+      physicianId: req.query.physicianId as string | undefined,
+    };
+    res.json(await storage.getCalendarEvents(filters));
+  });
+
+  app.get("/api/calendar-events/:id", requireAuth, async (req, res) => {
+    const event = await storage.getCalendarEvent(req.params.id);
+    if (!event) return res.status(404).json({ message: "Not found" });
+    res.json(event);
+  });
+
+  app.post("/api/calendar-events", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const validated = insertCalendarEventSchema.parse(req.body);
+      const event = await storage.createCalendarEvent(validated);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "CalendarEvent", entityId: event.id, detailJson: { title: event.title } });
+      res.json(event);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/calendar-events/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const validated = insertCalendarEventSchema.partial().parse(req.body);
+      const event = await storage.updateCalendarEvent(req.params.id, validated);
+      if (!event) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "CalendarEvent", entityId: event.id, detailJson: req.body });
+      res.json(event);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/calendar-events/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      await storage.deleteCalendarEvent(req.params.id);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "CalendarEvent", entityId: req.params.id, detailJson: {} });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // --- Audit Logs ---
+  app.get("/api/audit-logs", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    const filters = {
+      userId: req.query.userId as string | undefined,
+      entity: req.query.entity as string | undefined,
+      action: req.query.action as string | undefined,
+      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+    };
+    res.json(await storage.getAuditLogs(filters));
+  });
+
+  // --- Dashboard Stats ---
+  app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
+    const filters = {
+      startDate: req.query.startDate as string | undefined,
+      endDate: req.query.endDate as string | undefined,
+      locationId: req.query.locationId as string | undefined,
+      physicianId: req.query.physicianId as string | undefined,
+    };
+    res.json(await storage.getDashboardStats(filters));
+  });
+
+  // --- Microsoft Integration Status ---
+  app.get("/api/integrations/status", requireAuth, async (req, res) => {
+    let outlookConnected = false;
+    let sharepointConnected = false;
+
+    try {
+      const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+      const xReplitToken = process.env.REPL_IDENTITY
+        ? "repl " + process.env.REPL_IDENTITY
+        : process.env.WEB_REPL_RENEWAL
+        ? "depl " + process.env.WEB_REPL_RENEWAL
+        : null;
+
+      if (hostname && xReplitToken) {
+        const outlookRes = await fetch(
+          "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=outlook",
+          { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+        );
+        const outlookData = await outlookRes.json();
+        outlookConnected = !!(outlookData?.items?.[0]?.settings?.access_token || outlookData?.items?.[0]?.settings?.oauth?.credentials?.access_token);
+
+        const spRes = await fetch(
+          "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=sharepoint",
+          { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+        );
+        const spData = await spRes.json();
+        sharepointConnected = !!(spData?.items?.[0]?.settings?.access_token || spData?.items?.[0]?.settings?.oauth?.credentials?.access_token);
+      }
+    } catch (e) {
+      // silently fail
+    }
+
+    res.json({ outlook: outlookConnected, sharepoint: sharepointConnected });
+  });
+
+  // --- Outlook Calendar Sync ---
+  app.post("/api/integrations/outlook/sync-event", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const { eventId } = req.body;
+      if (!eventId) return res.status(400).json({ message: "eventId required" });
+
+      const event = await storage.getCalendarEvent(eventId);
+      if (!event) return res.status(404).json({ message: "Event not found" });
+
+      const accessToken = await getOutlookAccessToken();
+      if (!accessToken) return res.status(400).json({ message: "Outlook not connected. Please connect your Microsoft account in Settings." });
+
+      const outlookEvent = {
+        subject: event.title,
+        body: { contentType: "Text", content: event.description || "" },
+        start: { dateTime: event.startAt.toISOString(), timeZone: "UTC" },
+        end: { dateTime: event.endAt.toISOString(), timeZone: "UTC" },
+        isAllDay: event.allDay,
+      };
+
+      let result;
+      if (event.outlookEventId) {
+        result = await fetch(`https://graph.microsoft.com/v1.0/me/events/${event.outlookEventId}`, {
+          method: "PATCH",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(outlookEvent),
+        });
+      } else {
+        result = await fetch("https://graph.microsoft.com/v1.0/me/events", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+          body: JSON.stringify(outlookEvent),
+        });
+      }
+
+      if (!result.ok) {
+        const errText = await result.text();
+        return res.status(result.status).json({ message: `Outlook sync failed: ${errText}` });
+      }
+
+      const data = await result.json();
+      await storage.updateCalendarEvent(eventId, { outlookEventId: data.id });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id } });
+
+      res.json({ success: true, outlookEventId: data.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- SharePoint Documents ---
+  app.get("/api/integrations/sharepoint/sites", requireAuth, async (req, res) => {
+    try {
+      const accessToken = await getSharePointAccessToken();
+      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected" });
+
+      const result = await fetch("https://graph.microsoft.com/v1.0/sites?search=*", {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+
+      if (!result.ok) return res.status(result.status).json({ message: "Failed to fetch SharePoint sites" });
+      const data = await result.json();
+      res.json(data.value || []);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/integrations/sharepoint/documents", requireAuth, async (req, res) => {
+    try {
+      const siteId = req.query.siteId as string;
+      const accessToken = await getSharePointAccessToken();
+      if (!accessToken) return res.status(400).json({ message: "SharePoint not connected" });
+
+      let url = "https://graph.microsoft.com/v1.0/me/drive/root/children";
+      if (siteId) {
+        url = `https://graph.microsoft.com/v1.0/sites/${siteId}/drive/root/children`;
+      }
+
+      const result = await fetch(url, { headers: { Authorization: `Bearer ${accessToken}` } });
+      if (!result.ok) return res.status(result.status).json({ message: "Failed to fetch documents" });
+      const data = await result.json();
+      res.json(data.value || []);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   return httpServer;
+}
+
+async function getOutlookAccessToken(): Promise<string | null> {
+  try {
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY
+      ? "repl " + process.env.REPL_IDENTITY
+      : process.env.WEB_REPL_RENEWAL
+      ? "depl " + process.env.WEB_REPL_RENEWAL
+      : null;
+
+    if (!hostname || !xReplitToken) return null;
+
+    const response = await fetch(
+      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=outlook",
+      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+    );
+    const data = await response.json();
+    const settings = data?.items?.[0]?.settings;
+    return settings?.access_token || settings?.oauth?.credentials?.access_token || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getSharePointAccessToken(): Promise<string | null> {
+  try {
+    const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
+    const xReplitToken = process.env.REPL_IDENTITY
+      ? "repl " + process.env.REPL_IDENTITY
+      : process.env.WEB_REPL_RENEWAL
+      ? "depl " + process.env.WEB_REPL_RENEWAL
+      : null;
+
+    if (!hostname || !xReplitToken) return null;
+
+    const response = await fetch(
+      "https://" + hostname + "/api/v2/connection?include_secrets=true&connector_names=sharepoint",
+      { headers: { Accept: "application/json", X_REPLIT_TOKEN: xReplitToken } }
+    );
+    const data = await response.json();
+    const settings = data?.items?.[0]?.settings;
+    return settings?.access_token || settings?.oauth?.credentials?.access_token || null;
+  } catch {
+    return null;
+  }
 }

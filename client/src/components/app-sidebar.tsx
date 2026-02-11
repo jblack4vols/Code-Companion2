@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText,
 } from "lucide-react";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
@@ -17,10 +17,13 @@ const navItems = [
   { title: "Interactions", url: "/interactions", icon: MessageSquare, requireView: true },
   { title: "Referrals", url: "/referrals", icon: FileText, requireView: true },
   { title: "Tasks", url: "/tasks", icon: ClipboardList, requireView: true },
+  { title: "Calendar", url: "/calendar", icon: Calendar, requireView: true },
 ];
 
 const adminItems = [
   { title: "Users", url: "/admin/users", icon: Users },
+  { title: "Locations", url: "/admin/locations", icon: MapPin },
+  { title: "Audit Log", url: "/admin/audit-log", icon: ScrollText },
   { title: "Settings", url: "/admin/settings", icon: Settings },
 ];
 

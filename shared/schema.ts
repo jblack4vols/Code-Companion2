@@ -37,6 +37,10 @@ export const taskStatusEnum = pgEnum("task_status", [
   "OPEN", "DONE",
 ]);
 
+export const eventTypeEnum = pgEnum("event_type", [
+  "MEETING", "LUNCH", "OFFICE_VISIT", "CALL", "CONFERENCE", "OTHER",
+]);
+
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -133,6 +137,27 @@ export const tasks = pgTable("tasks", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const calendarEvents = pgTable("calendar_events", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description"),
+  eventType: eventTypeEnum("event_type").notNull().default("MEETING"),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at").notNull(),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
+  physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id),
+  organizerUserId: varchar("organizer_user_id", { length: 36 }).notNull().references(() => users.id),
+  outlookEventId: text("outlook_event_id"),
+  meetingUrl: text("meeting_url"),
+  allDay: boolean("all_day").default(false).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("calendar_event_date_idx").on(table.startAt, table.endAt),
+  index("calendar_event_physician_idx").on(table.physicianId),
+  index("calendar_event_location_idx").on(table.locationId),
+]);
+
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 36 }).references(() => users.id),
@@ -161,6 +186,9 @@ export const insertReferralSchema = createInsertSchema(referrals).omit({
 export const insertTaskSchema = createInsertSchema(tasks).omit({
   id: true, createdAt: true, updatedAt: true,
 });
+export const insertCalendarEventSchema = createInsertSchema(calendarEvents).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
 
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -174,6 +202,8 @@ export type Referral = typeof referrals.$inferSelect;
 export type InsertReferral = z.infer<typeof insertReferralSchema>;
 export type Task = typeof tasks.$inferSelect;
 export type InsertTask = z.infer<typeof insertTaskSchema>;
+export type CalendarEvent = typeof calendarEvents.$inferSelect;
+export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
 
 export const loginSchema = z.object({

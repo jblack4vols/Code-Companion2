@@ -1,11 +1,17 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Calendar, Activity } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from "recharts";
-import type { Physician, Referral, Interaction, Task } from "@shared/schema";
-import { format, subDays, startOfMonth, isAfter } from "date-fns";
+import type { Physician, Location } from "@shared/schema";
+import { format, subMonths } from "date-fns";
+import { getQueryFn } from "@/lib/queryClient";
 
 function StatCard({ icon: Icon, label, value, sub, color }: { icon: any; label: string; value: string | number; sub?: string; color: string }) {
   return (
@@ -32,20 +38,30 @@ const stageColors: Record<string, string> = {
 };
 
 export default function DashboardPage() {
-  const { data: physicians, isLoading: loadingPhys } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
-  const { data: referrals, isLoading: loadingRefs } = useQuery<Referral[]>({ queryKey: ["/api/referrals"] });
-  const { data: interactions, isLoading: loadingInts } = useQuery<Interaction[]>({ queryKey: ["/api/interactions"] });
-  const { data: tasks } = useQuery<Task[]>({ queryKey: ["/api/tasks"] });
+  const [startDate, setStartDate] = useState(format(subMonths(new Date(), 6), "yyyy-MM-dd"));
+  const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
+  const [locationId, setLocationId] = useState("");
+  const [physicianId, setPhysicianId] = useState("");
+  const [showFilters, setShowFilters] = useState(false);
 
-  const isLoading = loadingPhys || loadingRefs || loadingInts;
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  if (locationId) params.set("locationId", locationId);
+  if (physicianId) params.set("physicianId", physicianId);
+  const queryString = params.toString();
 
-  const activePhysicians = physicians?.filter(p => p.status === "ACTIVE").length || 0;
-  const totalReferrals = referrals?.length || 0;
-  const totalInteractions = interactions?.length || 0;
-  const atRiskCount = physicians?.filter(p => p.relationshipStage === "AT_RISK").length || 0;
-  const openTasks = tasks?.filter(t => t.status === "OPEN").length || 0;
+  const statsUrl = queryString ? `/api/dashboard/stats?${queryString}` : "/api/dashboard/stats";
+  const { data: stats, isLoading: loadingStats } = useQuery<any>({
+    queryKey: [statsUrl],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
+  const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
   const stageCounts = physicians?.reduce((acc, p) => {
+    if (physicianId && p.id !== physicianId) return acc;
     acc[p.relationshipStage] = (acc[p.relationshipStage] || 0) + 1;
     return acc;
   }, {} as Record<string, number>) || {};
@@ -56,29 +72,30 @@ export default function DashboardPage() {
     fill: stageColors[name] || "hsl(var(--chart-1))",
   }));
 
-  const referralsByMonth = referrals?.reduce((acc, r) => {
-    const month = format(new Date(r.referralDate), "MMM yyyy");
-    acc[month] = (acc[month] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>) || {};
+  const topReferrers = stats?.topReferrers?.map((r: any) => {
+    const phys = physicians?.find(p => p.id === r.physicianId);
+    return { name: phys ? `Dr. ${phys.lastName}` : "Unknown", count: Number(r.count) };
+  }) || [];
 
-  const referralTrendData = Object.entries(referralsByMonth)
-    .slice(-6)
-    .map(([month, count]) => ({ month, count }));
+  const referralTrendData = stats?.referralsByMonth?.map((r: any) => ({
+    month: r.month,
+    count: r.count,
+  })) || [];
 
-  const topReferrers = physicians
-    ?.map(p => ({
-      name: `Dr. ${p.lastName}`,
-      count: referrals?.filter(r => r.physicianId === p.id).length || 0,
-    }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5) || [];
+  const clearFilters = () => {
+    setStartDate(format(subMonths(new Date(), 6), "yyyy-MM-dd"));
+    setEndDate(format(new Date(), "yyyy-MM-dd"));
+    setLocationId("");
+    setPhysicianId("");
+  };
 
-  if (isLoading) {
+  const hasActiveFilters = locationId || physicianId;
+
+  if (loadingStats) {
     return (
       <div className="p-6 space-y-6">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[1,2,3,4].map(i => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+          {[1,2,3,4,5].map(i => (
             <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
           ))}
         </div>
@@ -92,16 +109,94 @@ export default function DashboardPage() {
 
   return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-        <p className="text-sm text-muted-foreground mt-1">Overview of your physician referral pipeline</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
+          <p className="text-sm text-muted-foreground mt-1">Overview of your physician referral pipeline</p>
+        </div>
+        <div className="flex items-center gap-2">
+          {hasActiveFilters && (
+            <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
+              <X className="w-4 h-4 mr-1" />
+              Clear filters
+            </Button>
+          )}
+          <Button
+            variant={showFilters ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setShowFilters(!showFilters)}
+            data-testid="button-toggle-filters"
+          >
+            <Filter className="w-4 h-4 mr-1" />
+            Filters
+            {hasActiveFilters && (
+              <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">Active</Badge>
+            )}
+          </Button>
+        </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard icon={Stethoscope} label="Active Physicians" value={activePhysicians} sub={`${physicians?.length || 0} total`} color="bg-chart-1/15 text-chart-1" />
-        <StatCard icon={FileText} label="Total Referrals" value={totalReferrals} color="bg-chart-2/15 text-chart-2" />
-        <StatCard icon={MessageSquare} label="Interactions" value={totalInteractions} color="bg-chart-3/15 text-chart-3" />
-        <StatCard icon={AlertTriangle} label="At Risk" value={atRiskCount} sub={`${openTasks} open tasks`} color="bg-chart-5/15 text-chart-5" />
+      {showFilters && (
+        <Card>
+          <CardContent className="p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Start Date</Label>
+                <Input
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
+                  data-testid="input-filter-start-date"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">End Date</Label>
+                <Input
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                  data-testid="input-filter-end-date"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Location</Label>
+                <Select value={locationId} onValueChange={(v) => setLocationId(v === "all" ? "" : v)}>
+                  <SelectTrigger data-testid="select-filter-location">
+                    <SelectValue placeholder="All Locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Locations</SelectItem>
+                    {locations?.filter(l => l.isActive).map(l => (
+                      <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Physician</Label>
+                <Select value={physicianId} onValueChange={(v) => setPhysicianId(v === "all" ? "" : v)}>
+                  <SelectTrigger data-testid="select-filter-physician">
+                    <SelectValue placeholder="All Physicians" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Physicians</SelectItem>
+                    {physicians?.map(p => (
+                      <SelectItem key={p.id} value={p.id}>Dr. {p.lastName}, {p.firstName}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+        <StatCard icon={Stethoscope} label="Active Physicians" value={stats?.activePhysicians || 0} sub={`${physicians?.length || 0} total`} color="bg-chart-1/15 text-chart-1" />
+        <StatCard icon={FileText} label="Total Referrals" value={stats?.totalReferrals || 0} color="bg-chart-2/15 text-chart-2" />
+        <StatCard icon={MessageSquare} label="Interactions" value={stats?.totalInteractions || 0} color="bg-chart-3/15 text-chart-3" />
+        <StatCard icon={AlertTriangle} label="At Risk" value={stats?.atRiskPhysicians || 0} color="bg-chart-5/15 text-chart-5" />
+        <StatCard icon={ClipboardList} label="Open Tasks" value={stats?.openTasks || 0} color="bg-chart-4/15 text-chart-4" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
@@ -126,7 +221,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             ) : (
               <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
-                No referral data yet
+                No referral data for this period
               </div>
             )}
           </CardContent>
@@ -141,7 +236,7 @@ export default function DashboardPage() {
             <Users className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
           <CardContent className="p-4 pt-0">
-            {topReferrers.length > 0 && topReferrers.some(r => r.count > 0) ? (
+            {topReferrers.length > 0 && topReferrers.some((r: any) => r.count > 0) ? (
               <ResponsiveContainer width="100%" height={240}>
                 <BarChart data={topReferrers} layout="vertical">
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -153,7 +248,7 @@ export default function DashboardPage() {
               </ResponsiveContainer>
             ) : (
               <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
-                No referral data yet
+                No referral data for this period
               </div>
             )}
           </CardContent>
