@@ -56,7 +56,7 @@ export default function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@tristar360.com"
+                  placeholder="Enter your email"
                   required
                   data-testid="input-email"
                 />
@@ -79,9 +79,6 @@ export default function LoginPage() {
                 {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign in"}
               </Button>
 
-              <div className="text-xs text-center text-muted-foreground pt-2">
-                <p>Demo: admin@tristar360.com / admin123</p>
-              </div>
             </form>
           </CardContent>
         </Card>
