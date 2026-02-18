@@ -574,7 +574,7 @@ export default function CalendarPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Office/Practice Name</Label>
-              <Popover open={practiceComboOpen} onOpenChange={setPracticeComboOpen}>
+              <Popover open={practiceComboOpen} onOpenChange={setPracticeComboOpen} modal={false}>
                 <PopoverTrigger asChild>
                   <Button
                     variant="outline"
@@ -589,7 +589,7 @@ export default function CalendarPage() {
                     <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                   </Button>
                 </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[9999]" align="start" onOpenAutoFocus={(e) => e.preventDefault()}>
                   <Command>
                     <CommandInput placeholder="Search offices..." data-testid="input-search-practice" />
                     <CommandList>
