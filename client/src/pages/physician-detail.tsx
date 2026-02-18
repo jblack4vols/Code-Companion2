@@ -109,6 +109,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       priority: fd.get("priority"),
       notes: fd.get("notes") || null,
       assignedOwnerId: fd.get("assignedOwnerId") || null,
+      referralSourceAttribution: fd.get("referralSourceAttribution") || null,
     });
   };
 
@@ -253,6 +254,20 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                 </select>
               </div>
               <div className="space-y-1.5">
+                <Label>Referral Source</Label>
+                <select name="referralSourceAttribution" defaultValue={physician.referralSourceAttribution || ""} className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-referral-source">
+                  <option value="">Not Specified</option>
+                  <option value="WEBSITE">Website</option>
+                  <option value="CONFERENCE">Conference</option>
+                  <option value="COLD_CALL">Cold Call</option>
+                  <option value="REFERRAL">Referral from Other MD</option>
+                  <option value="MARKETING">Marketing Campaign</option>
+                  <option value="EXISTING">Existing Relationship</option>
+                  <option value="LUNCH_LEARN">Lunch & Learn</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
                 <Label>Notes</Label>
                 <Textarea name="notes" defaultValue={physician.notes || ""} rows={4} />
               </div>
@@ -315,6 +330,12 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                   <span className="text-muted-foreground">Owner</span>
                   <span>{owner?.name || "Unassigned"}</span>
                 </div>
+                {physician.referralSourceAttribution && (
+                  <div className="flex justify-between text-xs">
+                    <span className="text-muted-foreground">Referral Source</span>
+                    <Badge variant="outline" className="text-[10px]" data-testid="badge-referral-source">{physician.referralSourceAttribution.replace(/_/g, " ")}</Badge>
+                  </div>
+                )}
               </div>
               {physician.notes && (
                 <div className="pt-2 border-t">

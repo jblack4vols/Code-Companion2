@@ -364,6 +364,97 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
       </div>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+          <div>
+            <h3 className="text-sm font-semibold">Recent Activity</h3>
+            <p className="text-xs text-muted-foreground">Latest team actions</p>
+          </div>
+          <Activity className="w-4 h-4 text-muted-foreground" />
+        </CardHeader>
+        <CardContent className="p-4 pt-0">
+          <ActivityFeed />
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
+function ActivityFeed() {
+  const { data: activities, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/activity-feed?limit=15"],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3">
+        {[1, 2, 3, 4, 5].map(i => (
+          <div key={i} className="flex items-start gap-3">
+            <Skeleton className="w-8 h-8 rounded-md shrink-0" />
+            <div className="flex-1">
+              <Skeleton className="h-4 w-full mb-2" />
+              <Skeleton className="h-3 w-20" />
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  }
+
+  if (!activities || activities.length === 0) {
+    return (
+      <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+        No recent activity
+      </div>
+    );
+  }
+
+  return (
+    <div className="max-h-[400px] overflow-auto space-y-2">
+      {activities.map(activity => {
+        let icon: any;
+        let colorClass: string;
+        let description: string;
+
+        switch (activity.activity_type) {
+          case "interaction":
+            icon = MessageSquare;
+            colorClass = "bg-chart-2/15 text-chart-2";
+            description = `${activity.user_name} logged a ${activity.type?.toLowerCase() || 'contact'} with Dr. ${activity.physician_last_name}`;
+            break;
+          case "task":
+            icon = ClipboardList;
+            colorClass = "bg-chart-4/15 text-chart-4";
+            description = `${activity.user_name} completed: ${activity.summary}`;
+            break;
+          case "referral":
+            icon = FileText;
+            colorClass = "bg-chart-1/15 text-chart-1";
+            description = `New referral from ${activity.physician_name} at ${activity.location_name}`;
+            break;
+          default:
+            icon = Activity;
+            colorClass = "bg-muted/50 text-muted-foreground";
+            description = "Unknown activity";
+        }
+
+        const IconComponent = icon;
+        const timestamp = format(new Date(activity.timestamp), "MMM d, h:mm a");
+
+        return (
+          <div key={activity.id} className="flex items-start gap-3 p-2 rounded-md hover-elevate" data-testid={`activity-item-${activity.id}`}>
+            <div className={`flex items-center justify-center w-8 h-8 rounded-md shrink-0 ${colorClass}`}>
+              <IconComponent className="w-4 h-4" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-foreground truncate">{description}</p>
+              <p className="text-xs text-muted-foreground">{timestamp}</p>
+            </div>
+          </div>
+        );
+      })}
     </div>
   );
 }

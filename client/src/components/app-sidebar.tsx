@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -21,6 +21,7 @@ const navItems = [
   { title: "Referrals", url: "/referrals", icon: FileText },
   { title: "Tasks", url: "/tasks", icon: ClipboardList, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
+  { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
   { title: "Import", url: "/import", icon: Upload, roles: ["OWNER", "DIRECTOR"] as string[] },
 ];
@@ -28,6 +29,8 @@ const navItems = [
 const adminItems = [
   { title: "Users", url: "/admin/users", icon: Users },
   { title: "Locations", url: "/admin/locations", icon: MapPin },
+  { title: "Duplicates", url: "/admin/duplicates", icon: Copy },
+  { title: "Team Reports", url: "/admin/reports", icon: BarChart3 },
   { title: "SharePoint Sync", url: "/admin/sharepoint", icon: Cloud },
   { title: "Audit Log", url: "/admin/audit-log", icon: ScrollText },
   { title: "Settings", url: "/admin/settings", icon: Settings },

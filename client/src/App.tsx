@@ -26,6 +26,9 @@ import DecliningReferralsPage from "@/pages/declining-referrals";
 import TerritoriesPage from "@/pages/territories";
 import ImportPage from "@/pages/import";
 import SharePointSyncPage from "@/pages/sharepoint-sync";
+import MapViewPage from "@/pages/map-view";
+import DuplicateDetectionPage from "@/pages/duplicate-detection";
+import UserActivityReportsPage from "@/pages/user-activity-reports";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRouter() {
@@ -41,8 +44,11 @@ function AuthenticatedRouter() {
       <Route path="/tiering" component={PhysicianTieringPage} />
       <Route path="/declining" component={DecliningReferralsPage} />
       <Route path="/territories" component={TerritoriesPage} />
+      <Route path="/map" component={MapViewPage} />
       <Route path="/import" component={ImportPage} />
       <Route path="/admin/sharepoint" component={SharePointSyncPage} />
+      <Route path="/admin/duplicates" component={DuplicateDetectionPage} />
+      <Route path="/admin/reports" component={UserActivityReportsPage} />
       <Route path="/admin/users" component={AdminUsersPage} />
       <Route path="/admin/locations" component={AdminLocationsPage} />
       <Route path="/admin/settings" component={AdminSettingsPage} />
