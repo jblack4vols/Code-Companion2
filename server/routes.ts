@@ -1,9 +1,11 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
+import { db } from "./db";
 import session from "express-session";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
+import { sql } from "drizzle-orm";
 import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
@@ -854,6 +856,151 @@ export async function registerRoutes(
       await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id } });
 
       res.json({ success: true, outlookEventId: data.id });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- Activity Feed ---
+  app.get("/api/activity-feed", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
+    try {
+      const limit = Math.min(Number(req.query.limit) || 20, 50);
+      const recentInteractions = await db.execute(sql`
+        SELECT i.id, i.type, i.summary, i.occurred_at as "timestamp", 
+          p.first_name as physician_first_name, p.last_name as physician_last_name,
+          u.name as user_name, 'interaction' as activity_type
+        FROM interactions i
+        LEFT JOIN physicians p ON i.physician_id = p.id
+        LEFT JOIN users u ON i.user_id = u.id
+        ORDER BY i.occurred_at DESC LIMIT ${limit}
+      `);
+      const recentTasks = await db.execute(sql`
+        SELECT t.id, t.description as summary, t.status, t.updated_at as "timestamp",
+          p.first_name as physician_first_name, p.last_name as physician_last_name,
+          u.name as user_name, 'task' as activity_type
+        FROM tasks t
+        LEFT JOIN physicians p ON t.physician_id = p.id
+        LEFT JOIN users u ON t.assigned_to_user_id = u.id
+        WHERE t.status = 'DONE'
+        ORDER BY t.updated_at DESC LIMIT ${limit}
+      `);
+      const recentReferrals = await db.execute(sql`
+        SELECT r.id, r.case_title as summary, r.referral_date as "timestamp",
+          COALESCE(r.referring_provider_name, CONCAT(p.first_name, ' ', p.last_name)) as physician_name,
+          l.name as location_name, 'referral' as activity_type
+        FROM referrals r
+        LEFT JOIN physicians p ON r.physician_id = p.id
+        LEFT JOIN locations l ON r.location_id = l.id
+        ORDER BY r.created_at DESC LIMIT ${limit}
+      `);
+      const combined = [
+        ...(recentInteractions.rows as any[]).map(r => ({ ...r, activity_type: 'interaction' })),
+        ...(recentTasks.rows as any[]).map(r => ({ ...r, activity_type: 'task' })),
+        ...(recentReferrals.rows as any[]).map(r => ({ ...r, activity_type: 'referral' })),
+      ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, limit);
+      res.json(combined);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- Duplicate Detection ---
+  app.get("/api/physicians/duplicates", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const dupes = await db.execute(sql`
+        WITH potential_dupes AS (
+          SELECT p1.id as id1, p2.id as id2,
+            p1.first_name as first_name_1, p1.last_name as last_name_1, p1.npi as npi_1, p1.practice_name as practice_1, p1.city as city_1, p1.status as status_1,
+            p2.first_name as first_name_2, p2.last_name as last_name_2, p2.npi as npi_2, p2.practice_name as practice_2, p2.city as city_2, p2.status as status_2,
+            CASE
+              WHEN p1.npi IS NOT NULL AND p1.npi = p2.npi THEN 'NPI Match'
+              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) AND COALESCE(LOWER(p1.city), '') = COALESCE(LOWER(p2.city), '') THEN 'Name + City Match'
+              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) THEN 'Name Match'
+            END as match_reason
+          FROM physicians p1
+          JOIN physicians p2 ON p1.id < p2.id
+          WHERE (
+            (p1.npi IS NOT NULL AND p1.npi != '' AND p1.npi = p2.npi)
+            OR (LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name))
+          )
+        )
+        SELECT * FROM potential_dupes
+        ORDER BY match_reason DESC, last_name_1, first_name_1
+        LIMIT 100
+      `);
+      res.json(dupes.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/merge", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { keepId, removeId } = req.body;
+      if (!keepId || !removeId) return res.status(400).json({ message: "keepId and removeId required" });
+      if (keepId === removeId) return res.status(400).json({ message: "Cannot merge physician with itself" });
+      
+      await db.execute(sql`UPDATE referrals SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE interactions SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE tasks SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`DELETE FROM physicians WHERE id = ${removeId}`);
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId } });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- User Activity Reports ---
+  app.get("/api/reports/user-activity", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const dateFrom = qstr(req.query.dateFrom as any);
+      const dateTo = qstr(req.query.dateTo as any);
+      const dateCondition = dateFrom && dateTo
+        ? sql`AND i.occurred_at >= ${dateFrom}::date AND i.occurred_at <= ${dateTo}::date`
+        : dateFrom ? sql`AND i.occurred_at >= ${dateFrom}::date`
+        : dateTo ? sql`AND i.occurred_at <= ${dateTo}::date`
+        : sql``;
+
+      const taskDateCond = dateFrom && dateTo
+        ? sql`AND t.updated_at >= ${dateFrom}::date AND t.updated_at <= ${dateTo}::date`
+        : dateFrom ? sql`AND t.updated_at >= ${dateFrom}::date`
+        : dateTo ? sql`AND t.updated_at <= ${dateTo}::date`
+        : sql``;
+
+      const interactionCounts = await db.execute(sql`
+        SELECT u.id, u.name, u.role, COUNT(i.id)::int as interaction_count,
+          COUNT(CASE WHEN i.type = 'VISIT' THEN 1 END)::int as visit_count,
+          COUNT(CASE WHEN i.type = 'CALL' THEN 1 END)::int as call_count,
+          COUNT(CASE WHEN i.type = 'EMAIL' THEN 1 END)::int as email_count,
+          COUNT(CASE WHEN i.type = 'LUNCH' THEN 1 END)::int as lunch_count
+        FROM users u
+        LEFT JOIN interactions i ON u.id = i.user_id ${dateCondition}
+        GROUP BY u.id, u.name, u.role
+        ORDER BY interaction_count DESC
+      `);
+
+      const taskCounts = await db.execute(sql`
+        SELECT u.id, 
+          COUNT(CASE WHEN t.status = 'DONE' THEN 1 END)::int as tasks_completed,
+          COUNT(CASE WHEN t.status = 'OPEN' THEN 1 END)::int as tasks_open,
+          COUNT(CASE WHEN t.status = 'DONE' AND t.updated_at <= t.due_at THEN 1 END)::int as tasks_on_time
+        FROM users u
+        LEFT JOIN tasks t ON u.id = t.assigned_to_user_id ${taskDateCond}
+        GROUP BY u.id
+      `);
+
+      const taskMap = new Map((taskCounts.rows as any[]).map(r => [r.id, r]));
+      const result = (interactionCounts.rows as any[]).map(u => ({
+        ...u,
+        tasks_completed: taskMap.get(u.id)?.tasks_completed || 0,
+        tasks_open: taskMap.get(u.id)?.tasks_open || 0,
+        tasks_on_time: taskMap.get(u.id)?.tasks_on_time || 0,
+      }));
+
+      res.json(result);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

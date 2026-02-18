@@ -87,6 +87,7 @@ export const physicians = pgTable("physicians", {
   status: physicianStatusEnum("status").notNull().default("PROSPECT"),
   relationshipStage: relationshipStageEnum("relationship_stage").notNull().default("NEW"),
   priority: priorityEnum("priority").notNull().default("MEDIUM"),
+  referralSourceAttribution: text("referral_source_attribution"),
   assignedOwnerId: varchar("assigned_owner_id", { length: 36 }).references(() => users.id),
   lastInteractionAt: timestamp("last_interaction_at"),
   nextFollowUpAt: timestamp("next_follow_up_at"),
