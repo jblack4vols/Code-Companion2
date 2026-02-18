@@ -50,7 +50,12 @@ scripts/
 - **Referrals**: 6,041 real cases imported with full case details, 5,842 linked to physicians by NPI, 199 self-referrals/walk-ins unlinked. Referral table includes referring_provider_name and referring_provider_npi columns.
 - **Interactions**: Log visits, calls, emails, events with physician timeline
 - **Tasks**: Follow-up work queue with completion tracking
-- **Dashboard**: Charts for referral trends, top referrers, at-risk physicians
+- **Dashboard**: Charts for referral trends, top referrers, at-risk physicians, activity feed
+- **Activity Feed**: Dashboard widget showing recent interactions, completed tasks, and new referrals combined and sorted by timestamp. API: GET /api/activity-feed
+- **Referral Source Attribution**: Track how physician relationships originated (Website, Conference, Cold Call, Referral, Marketing, Existing, Lunch & Learn, Other). Field on physician edit form and detail view.
+- **Map View**: Leaflet map at /map showing physicians plotted on East Tennessee map with colored markers by relationship stage. Sidebar physician list with filters. City-based geocoding for 8 clinic territories.
+- **Duplicate Detection**: Admin page at /admin/duplicates detecting potential duplicate physicians via NPI match or name+city match. Side-by-side comparison with merge capability. API: GET /api/physicians/duplicates, POST /api/physicians/merge
+- **User Activity Reports**: Admin page at /admin/reports showing per-user interaction counts (visits, calls, emails, lunches), task completion metrics, and on-time rates. Date range filters and stacked bar chart. API: GET /api/reports/user-activity
 - **Calendar**: Event management with Outlook sync capability
 - **Import**: Excel (.xlsx) import for physicians and referrals with auto column mapping, preview, deduplication/upsert, and progress tracking. Supports Referring Provider List and Created Cases Report formats. Available at /import route. OWNER/DIRECTOR role required.
 - **SharePoint Sync**: Sync all app data (physicians, referrals, interactions, tasks, locations) to SharePoint Lists via Microsoft Graph API. Uses batch operations (20 per request) with clear-and-reload approach. Async sync with status polling. Admin page at /admin/sharepoint. OWNER/DIRECTOR role required. DB tables: sharepoint_sync_status (tracks per-entity sync state), app_settings (stores site config).
