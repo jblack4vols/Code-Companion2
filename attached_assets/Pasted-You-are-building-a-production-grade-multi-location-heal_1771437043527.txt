@@ -1,0 +1,230 @@
+You are building a production-grade, multi-location healthcare referral CRM + referral intelligence platform (like a lightweight Salesforce for physician referrals) based on an existing React + TypeScript frontend and Node/Express backend. Upgrade it from file-based JSON storage to PostgreSQL and add revenue intelligence + dashboards.
+
+GOALS (HIGH LEVEL)
+1) Replace file-based storage with PostgreSQL.
+2) Add referral-to-revenue intelligence fields and reporting:
+   - Arrival rate
+   - Total visits generated
+   - Revenue generated
+   - Revenue per referral
+3) Add monthly summary tables + revenue aggregation tables for fast reporting.
+4) Add a scheduled nightly ETL job that updates summaries from imported source data (CSV/Excel uploads or staging tables).
+5) Add audit logs for all key changes.
+6) Add role-based permissions (RBAC) for Admin / Manager / Marketer/Rep / Viewer.
+7) Improve physician tiering with weighted scoring (not just volume thresholds).
+8) Build 3 dashboard views: Executive, Territory, Location.
+
+TECH STACK REQUIREMENTS
+- Backend: Node.js + Express + TypeScript
+- Database: PostgreSQL
+- ORM: Prefer Prisma (or Drizzle if you prefer), include migrations
+- Auth: Use session or JWT (choose one) + RBAC middleware
+- Frontend: React + TypeScript + Vite + Tailwind + shadcn/ui + TanStack Query
+- Jobs: Use node-cron (or a proper job runner like BullMQ with Redis if you think needed; default to node-cron for simplicity)
+- Data Import: Create an upload endpoint and a staging table approach. Support CSV first (Excel optional).
+- Must be scalable to 8+ locations and production-safe.
+
+DATABASE DESIGN (REQUIRED TABLES)
+Create these PostgreSQL tables (with good types, foreign keys, constraints):
+1) physicians
+   - id (uuid PK)
+   - npi (text UNIQUE, indexed)
+   - name, specialty, practice_name, address fields
+   - territory_id, primary_location_id
+   - created_at, updated_at
+
+2) locations
+   - id (uuid PK)
+   - name, city, state
+   - created_at, updated_at
+
+3) territories
+   - id (uuid PK)
+   - name
+   - rep_user_id (FK users)
+   - created_at, updated_at
+
+4) users
+   - id (uuid PK)
+   - email UNIQUE
+   - password_hash
+   - role enum: ADMIN, MANAGER, REP, VIEWER
+   - created_at, updated_at
+
+5) interactions
+   - id (uuid PK)
+   - physician_id FK
+   - user_id FK (rep)
+   - interaction_type enum (call, visit, lunch, email, etc.)
+   - date
+   - notes
+   - created_at, updated_at
+
+6) referrals (raw event table)
+   - id (uuid PK)
+   - physician_id FK
+   - location_id FK
+   - referral_date (date)
+   - status enum: REFERRED, SCHEDULED, EVALUATED, ACTIVE, DISCHARGED, CANCELED, NO_SHOW
+   - created_at, updated_at
+   - INDEX: (physician_id, referral_date), (location_id, referral_date)
+
+7) visits (optional raw table if you have it; otherwise use staging)
+   - id (uuid PK)
+   - physician_id FK
+   - location_id FK
+   - visit_date (date)
+   - units (numeric optional)
+   - payer_type enum: COMMERCIAL, MEDICARE, MEDICAID, OTHER
+   - created_at, updated_at
+   - INDEX: (physician_id, visit_date)
+
+8) collections (revenue events table)
+   - id (uuid PK)
+   - physician_id FK
+   - location_id FK
+   - collection_date (date)
+   - amount (numeric(12,2))
+   - payer_type enum
+   - created_at, updated_at
+   - INDEX: (physician_id, collection_date)
+
+9) physician_monthly_summary (materialized/derived table updated nightly)
+   - id (uuid PK)
+   - physician_id FK
+   - month (date; use first day of month)
+   - referrals_count
+   - scheduled_count
+   - evaluated_count
+   - arrived_count (arrivals = evaluated or attended visit; define clearly)
+   - arrival_rate (arrived_count / scheduled_count, guarded for divide-by-zero)
+   - total_visits_generated
+   - revenue_generated
+   - revenue_per_referral
+   - commercial_mix_pct
+   - growth_rate_3mo (rolling)
+   - tier_score
+   - tier_label enum: A, B, C, D (or 1-4)
+   - updated_at
+   - UNIQUE(physician_id, month)
+   - INDEX: (month), (tier_label)
+
+10) territory_monthly_summary
+   - territory_id, month
+   - totals for referrals, visits, revenue
+   - revenue_per_rep, visits_per_rep (rep = territory rep)
+   - updated_at
+
+11) location_monthly_summary
+   - location_id, month
+   - totals for referrals, visits, revenue
+   - referral_dependency_ratio (top5 / total, or define properly)
+   - risk_score
+   - updated_at
+
+12) audit_logs
+   - id (uuid PK)
+   - actor_user_id FK
+   - action text (CREATE/UPDATE/DELETE/LOGIN/IMPORT/etc.)
+   - entity_type text (physician/referral/interaction/etc.)
+   - entity_id uuid
+   - before jsonb
+   - after jsonb
+   - created_at timestamp
+   - INDEX: (entity_type, entity_id), (actor_user_id, created_at)
+
+ETL JOB REQUIREMENTS (NIGHTLY)
+Implement a nightly job (node-cron) that:
+- Reads raw referrals/visits/collections (or staging imports)
+- Recomputes physician_monthly_summary for the last 6 months (rolling window) and current month
+- Recomputes territory_monthly_summary and location_monthly_summary
+- Updates tier_score and tier_label for each physician-month
+
+WEIGHTED TIERING (REQUIRED)
+Compute tier_score using weighted scoring:
+TierScore =
+  (RevenueWeight * RevenueGeneratedNormalized) +
+  (TrendWeight * GrowthRateNormalized) +
+  (ConversionWeight * ArrivalRateNormalized) +
+  (PayerMixWeight * CommercialMixNormalized)
+
+Notes:
+- Normalize each metric to 0..1 within a month (or rolling window) to avoid scale issues
+- Provide configurable weights via an admin settings table or config file
+- Output tier_label based on tier_score thresholds or quartiles:
+  A = top 20%
+  B = next 30%
+  C = next 30%
+  D = bottom 20%
+
+DASHBOARDS (FRONTEND PAGES + API ENDPOINTS)
+Build 3 dashboard views with backend endpoints:
+
+1) EXECUTIVE VIEW
+- Top 20 referral sources by revenue (current month + last 3 months)
+- Referral growth rate (month-over-month)
+- Revenue concentration risk (% revenue from top 10 sources)
+- Referral volatility index (std dev / mean over last 6 months)
+- Filters: month, location (optional), territory (optional)
+
+2) TERRITORY VIEW
+- Revenue per rep (territory rep)
+- Visits generated per rep
+- Cost per referral acquisition (requires optional "marketing_costs" table; if not present, stub with 0 and add later)
+- Interaction-to-revenue conversion (revenue per interaction or correlation)
+- Filters: month, territory
+
+3) LOCATION VIEW
+- Referral dependency ratio (top 5 sources / total revenue OR referrals; define and document)
+- Top 5 referral sources for that location (by revenue)
+- Risk score (composite: concentration + declining trend)
+- Filters: month, location
+
+RBAC (REQUIRED)
+- ADMIN: full access + manage users + weights/settings
+- MANAGER: access to all dashboards, cannot manage users
+- REP: access to their territory/assigned physicians; can create interactions/tasks
+- VIEWER: read-only dashboards
+
+Implement backend middleware that checks role + scope (territory_id restrictions for REP).
+
+API DESIGN (EXAMPLES)
+- GET /api/dashboard/executive?month=YYYY-MM-01
+- GET /api/dashboard/territory/:territoryId?month=YYYY-MM-01
+- GET /api/dashboard/location/:locationId?month=YYYY-MM-01
+- GET /api/physicians/:id/monthly?months=6
+- POST /api/import/referrals (CSV upload)
+- POST /api/import/collections (CSV upload)
+- POST /api/import/visits (CSV upload)
+
+MIGRATION FROM JSON (REQUIRED)
+Provide a script to import existing JSON seed data into Postgres tables.
+
+QUALITY REQUIREMENTS
+- Add indexes on:
+  - physicians.npi
+  - referrals (physician_id, referral_date)
+  - collections (physician_id, collection_date)
+  - summaries (month)
+- Add input validation with zod or similar
+- Add error handling + consistent API responses
+- Add environment-based configuration (.env)
+- Add database migrations
+- Make sure frontend uses TanStack Query to fetch dashboards and show loading skeletons.
+
+DELIVERABLES
+1) Postgres schema via ORM migrations
+2) Updated backend storage layer using Postgres
+3) Nightly ETL job that updates summary tables + tiering
+4) RBAC authentication/authorization
+5) Audit logging on create/update/delete
+6) Executive/Territory/Location dashboards in the frontend with filters
+7) Import endpoints for CSV data + staging normalization
+
+Build it as a complete working Replit project with clear run steps:
+- `npm install`
+- `npm run dev` for frontend/backend
+- migrations + seed scripts
+- cron job setup
+
+IMPORTANT: Keep code modular, readable, and production-safe.

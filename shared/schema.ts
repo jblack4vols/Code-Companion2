@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, index, pgEnum,
+  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, index, pgEnum, numeric, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -88,6 +88,7 @@ export const physicians = pgTable("physicians", {
   relationshipStage: relationshipStageEnum("relationship_stage").notNull().default("NEW"),
   priority: priorityEnum("priority").notNull().default("MEDIUM"),
   referralSourceAttribution: text("referral_source_attribution"),
+  territoryId: varchar("territory_id", { length: 36 }),
   assignedOwnerId: varchar("assigned_owner_id", { length: 36 }).references(() => users.id),
   lastInteractionAt: timestamp("last_interaction_at"),
   nextFollowUpAt: timestamp("next_follow_up_at"),
@@ -211,6 +212,95 @@ export const auditLogs = pgTable("audit_logs", {
   detailJson: json("detail_json"),
 });
 
+export const tierLabelEnum = pgEnum("tier_label", ["A", "B", "C", "D"]);
+
+export const territories = pgTable("territories", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  repUserId: varchar("rep_user_id", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const collections = pgTable("collections", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
+  collectionDate: date("collection_date").notNull(),
+  amount: numeric("amount", { precision: 12, scale: 2 }).notNull(),
+  payerType: payerTypeEnum("payer_type"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("collection_physician_date_idx").on(table.physicianId, table.collectionDate),
+  index("collection_location_date_idx").on(table.locationId, table.collectionDate),
+]);
+
+export const physicianMonthlySummary = pgTable("physician_monthly_summary", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  physicianId: varchar("physician_id", { length: 36 }).notNull().references(() => physicians.id),
+  month: date("month").notNull(),
+  referralsCount: integer("referrals_count").default(0).notNull(),
+  scheduledCount: integer("scheduled_count").default(0).notNull(),
+  evaluatedCount: integer("evaluated_count").default(0).notNull(),
+  arrivedCount: integer("arrived_count").default(0).notNull(),
+  arrivalRate: real("arrival_rate").default(0),
+  totalVisitsGenerated: integer("total_visits_generated").default(0).notNull(),
+  revenueGenerated: numeric("revenue_generated", { precision: 12, scale: 2 }).default("0"),
+  revenuePerReferral: numeric("revenue_per_referral", { precision: 12, scale: 2 }).default("0"),
+  commercialMixPct: real("commercial_mix_pct").default(0),
+  growthRate3mo: real("growth_rate_3mo").default(0),
+  tierScore: real("tier_score").default(0),
+  tierLabel: tierLabelEnum("tier_label").default("D"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("physician_month_unique_idx").on(table.physicianId, table.month),
+  index("physician_summary_month_idx").on(table.month),
+  index("physician_summary_tier_idx").on(table.tierLabel),
+]);
+
+export const territoryMonthlySummary = pgTable("territory_monthly_summary", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  territoryId: varchar("territory_id", { length: 36 }).notNull().references(() => territories.id),
+  month: date("month").notNull(),
+  referralsCount: integer("referrals_count").default(0).notNull(),
+  totalVisits: integer("total_visits").default(0).notNull(),
+  revenueTotal: numeric("revenue_total", { precision: 12, scale: 2 }).default("0"),
+  revenuePerRep: numeric("revenue_per_rep", { precision: 12, scale: 2 }).default("0"),
+  visitsPerRep: integer("visits_per_rep").default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("territory_month_unique_idx").on(table.territoryId, table.month),
+  index("territory_summary_month_idx").on(table.month),
+]);
+
+export const locationMonthlySummary = pgTable("location_monthly_summary", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  month: date("month").notNull(),
+  referralsCount: integer("referrals_count").default(0).notNull(),
+  totalVisits: integer("total_visits").default(0).notNull(),
+  revenueTotal: numeric("revenue_total", { precision: 12, scale: 2 }).default("0"),
+  referralDependencyRatio: real("referral_dependency_ratio").default(0),
+  riskScore: real("risk_score").default(0),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("location_month_unique_idx").on(table.locationId, table.month),
+  index("location_summary_month_idx").on(table.month),
+]);
+
+export const tieringWeights = pgTable("tiering_weights", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  revenueWeight: real("revenue_weight").default(0.4).notNull(),
+  trendWeight: real("trend_weight").default(0.2).notNull(),
+  conversionWeight: real("conversion_weight").default(0.2).notNull(),
+  payerMixWeight: real("payer_mix_weight").default(0.2).notNull(),
+  tierAThreshold: real("tier_a_threshold").default(0.8).notNull(),
+  tierBThreshold: real("tier_b_threshold").default(0.5).notNull(),
+  tierCThreshold: real("tier_c_threshold").default(0.2).notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const insertUserSchema = createInsertSchema(users).omit({
   id: true, createdAt: true, updatedAt: true,
 });
@@ -248,6 +338,31 @@ export type InsertTask = z.infer<typeof insertTaskSchema>;
 export type CalendarEvent = typeof calendarEvents.$inferSelect;
 export type InsertCalendarEvent = z.infer<typeof insertCalendarEventSchema>;
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+export const insertTerritorySchema = createInsertSchema(territories).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertCollectionSchema = createInsertSchema(collections).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertPhysicianMonthlySummarySchema = createInsertSchema(physicianMonthlySummary).omit({
+  id: true, updatedAt: true,
+});
+export const insertTerritoryMonthlySummarySchema = createInsertSchema(territoryMonthlySummary).omit({
+  id: true, updatedAt: true,
+});
+export const insertLocationMonthlySummarySchema = createInsertSchema(locationMonthlySummary).omit({
+  id: true, updatedAt: true,
+});
+
+export type Territory = typeof territories.$inferSelect;
+export type InsertTerritory = z.infer<typeof insertTerritorySchema>;
+export type Collection = typeof collections.$inferSelect;
+export type InsertCollection = z.infer<typeof insertCollectionSchema>;
+export type PhysicianMonthlySummary = typeof physicianMonthlySummary.$inferSelect;
+export type TerritoryMonthlySummary = typeof territoryMonthlySummary.$inferSelect;
+export type LocationMonthlySummary = typeof locationMonthlySummary.$inferSelect;
+export type TieringWeights = typeof tieringWeights.$inferSelect;
 
 export const loginSchema = z.object({
   email: z.string().email(),

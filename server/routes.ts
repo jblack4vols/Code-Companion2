@@ -5,7 +5,8 @@ import { db } from "./db";
 import session from "express-session";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { sql } from "drizzle-orm";
+import { sql, eq, and, gte, lt } from "drizzle-orm";
+import { referrals } from "@shared/schema";
 import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
 import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
@@ -469,6 +470,206 @@ export async function registerRoutes(
     }
   });
 
+  // --- Territories ---
+  app.get("/api/territories", requireAuth, async (req, res) => {
+    res.json(await storage.getTerritories());
+  });
+
+  app.get("/api/territories/:id", requireAuth, async (req, res) => {
+    const t = await storage.getTerritory(req.params.id);
+    if (!t) return res.status(404).json({ message: "Not found" });
+    res.json(t);
+  });
+
+  app.post("/api/territories", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const territory = await storage.createTerritory(req.body);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Territory", entityId: territory.id, detailJson: req.body });
+      res.json(territory);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/territories/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const territory = await storage.updateTerritory(req.params.id, req.body);
+      if (!territory) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: req.params.id, detailJson: req.body });
+      res.json(territory);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/territories/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      await storage.deleteTerritory(req.params.id);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Territory", entityId: req.params.id, detailJson: {} });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // --- Collections (Revenue) ---
+  app.get("/api/collections", requireAuth, async (req, res) => {
+    const filters = {
+      physicianId: req.query.physicianId as string | undefined,
+      locationId: req.query.locationId as string | undefined,
+      dateFrom: req.query.dateFrom as string | undefined,
+      dateTo: req.query.dateTo as string | undefined,
+    };
+    res.json(await storage.getCollections(filters));
+  });
+
+  app.post("/api/collections", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const col = await storage.createCollection(req.body);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Collection", entityId: col.id, detailJson: req.body });
+      res.json(col);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // --- Tiering Weights ---
+  app.get("/api/tiering-weights", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    const weights = await storage.getTieringWeights();
+    res.json(weights || {});
+  });
+
+  app.patch("/api/tiering-weights", requireRole("OWNER"), async (req, res) => {
+    try {
+      const updated = await storage.updateTieringWeights(req.body);
+      if (!updated) return res.status(404).json({ message: "No weights configured" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: req.body });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  // --- ETL Trigger ---
+  app.post("/api/etl/run", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { triggerETL } = await import("./etl");
+      res.json({ message: "ETL started" });
+      triggerETL().catch(err => console.error("[ETL] Manual trigger error:", err));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- Dashboard Summary Endpoints ---
+  app.get("/api/dashboard/executive", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
+    const summaries = await storage.getPhysicianMonthlySummaries({ month });
+    const historicalSummaries = await storage.getPhysicianMonthlySummaries({ months: 6 });
+
+    const sortByRevenueOrCount = (a: any, b: any) => {
+      const revA = parseFloat(String(a.revenueGenerated || 0));
+      const revB = parseFloat(String(b.revenueGenerated || 0));
+      if (revA !== revB) return revB - revA;
+      return (b.referralsCount || 0) - (a.referralsCount || 0);
+    };
+
+    const topByRevenue = [...summaries]
+      .sort(sortByRevenueOrCount)
+      .slice(0, 20);
+
+    const totalRevenue = summaries.reduce((sum, s) => sum + parseFloat(String(s.revenueGenerated || 0)), 0);
+    const totalRefs = summaries.reduce((sum, s) => sum + (s.referralsCount || 0), 0);
+    const top10Revenue = [...summaries]
+      .sort(sortByRevenueOrCount)
+      .slice(0, 10)
+      .reduce((sum, s) => sum + parseFloat(String(s.revenueGenerated || 0)), 0);
+    const top10Refs = [...summaries]
+      .sort(sortByRevenueOrCount)
+      .slice(0, 10)
+      .reduce((sum, s) => sum + (s.referralsCount || 0), 0);
+    const concentrationRisk = totalRevenue > 0
+      ? top10Revenue / totalRevenue
+      : totalRefs > 0 ? top10Refs / totalRefs : 0;
+
+    const monthlyTotals: Record<string, number> = {};
+    for (const s of historicalSummaries) {
+      const m = String(s.month);
+      monthlyTotals[m] = (monthlyTotals[m] || 0) + s.referralsCount;
+    }
+    const monthKeys = Object.keys(monthlyTotals).sort();
+    const growthRates = monthKeys.slice(1).map((m, i) => {
+      const prev = monthlyTotals[monthKeys[i]] || 1;
+      return ((monthlyTotals[m] - prev) / prev) * 100;
+    });
+
+    const vals = Object.values(monthlyTotals);
+    const mean = vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+    const variance = vals.length > 0 ? vals.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / vals.length : 0;
+    const volatilityIndex = mean > 0 ? Math.sqrt(variance) / mean : 0;
+
+    res.json({
+      month,
+      topReferrersByRevenue: topByRevenue,
+      totalRevenue,
+      concentrationRisk,
+      growthRates: monthKeys.slice(1).map((m, i) => ({ month: m, rate: growthRates[i] })),
+      volatilityIndex,
+      totalReferrals: summaries.reduce((sum, s) => sum + s.referralsCount, 0),
+      monthlyTotals,
+    });
+  });
+
+  app.get("/api/dashboard/territory/:territoryId", requireAuth, async (req, res) => {
+    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
+    const summary = await storage.getTerritoryMonthlySummaries({ territoryId: req.params.territoryId, month });
+    const territory = await storage.getTerritory(req.params.territoryId);
+    res.json({ territory, summaries: summary, month });
+  });
+
+  app.get("/api/dashboard/location/:locationId", requireAuth, async (req, res) => {
+    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
+    const summaries = await storage.getLocationMonthlySummaries({ locationId: req.params.locationId, month });
+    const loc = await storage.getLocation(req.params.locationId);
+
+    const monthStart = new Date(month);
+    const monthEnd = new Date(monthStart);
+    monthEnd.setMonth(monthEnd.getMonth() + 1);
+    const locationReferrals = await db.select().from(referrals).where(
+      and(
+        eq(referrals.locationId, req.params.locationId),
+        gte(referrals.referralDate, monthStart.toISOString().slice(0, 10)),
+        lt(referrals.referralDate, monthEnd.toISOString().slice(0, 10))
+      )
+    );
+
+    const physicianCounts: Record<string, { physicianId: string; npi: string | null; name: string; count: number }> = {};
+    for (const r of locationReferrals) {
+      if (r.physicianId) {
+        if (!physicianCounts[r.physicianId]) {
+          physicianCounts[r.physicianId] = {
+            physicianId: r.physicianId,
+            npi: r.referringProviderNpi || null,
+            name: r.referringProviderName || "Unknown",
+            count: 0,
+          };
+        }
+        physicianCounts[r.physicianId].count++;
+      }
+    }
+    const topReferrers = Object.values(physicianCounts)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 10);
+
+    res.json({ location: loc, summaries, month, topReferrers });
+  });
+
+  app.get("/api/physicians/:id/monthly", requireAuth, async (req, res) => {
+    const months = req.query.months ? parseInt(req.query.months as string) : 6;
+    const summaries = await storage.getPhysicianMonthlySummaries({ physicianId: req.params.id, months });
+    res.json(summaries);
+  });
+
   // --- Audit Logs ---
   app.get("/api/audit-logs", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     const filters = {
@@ -485,7 +686,7 @@ export async function registerRoutes(
     res.json(await storage.getMarketers());
   });
 
-  app.get("/api/territories", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+  app.get("/api/marketer-territories", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     res.json(await storage.getMarketerTerritories());
   });
 

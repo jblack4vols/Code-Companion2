@@ -1,5 +1,5 @@
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -24,6 +24,12 @@ const navItems = [
   { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
   { title: "Import", url: "/import", icon: Upload, roles: ["OWNER", "DIRECTOR"] as string[] },
+];
+
+const dashboardItems = [
+  { title: "Executive", url: "/dashboards/executive", icon: PieChart, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Territory", url: "/dashboards/territory", icon: Compass, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Location", url: "/dashboards/location", icon: Building2, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
 ];
 
 const adminItems = [
@@ -96,6 +102,31 @@ export function AppSidebar() {
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
+
+        {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
+          <SidebarGroup>
+            <SidebarGroupLabel>Intelligence</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {dashboardItems
+                  .filter((item) => !item.roles || item.roles.includes(user.role))
+                  .map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton
+                      asChild
+                      isActive={location === item.url || location.startsWith(item.url)}
+                    >
+                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                        <item.icon className="w-4 h-4" />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
 
         {canManage && (
           <SidebarGroup>

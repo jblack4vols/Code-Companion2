@@ -29,6 +29,9 @@ import SharePointSyncPage from "@/pages/sharepoint-sync";
 import MapViewPage from "@/pages/map-view";
 import DuplicateDetectionPage from "@/pages/duplicate-detection";
 import UserActivityReportsPage from "@/pages/user-activity-reports";
+import ExecutiveDashboardPage from "@/pages/executive-dashboard";
+import TerritoryDashboardPage from "@/pages/territory-dashboard";
+import LocationDashboardPage from "@/pages/location-dashboard";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRouter() {
@@ -45,6 +48,9 @@ function AuthenticatedRouter() {
       <Route path="/declining" component={DecliningReferralsPage} />
       <Route path="/territories" component={TerritoriesPage} />
       <Route path="/map" component={MapViewPage} />
+      <Route path="/dashboards/executive" component={ExecutiveDashboardPage} />
+      <Route path="/dashboards/territory" component={TerritoryDashboardPage} />
+      <Route path="/dashboards/location" component={LocationDashboardPage} />
       <Route path="/import" component={ImportPage} />
       <Route path="/admin/sharepoint" component={SharePointSyncPage} />
       <Route path="/admin/duplicates" component={DuplicateDetectionPage} />

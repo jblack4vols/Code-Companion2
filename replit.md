@@ -51,6 +51,12 @@ scripts/
 - **Interactions**: Log visits, calls, emails, events with physician timeline
 - **Tasks**: Follow-up work queue with completion tracking
 - **Dashboard**: Charts for referral trends, top referrers, at-risk physicians, activity feed
+- **Revenue Intelligence Dashboards**: Three BI dashboards under /dashboards/* route:
+  - **Executive Dashboard** (/dashboards/executive): Top 20 referral sources, KPI cards (referrals, revenue, concentration risk, volatility index), growth rate chart, monthly volume chart. Month filter.
+  - **Territory Dashboard** (/dashboards/territory): Territory selector with per-territory KPIs (referrals, visits, revenue, revenue/rep, visits/rep). Empty state when no territories configured.
+  - **Location Dashboard** (/dashboards/location): Location selector with per-location KPIs (referrals, visits, revenue, dependency ratio, risk score), monthly trends chart, location-specific top referral sources table.
+- **Nightly ETL**: node-cron job at 2 AM computing physician_monthly_summary (1,737 records), location_monthly_summary (49 records), weighted physician tiering (A/B/C/D). Manual trigger: POST /api/etl/run. Server file: server/etl.ts.
+- **Weighted Tiering**: Configurable weights (revenue 0.4, trend 0.2, conversion 0.2, payer mix 0.2) with tier thresholds (A>=0.8, B>=0.5, C>=0.2, D<0.2). Config: GET/PATCH /api/tiering-weights.
 - **Activity Feed**: Dashboard widget showing recent interactions, completed tasks, and new referrals combined and sorted by timestamp. API: GET /api/activity-feed
 - **Referral Source Attribution**: Track how physician relationships originated (Website, Conference, Cold Call, Referral, Marketing, Existing, Lunch & Learn, Other). Field on physician edit form and detail view.
 - **Map View**: Leaflet map at /map showing physicians plotted on East Tennessee map with colored markers by relationship stage. Sidebar physician list with filters. City-based geocoding for 8 clinic territories.

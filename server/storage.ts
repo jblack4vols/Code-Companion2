@@ -2,6 +2,7 @@ import { db } from "./db";
 import { eq, and, desc, asc, gte, lte, sql, ilike, or } from "drizzle-orm";
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
+  territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -10,6 +11,12 @@ import {
   type Task, type InsertTask,
   type CalendarEvent, type InsertCalendarEvent,
   type AuditLog,
+  type Territory, type InsertTerritory,
+  type Collection, type InsertCollection,
+  type PhysicianMonthlySummary,
+  type TerritoryMonthlySummary,
+  type LocationMonthlySummary,
+  type TieringWeights,
 } from "@shared/schema";
 
 export interface PaginatedResult<T> {
@@ -101,6 +108,22 @@ export interface IStorage {
   bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
   findPhysicianByNameAndNpi(firstName: string, lastName: string, npi?: string | null): Promise<Physician | undefined>;
   findLocationByName(name: string): Promise<Location | undefined>;
+
+  getTerritories(): Promise<Territory[]>;
+  getTerritory(id: string): Promise<Territory | undefined>;
+  createTerritory(territory: InsertTerritory): Promise<Territory>;
+  updateTerritory(id: string, data: Partial<InsertTerritory>): Promise<Territory | undefined>;
+  deleteTerritory(id: string): Promise<boolean>;
+
+  getCollections(filters?: { physicianId?: string; locationId?: string; dateFrom?: string; dateTo?: string }): Promise<Collection[]>;
+  createCollection(col: InsertCollection): Promise<Collection>;
+
+  getTieringWeights(): Promise<TieringWeights | undefined>;
+  updateTieringWeights(data: Partial<TieringWeights>): Promise<TieringWeights | undefined>;
+
+  getPhysicianMonthlySummaries(filters?: { physicianId?: string; month?: string; months?: number }): Promise<PhysicianMonthlySummary[]>;
+  getTerritoryMonthlySummaries(filters?: { territoryId?: string; month?: string }): Promise<TerritoryMonthlySummary[]>;
+  getLocationMonthlySummaries(filters?: { locationId?: string; month?: string }): Promise<LocationMonthlySummary[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -981,6 +1004,93 @@ export class DatabaseStorage implements IStorage {
       }
     }
     return { inserted, updated, errors };
+  }
+  async getTerritories() {
+    return db.select().from(territories).orderBy(asc(territories.name));
+  }
+
+  async getTerritory(id: string) {
+    const [t] = await db.select().from(territories).where(eq(territories.id, id));
+    return t;
+  }
+
+  async createTerritory(territory: InsertTerritory) {
+    const [created] = await db.insert(territories).values(territory).returning();
+    return created;
+  }
+
+  async updateTerritory(id: string, data: Partial<InsertTerritory>) {
+    const [updated] = await db.update(territories).set({ ...data, updatedAt: new Date() }).where(eq(territories.id, id)).returning();
+    return updated;
+  }
+
+  async deleteTerritory(id: string) {
+    const result = await db.delete(territories).where(eq(territories.id, id));
+    return true;
+  }
+
+  async getCollections(filters?: { physicianId?: string; locationId?: string; dateFrom?: string; dateTo?: string }) {
+    const conditions = [];
+    if (filters?.physicianId) conditions.push(eq(collections.physicianId, filters.physicianId));
+    if (filters?.locationId) conditions.push(eq(collections.locationId, filters.locationId));
+    if (filters?.dateFrom) conditions.push(gte(collections.collectionDate, filters.dateFrom));
+    if (filters?.dateTo) conditions.push(lte(collections.collectionDate, filters.dateTo));
+    if (conditions.length > 0) {
+      return db.select().from(collections).where(and(...conditions)).orderBy(desc(collections.collectionDate));
+    }
+    return db.select().from(collections).orderBy(desc(collections.collectionDate));
+  }
+
+  async createCollection(col: InsertCollection) {
+    const [created] = await db.insert(collections).values(col).returning();
+    return created;
+  }
+
+  async getTieringWeights() {
+    const [w] = await db.select().from(tieringWeights);
+    return w;
+  }
+
+  async updateTieringWeights(data: Partial<TieringWeights>) {
+    const existing = await this.getTieringWeights();
+    if (!existing) return undefined;
+    const [updated] = await db.update(tieringWeights).set({ ...data, updatedAt: new Date() }).where(eq(tieringWeights.id, existing.id)).returning();
+    return updated;
+  }
+
+  async getPhysicianMonthlySummaries(filters?: { physicianId?: string; month?: string; months?: number }) {
+    const conditions = [];
+    if (filters?.physicianId) conditions.push(eq(physicianMonthlySummary.physicianId, filters.physicianId));
+    if (filters?.month) conditions.push(eq(physicianMonthlySummary.month, filters.month));
+    if (filters?.months) {
+      const d = new Date();
+      d.setMonth(d.getMonth() - filters.months);
+      conditions.push(gte(physicianMonthlySummary.month, d.toISOString().slice(0, 10)));
+    }
+    if (conditions.length > 0) {
+      return db.select().from(physicianMonthlySummary).where(and(...conditions)).orderBy(desc(physicianMonthlySummary.month));
+    }
+    return db.select().from(physicianMonthlySummary).orderBy(desc(physicianMonthlySummary.month));
+  }
+
+  async getTerritoryMonthlySummaries(filters?: { territoryId?: string; month?: string }) {
+    const conditions = [];
+    if (filters?.territoryId) conditions.push(eq(territoryMonthlySummary.territoryId, filters.territoryId));
+    if (filters?.month) conditions.push(eq(territoryMonthlySummary.month, filters.month));
+    if (conditions.length > 0) {
+      return db.select().from(territoryMonthlySummary).where(and(...conditions)).orderBy(desc(territoryMonthlySummary.month));
+    }
+    return db.select().from(territoryMonthlySummary).orderBy(desc(territoryMonthlySummary.month));
+  }
+
+  async getLocationMonthlySummaries(filters?: { locationId?: string; month?: string }) {
+    const conditions = [];
+    if (filters?.locationId) conditions.push(eq(locationMonthlySummary.locationId, filters.locationId));
+    if (filters?.month) conditions.push(eq(locationMonthlySummary.month, filters.month));
+    if (conditions.length > 0) {
+      return db.select().from(locationMonthlySummary).where(and(...conditions)).orderBy(desc(locationMonthlySummary.month));
+    }
+    return db.select().from(locationMonthlySummary).orderBy(desc(locationMonthlySummary.month));
   }
 }
 
