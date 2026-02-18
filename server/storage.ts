@@ -160,6 +160,10 @@ export class DatabaseStorage implements IStorage {
     if (Number(interCount[0]?.count) > 0 || Number(taskCount[0]?.count) > 0) {
       throw new Error("Cannot delete user that has interactions or tasks assigned. Reassign them first.");
     }
+    await db.update(physicians).set({ assignedOwnerId: null }).where(eq(physicians.assignedOwnerId, id));
+    await db.update(territories).set({ repUserId: null }).where(eq(territories.repUserId, id));
+    await db.delete(calendarEvents).where(eq(calendarEvents.organizerUserId, id));
+    await db.update(auditLogs).set({ userId: null }).where(eq(auditLogs.userId, id));
     await db.delete(userLocationAccess).where(eq(userLocationAccess.userId, id));
     await db.delete(users).where(eq(users.id, id));
     return true;
