@@ -184,12 +184,16 @@ export async function seed() {
 
   console.log("Seeding database with default data...");
 
+  const bcrypt = await import("bcryptjs");
+  const adminHash = await bcrypt.hash("admin123", 10);
+  const passHash = await bcrypt.hash("pass123", 10);
+
   await db.insert(users).values([
-    { name: "Sarah Mitchell", email: "admin@tristar360.com", password: "admin123", role: "OWNER" },
-    { name: "James Wilson", email: "james@tristar360.com", password: "pass123", role: "DIRECTOR" },
-    { name: "Emily Chen", email: "emily@tristar360.com", password: "pass123", role: "MARKETER" },
-    { name: "Maria Santos", email: "maria@tristar360.com", password: "pass123", role: "FRONT_DESK" },
-    { name: "David Park", email: "david@tristar360.com", password: "pass123", role: "ANALYST" },
+    { name: "Sarah Mitchell", email: "admin@tristar360.com", password: adminHash, role: "OWNER" },
+    { name: "James Wilson", email: "james@tristar360.com", password: passHash, role: "DIRECTOR" },
+    { name: "Emily Chen", email: "emily@tristar360.com", password: passHash, role: "MARKETER" },
+    { name: "Maria Santos", email: "maria@tristar360.com", password: passHash, role: "FRONT_DESK" },
+    { name: "David Park", email: "david@tristar360.com", password: passHash, role: "ANALYST" },
   ]);
 
   await db.insert(locations).values([

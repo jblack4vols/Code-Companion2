@@ -80,9 +80,7 @@ export async function registerRoutes(
       const { email, password } = loginSchema.parse(req.body);
       const user = await storage.getUserByEmail(email);
       if (!user) return res.status(401).json({ message: "Invalid email or password" });
-      const valid = user.password.startsWith("$2")
-        ? await bcrypt.compare(password, user.password)
-        : password === user.password;
+      const valid = await bcrypt.compare(password, user.password);
       if (!valid) return res.status(401).json({ message: "Invalid email or password" });
       req.session.userId = user.id;
       const { password: _, ...safeUser } = user;
@@ -797,16 +795,59 @@ export async function registerRoutes(
 
   // --- Import (Excel Upload) ---
   const multer = (await import("multer")).default;
-  const XLSX = (await import("xlsx")).default;
+  const ExcelJS = (await import("exceljs")).default;
   const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  function excelSerialToDate(serial: number): Date {
+    const utcDays = Math.floor(serial - 25569);
+    return new Date(utcDays * 86400000);
+  }
+
+  function worksheetToJson(worksheet: any): Record<string, any>[] {
+    const headers: string[] = [];
+    const firstRow = worksheet.getRow(1);
+    firstRow.eachCell((cell: any, colNumber: number) => {
+      headers[colNumber] = String(cell.value || "").trim();
+    });
+
+    const rows: Record<string, any>[] = [];
+    worksheet.eachRow((row: any, rowNumber: number) => {
+      if (rowNumber === 1) return;
+      const obj: Record<string, any> = {};
+      row.eachCell((cell: any, colNumber: number) => {
+        if (headers[colNumber]) {
+          obj[headers[colNumber]] = cell.value;
+        }
+      });
+      rows.push(obj);
+    });
+    return rows;
+  }
+
+  function worksheetToArrays(worksheet: any): any[][] {
+    const rows: any[][] = [];
+    worksheet.eachRow((row: any, _rowNumber: number) => {
+      const arr: any[] = [];
+      row.eachCell({ includeEmpty: true }, (cell: any, colNumber: number) => {
+        arr[colNumber - 1] = cell.value;
+      });
+      rows.push(arr);
+    });
+    return rows;
+  }
 
   app.post("/api/import/preview", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-      const sheetName = wb.SheetNames[0];
-      const sheet = wb.Sheets[sheetName];
-      const rows = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+      const workbook = new ExcelJS.Workbook();
+      if (req.file.originalname.endsWith(".csv")) {
+        await workbook.csv.read(require("stream").Readable.from(req.file.buffer));
+      } else {
+        await workbook.xlsx.load(req.file.buffer);
+      }
+      const worksheet = workbook.worksheets[0];
+      const sheetName = worksheet.name;
+      const rows = worksheetToArrays(worksheet);
       const headers = (rows[0] || []).map((h: any) => String(h || "").trim());
       const sampleRows = rows.slice(1, 6).map(r =>
         headers.reduce((acc: any, h: string, i: number) => { acc[h] = r[i] ?? null; return acc; }, {})
@@ -821,9 +862,13 @@ export async function registerRoutes(
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
-      const wb = XLSX.read(req.file.buffer, { type: "buffer" });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+      const workbook = new ExcelJS.Workbook();
+      if (req.file.originalname.endsWith(".csv")) {
+        await workbook.csv.read(require("stream").Readable.from(req.file.buffer));
+      } else {
+        await workbook.xlsx.load(req.file.buffer);
+      }
+      const rows = worksheetToJson(workbook.worksheets[0]);
 
       const mapped = rows.map(row => {
         const get = (field: string) => {
@@ -870,9 +915,13 @@ export async function registerRoutes(
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
-      const wb = XLSX.read(req.file.buffer, { type: "buffer", cellDates: true });
-      const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet) as any[];
+      const workbook = new ExcelJS.Workbook();
+      if (req.file.originalname.endsWith(".csv")) {
+        await workbook.csv.read(require("stream").Readable.from(req.file.buffer));
+      } else {
+        await workbook.xlsx.load(req.file.buffer);
+      }
+      const rows = worksheetToJson(workbook.worksheets[0]);
 
       const allLocations = await storage.getLocations();
       const locationCache = new Map<string, string>();
@@ -884,8 +933,9 @@ export async function registerRoutes(
           return `${y}-${m}-${d}`;
         }
         if (typeof val === "number") {
-          const d = XLSX.SSF.parse_date_code(val);
-          if (d) return `${d.y}-${String(d.m).padStart(2,"0")}-${String(d.d).padStart(2,"0")}`;
+          const dt = excelSerialToDate(val);
+          const y = dt.getUTCFullYear(); const m = String(dt.getUTCMonth() + 1).padStart(2, "0"); const d = String(dt.getUTCDate()).padStart(2, "0");
+          return `${y}-${m}-${d}`;
         }
         const s = String(val).trim();
         if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
