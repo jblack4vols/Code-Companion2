@@ -9,7 +9,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -79,10 +80,13 @@ export default function PhysiciansPage() {
   const [priorityFilter, setPriorityFilter] = useState<string>("all");
   const [practiceFilter, setPracticeFilter] = useState<string>(urlParams.get("practice") || "");
   const [showAdd, setShowAdd] = useState(false);
+  const [showMerge, setShowMerge] = useState(false);
   const [selectedPractice, setSelectedPractice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortField | "">("");
   const [sortOrder, setSortOrder] = useState<string>("asc");
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [mergeNpi, setMergeNpi] = useState("");
   const pageSize = 50;
 
   const debouncedSearch = useDebounce(search, 300);
@@ -126,6 +130,7 @@ export default function PhysiciansPage() {
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
 
   const canCreate = user ? hasPermission(user.role, "create", "physician") : false;
+  const canBulkAction = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -140,6 +145,31 @@ export default function PhysiciansPage() {
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const bulkStatusMutation = useMutation({
+    mutationFn: async ({ physicianIds, status }: { physicianIds: string[]; status: string }) => {
+      const res = await apiRequest("POST", "/api/physicians/bulk-status", { physicianIds, status });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      setSelectedIds(new Set());
+      toast({ title: `${data.count} physician(s) updated` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const mergeMutation = useMutation({
+    mutationFn: async ({ keepId, removeId }: { keepId: string; removeId: string }) => {
+      const res = await apiRequest("POST", "/api/physicians/merge", { keepId, removeId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      toast({ title: "Physicians merged successfully" });
+    },
+    onError: (err: any) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
+  });
+
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -148,6 +178,7 @@ export default function PhysiciansPage() {
       lastName: fd.get("lastName"),
       credentials: fd.get("credentials") || undefined,
       specialty: fd.get("specialty") || undefined,
+      npi: fd.get("npi") || undefined,
       practiceName: fd.get("practiceName") || undefined,
       phone: fd.get("phone") || undefined,
       email: fd.get("email") || undefined,
@@ -176,6 +207,27 @@ export default function PhysiciansPage() {
 
   const setPageSafe = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)));
 
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === physicians.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(physicians.map((p: any) => p.id)));
+    }
+  };
+
+  const handleBulkStatus = (status: string) => {
+    if (selectedIds.size === 0) return;
+    bulkStatusMutation.mutate({ physicianIds: Array.from(selectedIds), status });
+  };
+
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -200,98 +252,125 @@ export default function PhysiciansPage() {
           >
             <Download className="w-4 h-4 mr-1.5" />Export CSV
           </Button>
-        {canCreate && (
-          <Dialog open={showAdd} onOpenChange={setShowAdd}>
-            <DialogTrigger asChild>
-              <Button data-testid="button-add-physician"><Plus className="w-4 h-4 mr-2" />Add Physician</Button>
-            </DialogTrigger>
-            <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-              <DialogHeader>
-                <DialogTitle>Add New Physician</DialogTitle>
-                <DialogDescription>Add a new referring provider</DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAdd} className="space-y-4">
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="firstName">First Name *</Label>
-                    <Input id="firstName" name="firstName" required data-testid="input-physician-first-name" />
+          {canBulkAction && (
+            <Dialog open={showMerge} onOpenChange={setShowMerge}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm" data-testid="button-open-merge">
+                  <Merge className="w-4 h-4 mr-1.5" />Merge by NPI
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Merge Physicians by NPI</DialogTitle>
+                  <DialogDescription>Enter an NPI to find duplicate providers and merge them into one record</DialogDescription>
+                </DialogHeader>
+                <MergeByNpiPanel
+                  mergeNpi={mergeNpi}
+                  setMergeNpi={setMergeNpi}
+                  mergeMutation={mergeMutation}
+                  onClose={() => setShowMerge(false)}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
+          {canCreate && (
+            <Dialog open={showAdd} onOpenChange={setShowAdd}>
+              <DialogTrigger asChild>
+                <Button data-testid="button-add-physician"><Plus className="w-4 h-4 mr-2" />Add Physician</Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Add New Physician</DialogTitle>
+                  <DialogDescription>Add a new referring provider</DialogDescription>
+                </DialogHeader>
+                <form onSubmit={handleAdd} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="firstName">First Name *</Label>
+                      <Input id="firstName" name="firstName" required data-testid="input-physician-first-name" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="lastName">Last Name *</Label>
+                      <Input id="lastName" name="lastName" required data-testid="input-physician-last-name" />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="lastName">Last Name *</Label>
-                    <Input id="lastName" name="lastName" required data-testid="input-physician-last-name" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="credentials">Credentials</Label>
+                      <Input id="credentials" name="credentials" placeholder="M.D., DO, NP, etc." data-testid="input-physician-credentials" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="npi">NPI</Label>
+                      <Input id="npi" name="npi" placeholder="10-digit NPI" maxLength={10} data-testid="input-physician-npi" />
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="credentials">Credentials</Label>
-                    <Input id="credentials" name="credentials" placeholder="M.D., DO, NP, etc." data-testid="input-physician-credentials" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="specialty">Specialty</Label>
+                      <Input id="specialty" name="specialty" placeholder="Orthopedics" data-testid="input-physician-specialty" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="practiceName">Office/Practice Name</Label>
+                      <Input id="practiceName" name="practiceName" data-testid="input-physician-practice" />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="specialty">Specialty</Label>
-                    <Input id="specialty" name="specialty" placeholder="Orthopedics" data-testid="input-physician-specialty" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input id="phone" name="phone" data-testid="input-physician-phone" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="email">Email</Label>
+                      <Input id="email" name="email" type="email" data-testid="input-physician-email" />
+                    </div>
                   </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="practiceName">Office/Practice Name</Label>
-                  <Input id="practiceName" name="practiceName" data-testid="input-physician-practice" />
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="phone">Phone</Label>
-                    <Input id="phone" name="phone" data-testid="input-physician-phone" />
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label htmlFor="city">City</Label>
+                      <Input id="city" name="city" data-testid="input-physician-city" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="state">State</Label>
+                      <Input id="state" name="state" data-testid="input-physician-state" />
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" name="email" type="email" data-testid="input-physician-email" />
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <Label>Status</Label>
+                      <select name="status" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-status">
+                        <option value="PROSPECT">Prospect</option>
+                        <option value="ACTIVE">Active</option>
+                        <option value="INACTIVE">Inactive</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Stage</Label>
+                      <select name="relationshipStage" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-stage">
+                        <option value="NEW">New</option>
+                        <option value="DEVELOPING">Developing</option>
+                        <option value="STRONG">Strong</option>
+                        <option value="AT_RISK">At Risk</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label>Priority</Label>
+                      <select name="priority" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-priority">
+                        <option value="LOW">Low</option>
+                        <option value="MEDIUM">Medium</option>
+                        <option value="HIGH">High</option>
+                      </select>
+                    </div>
                   </div>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label htmlFor="city">City</Label>
-                    <Input id="city" name="city" data-testid="input-physician-city" />
+                  <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
+                    <Button type="submit" disabled={addMutation.isPending} data-testid="button-submit-physician">
+                      {addMutation.isPending ? "Adding..." : "Add Physician"}
+                    </Button>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label htmlFor="state">State</Label>
-                    <Input id="state" name="state" data-testid="input-physician-state" />
-                  </div>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div className="space-y-1.5">
-                    <Label>Status</Label>
-                    <select name="status" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-status">
-                      <option value="PROSPECT">Prospect</option>
-                      <option value="ACTIVE">Active</option>
-                      <option value="INACTIVE">Inactive</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Stage</Label>
-                    <select name="relationshipStage" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-stage">
-                      <option value="NEW">New</option>
-                      <option value="DEVELOPING">Developing</option>
-                      <option value="STRONG">Strong</option>
-                      <option value="AT_RISK">At Risk</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label>Priority</Label>
-                    <select name="priority" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-physician-priority">
-                      <option value="LOW">Low</option>
-                      <option value="MEDIUM">Medium</option>
-                      <option value="HIGH">High</option>
-                    </select>
-                  </div>
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button type="button" variant="outline" onClick={() => setShowAdd(false)}>Cancel</Button>
-                  <Button type="submit" disabled={addMutation.isPending} data-testid="button-submit-physician">
-                    {addMutation.isPending ? "Adding..." : "Add Physician"}
-                  </Button>
-                </div>
-              </form>
-            </DialogContent>
-          </Dialog>
-        )}
+                </form>
+              </DialogContent>
+            </Dialog>
+          )}
         </div>
       </div>
 
@@ -356,6 +435,51 @@ export default function PhysiciansPage() {
         )}
       </div>
 
+      {selectedIds.size > 0 && canBulkAction && (
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="flex items-center gap-2">
+                <CheckSquare className="w-4 h-4 text-primary" />
+                <span className="text-sm font-medium" data-testid="text-selected-count">{selectedIds.size} selected</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBulkStatus("ACTIVE")}
+                  disabled={bulkStatusMutation.isPending}
+                  data-testid="button-bulk-activate"
+                >
+                  <ToggleLeft className="w-3.5 h-3.5 mr-1.5" />Set Active
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBulkStatus("INACTIVE")}
+                  disabled={bulkStatusMutation.isPending}
+                  data-testid="button-bulk-deactivate"
+                >
+                  <ToggleLeft className="w-3.5 h-3.5 mr-1.5" />Set Inactive
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleBulkStatus("PROSPECT")}
+                  disabled={bulkStatusMutation.isPending}
+                  data-testid="button-bulk-prospect"
+                >
+                  Set Prospect
+                </Button>
+              </div>
+              <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection">
+                <X className="w-3 h-3 mr-1" />Clear Selection
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardContent className="p-0">
           {isLoading ? (
@@ -373,8 +497,18 @@ export default function PhysiciansPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {canBulkAction && (
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={physicians.length > 0 && selectedIds.size === physicians.length}
+                          onCheckedChange={toggleSelectAll}
+                          aria-label="Select all"
+                          data-testid="checkbox-select-all"
+                        />
+                      </TableHead>
+                    )}
                     <SortableHead label="Provider" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="min-w-[180px]" />
-                    <TableHead>Credentials</TableHead>
+                    <TableHead className="min-w-[100px]">NPI</TableHead>
                     <TableHead>Office/Practice Name</TableHead>
                     <SortableHead label="Location" field="location" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                     <SortableHead label="Status" field="status" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
@@ -388,6 +522,16 @@ export default function PhysiciansPage() {
                     const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
                     return (
                       <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
+                        {canBulkAction && (
+                          <TableCell onClick={(e) => e.stopPropagation()}>
+                            <Checkbox
+                              checked={selectedIds.has(p.id)}
+                              onCheckedChange={() => toggleSelect(p.id)}
+                              aria-label={`Select ${p.firstName} ${p.lastName}`}
+                              data-testid={`checkbox-physician-${p.id}`}
+                            />
+                          </TableCell>
+                        )}
                         <TableCell>
                           <Link href={`/physicians/${p.id}`} className="block">
                             <div className="flex items-center gap-3">
@@ -401,7 +545,9 @@ export default function PhysiciansPage() {
                             </div>
                           </Link>
                         </TableCell>
-                        <TableCell className="text-sm text-muted-foreground" data-testid={`text-physician-credentials-${p.id}`}>{p.credentials || "-"}</TableCell>
+                        <TableCell className="font-mono text-xs text-muted-foreground" data-testid={`text-physician-npi-${p.id}`}>
+                          {p.npi || "-"}
+                        </TableCell>
                         <TableCell className="text-sm">
                           {p.practiceName ? (
                             <button
@@ -471,6 +617,128 @@ export default function PhysiciansPage() {
   );
 }
 
+function MergeByNpiPanel({ mergeNpi, setMergeNpi, mergeMutation, onClose }: {
+  mergeNpi: string;
+  setMergeNpi: (v: string) => void;
+  mergeMutation: any;
+  onClose: () => void;
+}) {
+  const [keepId, setKeepId] = useState<string | null>(null);
+  const debouncedNpi = useDebounce(mergeNpi, 400);
+
+  const { data: matches, isLoading } = useQuery<any[]>({
+    queryKey: ["/api/physicians/by-npi", debouncedNpi],
+    queryFn: async () => {
+      const res = await fetch(`/api/physicians/by-npi?npi=${encodeURIComponent(debouncedNpi)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+    enabled: debouncedNpi.length >= 5,
+  });
+
+  const handleMerge = (removeId: string) => {
+    if (!keepId || keepId === removeId) return;
+    mergeMutation.mutate({ keepId, removeId }, {
+      onSuccess: () => {
+        setKeepId(null);
+        setMergeNpi("");
+      },
+    });
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="space-y-1.5">
+        <Label>NPI Number</Label>
+        <Input
+          placeholder="Enter NPI to find matching providers..."
+          value={mergeNpi}
+          onChange={(e) => { setMergeNpi(e.target.value); setKeepId(null); }}
+          className="font-mono"
+          data-testid="input-merge-npi"
+        />
+      </div>
+
+      {isLoading && debouncedNpi.length >= 5 && (
+        <div className="space-y-2">
+          <Skeleton className="h-16 w-full" />
+          <Skeleton className="h-16 w-full" />
+        </div>
+      )}
+
+      {matches && matches.length === 0 && debouncedNpi.length >= 5 && (
+        <div className="text-center py-6 text-sm text-muted-foreground">
+          No providers found with this NPI
+        </div>
+      )}
+
+      {matches && matches.length === 1 && (
+        <div className="text-center py-6 text-sm text-muted-foreground">
+          Only one provider with this NPI - no duplicates to merge
+        </div>
+      )}
+
+      {matches && matches.length > 1 && (
+        <div className="space-y-3">
+          <p className="text-sm text-muted-foreground">
+            {matches.length} providers share NPI <span className="font-mono font-medium">{debouncedNpi}</span>. Select the primary record to keep, then merge duplicates into it.
+          </p>
+          <div className="space-y-2">
+            {matches.map((p: any) => (
+              <div
+                key={p.id}
+                className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${keepId === p.id ? "border-primary bg-primary/5" : ""}`}
+                onClick={() => setKeepId(p.id)}
+                data-testid={`merge-candidate-${p.id}`}
+              >
+                <input
+                  type="radio"
+                  name="keepId"
+                  checked={keepId === p.id}
+                  onChange={() => setKeepId(p.id)}
+                  className="accent-primary"
+                />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium">{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
+                  <div className="flex flex-wrap gap-x-3 text-xs text-muted-foreground mt-0.5">
+                    <span className="font-mono">NPI: {p.npi}</span>
+                    {p.practiceName && <span>{p.practiceName}</span>}
+                    {p.city && <span>{p.city}, {p.state}</span>}
+                    {p.phone && <span>{p.phone}</span>}
+                  </div>
+                  <div className="flex gap-2 mt-1">
+                    <Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge>
+                    <Badge variant="secondary" className="text-[10px]">{p.referralCount || 0} referrals</Badge>
+                  </div>
+                </div>
+                {keepId && keepId !== p.id && (
+                  <Button
+                    size="sm"
+                    variant="destructive"
+                    onClick={(e) => { e.stopPropagation(); handleMerge(p.id); }}
+                    disabled={mergeMutation.isPending}
+                    data-testid={`button-merge-${p.id}`}
+                  >
+                    <Merge className="w-3 h-3 mr-1" />
+                    {mergeMutation.isPending ? "Merging..." : "Merge Into Primary"}
+                  </Button>
+                )}
+                {keepId === p.id && (
+                  <Badge variant="outline" className="text-[10px] bg-primary/10 text-primary">Primary</Badge>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="flex justify-end pt-2">
+        <Button variant="outline" onClick={onClose}>Close</Button>
+      </div>
+    </div>
+  );
+}
+
 function PracticeDetailDialog({ practiceName, onClose, onFilterByPractice }: { practiceName: string | null; onClose: () => void; onFilterByPractice: (name: string) => void }) {
   const { data: result } = useQuery<any>({
     queryKey: ["/api/physicians/paginated", "practice-detail", practiceName],
@@ -509,7 +777,7 @@ function PracticeDetailDialog({ practiceName, onClose, onFilterByPractice }: { p
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium">{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
-                  <p className="text-xs text-muted-foreground">{[p.specialty, p.city, p.state].filter(Boolean).join(" \u00b7 ") || "No details"}</p>
+                  <p className="text-xs text-muted-foreground">{[p.npi ? `NPI: ${p.npi}` : null, p.specialty, p.city, p.state].filter(Boolean).join(" \u00b7 ") || "No details"}</p>
                 </div>
                 <div className="text-right shrink-0">
                   {Number(p.referralCount) > 0 && (

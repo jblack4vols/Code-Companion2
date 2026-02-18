@@ -103,6 +103,7 @@ export interface IStorage {
   getMarketerTerritories(): Promise<any>;
   assignPhysicianToMarketer(physicianId: string, marketerId: string | null): Promise<Physician | undefined>;
   bulkAssignPhysiciansToMarketer(physicianIds: string[], marketerId: string | null): Promise<number>;
+  bulkUpdatePhysicianStatus(physicianIds: string[], status: string): Promise<number>;
 
   bulkUpsertPhysicians(rows: InsertPhysician[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
   bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
@@ -853,6 +854,14 @@ export class DatabaseStorage implements IStorage {
     if (physicianIds.length === 0) return 0;
     const result = await db.update(physicians)
       .set({ assignedOwnerId: marketerId, updatedAt: new Date() })
+      .where(sql`${physicians.id} IN (${sql.join(physicianIds.map(id => sql`${id}`), sql`, `)})`);
+    return physicianIds.length;
+  }
+
+  async bulkUpdatePhysicianStatus(physicianIds: string[], status: string) {
+    if (physicianIds.length === 0) return 0;
+    await db.update(physicians)
+      .set({ status: status as any, updatedAt: new Date() })
       .where(sql`${physicians.id} IN (${sql.join(physicianIds.map(id => sql`${id}`), sql`, `)})`);
     return physicianIds.length;
   }

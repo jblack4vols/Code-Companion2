@@ -282,6 +282,34 @@ export async function registerRoutes(
     }
   });
 
+  app.post("/api/physicians/bulk-status", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { physicianIds, status } = req.body;
+      if (!Array.isArray(physicianIds) || physicianIds.length === 0) return res.status(400).json({ message: "physicianIds required" });
+      if (!["PROSPECT", "ACTIVE", "INACTIVE"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+      const count = await storage.bulkUpdatePhysicianStatus(physicianIds, status);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_STATUS", entity: "Physician", entityId: "bulk", detailJson: { count, status } });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/physicians/by-npi", requireAuth, async (req, res) => {
+    try {
+      const npi = String(req.query.npi || "").trim();
+      if (!npi) return res.json([]);
+      const results = await db.execute(sql`
+        SELECT p.*, COALESCE((SELECT COUNT(*) FROM referrals r WHERE r.physician_id = p.id), 0)::int as "referralCount"
+        FROM physicians p WHERE p.npi = ${npi}
+        ORDER BY p.last_name, p.first_name
+      `);
+      res.json(results.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/physicians/:id", requireAuth, async (req, res) => {
     const phys = await storage.getPhysician(req.params.id);
     if (!phys) return res.status(404).json({ message: "Not found" });

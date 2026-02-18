@@ -98,6 +98,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       firstName: fd.get("firstName"),
       lastName: fd.get("lastName"),
       credentials: fd.get("credentials") || null,
+      npi: fd.get("npi") || null,
       specialty: fd.get("specialty") || null,
       practiceName: fd.get("practiceName") || null,
       phone: fd.get("phone") || null,
@@ -157,7 +158,12 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
         </Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold" data-testid="text-physician-name">{physician.firstName} {physician.lastName}{physician.credentials ? `, ${physician.credentials}` : ""}</h1>
-          <p className="text-sm text-muted-foreground">{[physician.specialty, physician.practiceName].filter(Boolean).join(" · ") || "No practice info"}</p>
+          <div className="flex items-center gap-3 flex-wrap">
+            <p className="text-sm text-muted-foreground">{[physician.specialty, physician.practiceName].filter(Boolean).join(" · ") || "No practice info"}</p>
+            {physician.npi && (
+              <Badge variant="secondary" className="text-[10px] font-mono" data-testid="badge-npi">NPI: {physician.npi}</Badge>
+            )}
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <Badge variant="outline" className={stageBadge[physician.relationshipStage]}>
@@ -191,13 +197,19 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                   <Input name="credentials" defaultValue={physician.credentials || ""} />
                 </div>
                 <div className="space-y-1.5">
+                  <Label>NPI</Label>
+                  <Input name="npi" defaultValue={physician.npi || ""} placeholder="10-digit NPI" maxLength={10} className="font-mono" data-testid="input-edit-npi" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
                   <Label>Specialty</Label>
                   <Input name="specialty" defaultValue={physician.specialty || ""} />
                 </div>
-              </div>
-              <div className="space-y-1.5">
-                <Label>Office/Practice Name</Label>
-                <Input name="practiceName" defaultValue={physician.practiceName || ""} />
+                <div className="space-y-1.5">
+                  <Label>Office/Practice Name</Label>
+                  <Input name="practiceName" defaultValue={physician.practiceName || ""} />
+                </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
