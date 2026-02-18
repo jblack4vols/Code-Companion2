@@ -11,6 +11,7 @@ import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteraction
 import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
 import { searchSites as searchSPSites, getSiteId as getSPSiteId, setSiteId as setSPSiteId, validateSite as validateSPSite, getSyncStatuses as getSPSyncStatuses, syncEntity as syncSPEntity, syncAll as syncSPAll } from "./sharepoint";
+import { Readable } from "stream";
 
 declare module "express-session" {
   interface SessionData {
@@ -841,7 +842,7 @@ export async function registerRoutes(
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const workbook = new ExcelJS.Workbook();
       if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(require("stream").Readable.from(req.file.buffer));
+        await workbook.csv.read(Readable.from(req.file.buffer));
       } else {
         await workbook.xlsx.load(req.file.buffer);
       }
@@ -864,7 +865,7 @@ export async function registerRoutes(
       const mapping = JSON.parse(req.body.mapping || "{}");
       const workbook = new ExcelJS.Workbook();
       if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(require("stream").Readable.from(req.file.buffer));
+        await workbook.csv.read(Readable.from(req.file.buffer));
       } else {
         await workbook.xlsx.load(req.file.buffer);
       }
@@ -917,7 +918,7 @@ export async function registerRoutes(
       const mapping = JSON.parse(req.body.mapping || "{}");
       const workbook = new ExcelJS.Workbook();
       if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(require("stream").Readable.from(req.file.buffer));
+        await workbook.csv.read(Readable.from(req.file.buffer));
       } else {
         await workbook.xlsx.load(req.file.buffer);
       }
