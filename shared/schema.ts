@@ -169,6 +169,7 @@ export const calendarEvents = pgTable("calendar_events", {
   endAt: timestamp("end_at").notNull(),
   locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
   physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id),
+  practiceName: text("practice_name"),
   organizerUserId: varchar("organizer_user_id", { length: 36 }).notNull().references(() => users.id),
   outlookEventId: text("outlook_event_id"),
   meetingUrl: text("meeting_url"),
