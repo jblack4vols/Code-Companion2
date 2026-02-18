@@ -226,6 +226,28 @@ export async function registerRoutes(
     res.json(await storage.searchPhysiciansTypeahead(query));
   });
 
+  app.get("/api/physicians/practice-names", requireAuth, async (req, res) => {
+    const allPhysicians = await storage.getPhysicians();
+    const practiceSet = new Set<string>();
+    for (const p of allPhysicians) {
+      if (p.practiceName && p.practiceName.trim()) {
+        practiceSet.add(p.practiceName.trim());
+      }
+    }
+    const sorted = Array.from(practiceSet).sort((a, b) => a.localeCompare(b));
+    res.json(sorted);
+  });
+
+  app.get("/api/physicians/by-practice", requireAuth, async (req, res) => {
+    const name = (req.query.name as string || "").trim();
+    if (!name) return res.json([]);
+    const allPhysicians = await storage.getPhysicians();
+    const matched = allPhysicians.filter(
+      (p) => p.practiceName && p.practiceName.trim().toLowerCase() === name.toLowerCase()
+    );
+    res.json(matched);
+  });
+
   app.get("/api/physicians", requireAuth, async (req, res) => {
     res.json(await storage.getPhysicians());
   });
@@ -397,6 +419,7 @@ export async function registerRoutes(
       endDate: req.query.endDate as string | undefined,
       locationId: req.query.locationId as string | undefined,
       physicianId: req.query.physicianId as string | undefined,
+      practiceName: req.query.practiceName as string | undefined,
     };
     res.json(await storage.getCalendarEvents(filters));
   });

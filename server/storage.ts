@@ -76,7 +76,7 @@ export interface IStorage {
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, data: Partial<InsertTask & { status: string }>): Promise<Task | undefined>;
 
-  getCalendarEvents(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }): Promise<CalendarEvent[]>;
+  getCalendarEvents(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string; practiceName?: string }): Promise<CalendarEvent[]>;
   getCalendarEvent(id: string): Promise<CalendarEvent | undefined>;
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
@@ -461,12 +461,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getCalendarEvents(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }) {
+  async getCalendarEvents(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string; practiceName?: string }) {
     const conditions = [];
     if (filters?.startDate) conditions.push(gte(calendarEvents.startAt, new Date(filters.startDate)));
     if (filters?.endDate) conditions.push(lte(calendarEvents.endAt, new Date(filters.endDate)));
     if (filters?.locationId) conditions.push(eq(calendarEvents.locationId, filters.locationId));
     if (filters?.physicianId) conditions.push(eq(calendarEvents.physicianId, filters.physicianId));
+    if (filters?.practiceName) conditions.push(eq(calendarEvents.practiceName, filters.practiceName));
 
     if (conditions.length > 0) {
       return db.select().from(calendarEvents).where(and(...conditions)).orderBy(asc(calendarEvents.startAt));

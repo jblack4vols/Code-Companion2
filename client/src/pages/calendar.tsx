@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,7 +9,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -63,11 +65,16 @@ export default function CalendarPage() {
   const [currentMonth, setCurrentMonth] = useState(new Date());
   const [viewMode, setViewMode] = useState<ViewMode>("calendar");
   const [locationFilter, setLocationFilter] = useState<string>("all");
-  const [physicianFilter, setPhysicianFilter] = useState<string>("all");
+  const [practiceFilter, setPracticeFilter] = useState<string>("all");
+  const [practiceFilterOpen, setPracticeFilterOpen] = useState(false);
   const [eventTypeFilter, setEventTypeFilter] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  const [selectedPracticeName, setSelectedPracticeName] = useState<string>("");
+  const [practiceComboOpen, setPracticeComboOpen] = useState(false);
+  const [practiceDetailName, setPracticeDetailName] = useState<string | null>(null);
 
   const monthStart = startOfMonth(currentMonth);
   const monthEnd = endOfMonth(currentMonth);
@@ -76,10 +83,10 @@ export default function CalendarPage() {
 
   const queryParams = new URLSearchParams({ startDate, endDate });
   if (locationFilter !== "all") queryParams.set("locationId", locationFilter);
-  if (physicianFilter !== "all") queryParams.set("physicianId", physicianFilter);
+  if (practiceFilter !== "all") queryParams.set("practiceName", practiceFilter);
 
   const { data: events, isLoading } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar-events", startDate, endDate, locationFilter, physicianFilter],
+    queryKey: ["/api/calendar-events", startDate, endDate, locationFilter, practiceFilter],
     queryFn: async () => {
       const res = await fetch(`/api/calendar-events?${queryParams.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch events");
@@ -88,7 +95,29 @@ export default function CalendarPage() {
   });
 
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
-  const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
+  const { data: practiceNames } = useQuery<string[]>({ queryKey: ["/api/physicians/practice-names"] });
+
+  const { data: practicePhysicians } = useQuery<Physician[]>({
+    queryKey: ["/api/physicians/by-practice", selectedPracticeName],
+    queryFn: async () => {
+      if (!selectedPracticeName) return [];
+      const res = await fetch(`/api/physicians/by-practice?name=${encodeURIComponent(selectedPracticeName)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPracticeName,
+  });
+
+  const { data: detailPhysicians } = useQuery<Physician[]>({
+    queryKey: ["/api/physicians/by-practice", practiceDetailName],
+    queryFn: async () => {
+      if (!practiceDetailName) return [];
+      const res = await fetch(`/api/physicians/by-practice?name=${encodeURIComponent(practiceDetailName)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!practiceDetailName,
+  });
 
   const createMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -99,6 +128,7 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
       setDialogOpen(false);
       setEditingEvent(null);
+      setSelectedPracticeName("");
       toast({ title: "Event created" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -113,6 +143,7 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
       setDialogOpen(false);
       setEditingEvent(null);
+      setSelectedPracticeName("");
       toast({ title: "Event updated" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -126,6 +157,7 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
       setDialogOpen(false);
       setEditingEvent(null);
+      setSelectedPracticeName("");
       toast({ title: "Event deleted" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
@@ -153,7 +185,8 @@ export default function CalendarPage() {
       startAt: new Date(fd.get("startAt") as string).toISOString(),
       endAt: new Date(fd.get("endAt") as string).toISOString(),
       locationId: fd.get("locationId") || null,
-      physicianId: fd.get("physicianId") || null,
+      practiceName: selectedPracticeName || null,
+      physicianId: null,
       organizerUserId: user?.id,
       meetingUrl: fd.get("meetingUrl") || null,
       allDay: fd.get("allDay") === "on",
@@ -168,12 +201,14 @@ export default function CalendarPage() {
 
   const openCreateDialog = (date?: Date) => {
     setEditingEvent(null);
+    setSelectedPracticeName("");
     setSelectedDate(date || new Date());
     setDialogOpen(true);
   };
 
   const openEditDialog = (event: CalendarEvent) => {
     setEditingEvent(event);
+    setSelectedPracticeName((event as any).practiceName || "");
     setSelectedDate(null);
     setDialogOpen(true);
   };
@@ -212,7 +247,7 @@ export default function CalendarPage() {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-calendar-title">Calendar</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">Manage events and appointments</p>
+          <p className="text-xs sm:text-sm text-muted-foreground">Manage events and office visits</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button
@@ -272,17 +307,45 @@ export default function CalendarPage() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={physicianFilter} onValueChange={setPhysicianFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-filter-physician">
-            <SelectValue placeholder="Physician" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">All Physicians</SelectItem>
-            {physicians?.map((p) => (
-              <SelectItem key={p.id} value={p.id}>Dr. {p.firstName} {p.lastName}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Popover open={practiceFilterOpen} onOpenChange={setPracticeFilterOpen}>
+          <PopoverTrigger asChild>
+            <Button variant="outline" className="w-[200px] justify-between font-normal" data-testid="select-filter-practice">
+              {practiceFilter !== "all" ? (
+                <span className="truncate">{practiceFilter}</span>
+              ) : (
+                <span>All Offices</span>
+              )}
+              <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+            </Button>
+          </PopoverTrigger>
+          <PopoverContent className="w-[300px] p-0" align="start">
+            <Command>
+              <CommandInput placeholder="Search offices..." data-testid="input-filter-practice-search" />
+              <CommandList>
+                <CommandEmpty>No office found.</CommandEmpty>
+                <CommandGroup>
+                  <CommandItem
+                    value="__all__"
+                    onSelect={() => { setPracticeFilter("all"); setPracticeFilterOpen(false); }}
+                  >
+                    <Check className={`mr-2 h-4 w-4 ${practiceFilter === "all" ? "opacity-100" : "opacity-0"}`} />
+                    All Offices
+                  </CommandItem>
+                  {practiceNames?.map((name) => (
+                    <CommandItem
+                      key={name}
+                      value={name}
+                      onSelect={() => { setPracticeFilter(name); setPracticeFilterOpen(false); }}
+                    >
+                      <Check className={`mr-2 h-4 w-4 ${practiceFilter === name ? "opacity-100" : "opacity-0"}`} />
+                      {name}
+                    </CommandItem>
+                  ))}
+                </CommandGroup>
+              </CommandList>
+            </Command>
+          </PopoverContent>
+        </Popover>
         <Select value={eventTypeFilter} onValueChange={setEventTypeFilter}>
           <SelectTrigger className="w-[160px]" data-testid="select-filter-event-type">
             <SelectValue placeholder="Event Type" />
@@ -367,8 +430,8 @@ export default function CalendarPage() {
             </Card>
           ) : (
             sortedEvents.map((evt) => {
-              const phys = physicians?.find((p) => p.id === evt.physicianId);
               const loc = locations?.find((l) => l.id === evt.locationId);
+              const evtPractice = (evt as any).practiceName;
               return (
                 <Card
                   key={evt.id}
@@ -390,10 +453,19 @@ export default function CalendarPage() {
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {format(new Date(evt.startAt), "MMM d, yyyy h:mm a")} - {format(new Date(evt.endAt), "h:mm a")}
                       </p>
-                      {phys && (
-                        <p className="text-xs text-muted-foreground mt-0.5">
-                          Dr. {phys.firstName} {phys.lastName}
-                        </p>
+                      {evtPractice && (
+                        <button
+                          type="button"
+                          className="text-xs text-primary mt-0.5 flex items-center gap-1"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPracticeDetailName(evtPractice);
+                          }}
+                          data-testid={`button-view-practice-${evt.id}`}
+                        >
+                          <Building2 className="w-3 h-3" />
+                          {evtPractice}
+                        </button>
                       )}
                       {loc && (
                         <p className="text-xs text-muted-foreground mt-0.5">{loc.name}</p>
@@ -420,8 +492,8 @@ export default function CalendarPage() {
         </div>
       )}
 
-      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditingEvent(null); }}>
-        <DialogContent>
+      <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) { setEditingEvent(null); setSelectedPracticeName(""); } }}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editingEvent ? "Edit Event" : "New Event"}</DialogTitle>
           </DialogHeader>
@@ -501,19 +573,74 @@ export default function CalendarPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Physician</Label>
-              <select
-                name="physicianId"
-                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
-                defaultValue={editingEvent?.physicianId || ""}
-                data-testid="select-event-physician"
-              >
-                <option value="">None</option>
-                {physicians?.map((p) => (
-                  <option key={p.id} value={p.id}>Dr. {p.firstName} {p.lastName}</option>
-                ))}
-              </select>
+              <Label>Office/Practice Name</Label>
+              <Popover open={practiceComboOpen} onOpenChange={setPracticeComboOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-between font-normal"
+                    data-testid="select-event-practice"
+                  >
+                    {selectedPracticeName ? (
+                      <span className="truncate">{selectedPracticeName}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Search for an office...</span>
+                    )}
+                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+                  <Command>
+                    <CommandInput placeholder="Search offices..." data-testid="input-search-practice" />
+                    <CommandList>
+                      <CommandEmpty>No office found.</CommandEmpty>
+                      <CommandGroup>
+                        <CommandItem
+                          value=""
+                          onSelect={() => {
+                            setSelectedPracticeName("");
+                            setPracticeComboOpen(false);
+                          }}
+                        >
+                          <Check className={`mr-2 h-4 w-4 ${!selectedPracticeName ? "opacity-100" : "opacity-0"}`} />
+                          None
+                        </CommandItem>
+                        {practiceNames?.map((name) => (
+                          <CommandItem
+                            key={name}
+                            value={name}
+                            onSelect={() => {
+                              setSelectedPracticeName(name);
+                              setPracticeComboOpen(false);
+                            }}
+                            data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
+                          >
+                            <Check className={`mr-2 h-4 w-4 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
+                            {name}
+                          </CommandItem>
+                        ))}
+                      </CommandGroup>
+                    </CommandList>
+                  </Command>
+                </PopoverContent>
+              </Popover>
             </div>
+
+            {selectedPracticeName && practicePhysicians && practicePhysicians.length > 0 && (
+              <div className="space-y-1.5">
+                <Label className="text-xs text-muted-foreground">Physicians at {selectedPracticeName}</Label>
+                <div className="border rounded-md p-2 space-y-1 max-h-[120px] overflow-y-auto bg-muted/30">
+                  {practicePhysicians.map((p) => (
+                    <div key={p.id} className="flex items-center gap-2 text-xs" data-testid={`text-practice-physician-${p.id}`}>
+                      <User className="w-3 h-3 text-muted-foreground shrink-0" />
+                      <span>Dr. {p.firstName} {p.lastName}</span>
+                      {p.specialty && <span className="text-muted-foreground">- {p.specialty}</span>}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <div className="space-y-1.5">
               <Label>Description</Label>
               <Textarea
@@ -571,6 +698,42 @@ export default function CalendarPage() {
               </div>
             </div>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={!!practiceDetailName} onOpenChange={(open) => { if (!open) setPracticeDetailName(null); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              {practiceDetailName}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-2">
+            <p className="text-sm text-muted-foreground">Physicians at this office:</p>
+            {!detailPhysicians ? (
+              <div className="space-y-2">
+                {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full" />)}
+              </div>
+            ) : detailPhysicians.length === 0 ? (
+              <p className="text-sm text-muted-foreground py-4 text-center">No physicians found for this practice.</p>
+            ) : (
+              <div className="border rounded-md divide-y max-h-[400px] overflow-y-auto">
+                {detailPhysicians.map((p) => (
+                  <div key={p.id} className="flex items-center gap-3 p-3" data-testid={`detail-physician-${p.id}`}>
+                    <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                      <User className="w-4 h-4 text-primary" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium">Dr. {p.firstName} {p.lastName}</p>
+                      {p.specialty && <p className="text-xs text-muted-foreground">{p.specialty}</p>}
+                      {p.city && <p className="text-xs text-muted-foreground">{p.city}{p.state ? `, ${p.state}` : ""}</p>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>

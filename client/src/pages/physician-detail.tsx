@@ -196,7 +196,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label>Practice</Label>
+                <Label>Office/Practice Name</Label>
                 <Input name="practiceName" defaultValue={physician.practiceName || ""} />
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -299,7 +299,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
               )}
               {physician.practiceName && (
                 <div className="flex justify-between text-xs">
-                  <span className="text-muted-foreground">Practice</span>
+                  <span className="text-muted-foreground">Office/Practice Name</span>
                   <Link href={`/physicians?practice=${encodeURIComponent(physician.practiceName)}`}>
                     <span className="hover:underline text-primary/80 cursor-pointer flex items-center gap-1" data-testid="link-practice-detail">
                       <Building2 className="w-3 h-3" />{physician.practiceName}

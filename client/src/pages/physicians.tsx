@@ -232,7 +232,7 @@ export default function PhysiciansPage() {
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="practiceName">Practice Name</Label>
+                  <Label htmlFor="practiceName">Office/Practice Name</Label>
                   <Input id="practiceName" name="practiceName" data-testid="input-physician-practice" />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
@@ -375,7 +375,7 @@ export default function PhysiciansPage() {
                   <TableRow>
                     <SortableHead label="Provider" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="min-w-[180px]" />
                     <TableHead>Credentials</TableHead>
-                    <TableHead>Practice</TableHead>
+                    <TableHead>Office/Practice Name</TableHead>
                     <SortableHead label="Location" field="location" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                     <SortableHead label="Status" field="status" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
                     <SortableHead label="Stage" field="stage" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
