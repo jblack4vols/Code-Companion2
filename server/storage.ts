@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql, ilike, or } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray } from "drizzle-orm";
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
@@ -107,6 +107,7 @@ export interface IStorage {
 
   bulkUpsertPhysicians(rows: InsertPhysician[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
   bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
+  bulkDeleteReferrals(ids: string[]): Promise<number>;
   findPhysicianByNameAndNpi(firstName: string, lastName: string, npi?: string | null): Promise<Physician | undefined>;
   findLocationByName(name: string): Promise<Location | undefined>;
 
@@ -1018,6 +1019,12 @@ export class DatabaseStorage implements IStorage {
     }
     return { inserted, updated, errors };
   }
+  async bulkDeleteReferrals(ids: string[]): Promise<number> {
+    if (ids.length === 0) return 0;
+    const result = await db.delete(referrals).where(inArray(referrals.id, ids));
+    return result.rowCount ?? 0;
+  }
+
   async getTerritories() {
     return db.select().from(territories).orderBy(asc(territories.name));
   }

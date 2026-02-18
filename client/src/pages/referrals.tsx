@@ -9,7 +9,9 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2 } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -75,6 +77,41 @@ export default function ReferralsPage() {
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
   const canCreate = user ? hasPermission(user.role, "create", "referral") : false;
+  const isOwner = user?.role === "OWNER";
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedIds.size === referrals.length) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(referrals.map((r: any) => r.id)));
+    }
+  };
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (ids: string[]) => {
+      const res = await apiRequest("DELETE", "/api/referrals/bulk", { ids });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return key === "/api/referrals/paginated" || key === "/api/referrals" || key === "/api/physicians";
+      }});
+      setSelectedIds(new Set());
+      toast({ title: `${data.count} referral${data.count === 1 ? "" : "s"} deleted` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const [physicianSearch, setPhysicianSearch] = useState("");
   const [physicianResults, setPhysicianResults] = useState<any[]>([]);
@@ -202,7 +239,7 @@ export default function ReferralsPage() {
     URL.revokeObjectURL(url);
   };
 
-  const setPageAndReset = (p: number) => setPage(Math.max(1, Math.min(p, totalPages)));
+  const setPageAndReset = (p: number) => { setPage(Math.max(1, Math.min(p, totalPages))); setSelectedIds(new Set()); };
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
@@ -212,6 +249,33 @@ export default function ReferralsPage() {
           <p className="text-xs sm:text-sm text-muted-foreground">{total} total cases &middot; {activeCount} active &middot; {dischargedCount} discharged</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {isOwner && selectedIds.size > 0 && (
+            <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" data-testid="button-bulk-delete-referrals">
+                  <Trash2 className="w-3 h-3 mr-1.5" />Delete {selectedIds.size} Selected
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete {selectedIds.size} Referral{selectedIds.size === 1 ? "" : "s"}?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will permanently remove the selected referral records. This action cannot be undone.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    data-testid="button-confirm-delete"
+                  >
+                    {bulkDeleteMutation.isPending ? "Deleting..." : "Delete"}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          )}
           <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-referrals">
             <Download className="w-3 h-3 mr-1.5" />Export CSV
           </Button>
@@ -463,6 +527,16 @@ export default function ReferralsPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    {isOwner && (
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={referrals.length > 0 && selectedIds.size === referrals.length}
+                          onCheckedChange={toggleSelectAll}
+                          aria-label="Select all"
+                          data-testid="checkbox-select-all"
+                        />
+                      </TableHead>
+                    )}
                     <TableHead>Created</TableHead>
                     <TableHead>Patient</TableHead>
                     <TableHead>Referring Doctor</TableHead>
@@ -477,6 +551,16 @@ export default function ReferralsPage() {
                 <TableBody>
                   {referrals.map((r: any) => (
                     <TableRow key={r.id} className="hover-elevate cursor-pointer" onClick={() => setSelectedReferral(r)} data-testid={`row-referral-${r.id}`}>
+                      {isOwner && (
+                        <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
+                          <Checkbox
+                            checked={selectedIds.has(r.id)}
+                            onCheckedChange={() => toggleSelect(r.id)}
+                            aria-label={`Select referral ${r.patientFullName || r.id}`}
+                            data-testid={`checkbox-referral-${r.id}`}
+                          />
+                        </TableCell>
+                      )}
                       <TableCell className="text-sm whitespace-nowrap">{format(new Date(r.referralDate + "T00:00:00"), "MM/dd/yy")}</TableCell>
                       <TableCell>
                         <div>

@@ -409,6 +409,20 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/referrals/bulk", requireRole("OWNER"), async (req, res) => {
+    try {
+      const bulkDeleteSchema = z.object({ ids: z.array(z.string().uuid()).min(1, "At least one id required") });
+      const parsed = bulkDeleteSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
+      const { ids } = parsed.data;
+      const count = await storage.bulkDeleteReferrals(ids);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Referral", entityId: "bulk", detailJson: { count, ids } });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   // --- Tasks ---
   app.get("/api/tasks", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
