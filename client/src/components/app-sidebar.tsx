@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -17,12 +17,15 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Physicians", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Referrals", url: "/referrals", icon: FileText },
-  { title: "Tasks", url: "/tasks", icon: ClipboardList, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
+];
+
+const opsItems = [
+  { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Tasks", url: "/tasks", icon: ClipboardList, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
 ];
@@ -66,8 +69,11 @@ export function AppSidebar() {
 
   const isAdminActive = location.startsWith("/admin/") || location === "/import";
   const isIntelActive = location.startsWith("/dashboards/");
+  const opsUrls = ["/tiering", "/declining", "/tasks", "/map", "/territories"];
+  const isOpsActive = opsUrls.some((u) => location === u || location.startsWith(u + "/"));
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
   const [intelOpen, setIntelOpen] = useState(isIntelActive);
+  const [opsOpen, setOpsOpen] = useState(isOpsActive);
 
   useEffect(() => {
     if (!isAdminActive) setAdminOpen(false);
@@ -76,6 +82,10 @@ export function AppSidebar() {
   useEffect(() => {
     if (!isIntelActive) setIntelOpen(false);
   }, [isIntelActive]);
+
+  useEffect(() => {
+    if (!isOpsActive) setOpsOpen(false);
+  }, [isOpsActive]);
 
   if (!user) return null;
 
@@ -114,6 +124,46 @@ export function AppSidebar() {
                   </SidebarMenuButton>
                 </SidebarMenuItem>
               ))}
+            </SidebarMenu>
+          </SidebarGroupContent>
+        </SidebarGroup>
+
+        <SidebarGroup>
+          <SidebarGroupContent>
+            <SidebarMenu>
+              <Collapsible open={opsOpen || isOpsActive} onOpenChange={setOpsOpen} className="group/ops">
+                <SidebarMenuItem>
+                  <CollapsibleTrigger asChild>
+                    <SidebarMenuButton
+                      isActive={isOpsActive}
+                      data-testid="button-operations-dropdown"
+                    >
+                      <Crosshair className="w-4 h-4" />
+                      <span>Operations</span>
+                      <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/ops:rotate-90" />
+                    </SidebarMenuButton>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <SidebarMenuSub>
+                      {opsItems
+                        .filter((item) => !item.roles || item.roles.includes(user.role))
+                        .map((item) => (
+                        <SidebarMenuSubItem key={item.title}>
+                          <SidebarMenuSubButton
+                            asChild
+                            isActive={location === item.url || location.startsWith(item.url + "/")}
+                          >
+                            <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                              <item.icon className="w-3.5 h-3.5" />
+                              <span>{item.title}</span>
+                            </Link>
+                          </SidebarMenuSubButton>
+                        </SidebarMenuSubItem>
+                      ))}
+                    </SidebarMenuSub>
+                  </CollapsibleContent>
+                </SidebarMenuItem>
+              </Collapsible>
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
