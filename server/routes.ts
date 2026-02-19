@@ -309,6 +309,55 @@ export async function registerRoutes(
     }
   });
 
+  // --- Duplicate Detection (must be before /:id route) ---
+  app.get("/api/physicians/duplicates", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const dupes = await db.execute(sql`
+        WITH potential_dupes AS (
+          SELECT p1.id as id1, p2.id as id2,
+            p1.first_name as first_name_1, p1.last_name as last_name_1, p1.npi as npi_1, p1.practice_name as practice_1, p1.city as city_1, p1.status as status_1,
+            p2.first_name as first_name_2, p2.last_name as last_name_2, p2.npi as npi_2, p2.practice_name as practice_2, p2.city as city_2, p2.status as status_2,
+            CASE
+              WHEN p1.npi IS NOT NULL AND p1.npi = p2.npi THEN 'NPI Match'
+              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) AND COALESCE(LOWER(p1.city), '') = COALESCE(LOWER(p2.city), '') THEN 'Name + City Match'
+              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) THEN 'Name Match'
+            END as match_reason
+          FROM physicians p1
+          JOIN physicians p2 ON p1.id < p2.id
+          WHERE (
+            (p1.npi IS NOT NULL AND p1.npi != '' AND p1.npi = p2.npi)
+            OR (LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name))
+          )
+        )
+        SELECT * FROM potential_dupes
+        ORDER BY match_reason DESC, last_name_1, first_name_1
+        LIMIT 100
+      `);
+      res.json(dupes.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/merge", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { keepId, removeId } = req.body;
+      if (!keepId || !removeId) return res.status(400).json({ message: "keepId and removeId required" });
+      if (keepId === removeId) return res.status(400).json({ message: "Cannot merge physician with itself" });
+      
+      await db.execute(sql`UPDATE referrals SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE interactions SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE tasks SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`DELETE FROM physicians WHERE id = ${removeId}`);
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId } });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/physicians/:id", requireAuth, async (req, res) => {
     const phys = await storage.getPhysician(req.params.id);
     if (!phys) return res.status(404).json({ message: "Not found" });
@@ -1216,55 +1265,6 @@ export async function registerRoutes(
         ...(recentReferrals.rows as any[]).map(r => ({ ...r, activity_type: 'referral' })),
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, limit);
       res.json(combined);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  // --- Duplicate Detection ---
-  app.get("/api/physicians/duplicates", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
-    try {
-      const dupes = await db.execute(sql`
-        WITH potential_dupes AS (
-          SELECT p1.id as id1, p2.id as id2,
-            p1.first_name as first_name_1, p1.last_name as last_name_1, p1.npi as npi_1, p1.practice_name as practice_1, p1.city as city_1, p1.status as status_1,
-            p2.first_name as first_name_2, p2.last_name as last_name_2, p2.npi as npi_2, p2.practice_name as practice_2, p2.city as city_2, p2.status as status_2,
-            CASE
-              WHEN p1.npi IS NOT NULL AND p1.npi = p2.npi THEN 'NPI Match'
-              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) AND COALESCE(LOWER(p1.city), '') = COALESCE(LOWER(p2.city), '') THEN 'Name + City Match'
-              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) THEN 'Name Match'
-            END as match_reason
-          FROM physicians p1
-          JOIN physicians p2 ON p1.id < p2.id
-          WHERE (
-            (p1.npi IS NOT NULL AND p1.npi != '' AND p1.npi = p2.npi)
-            OR (LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name))
-          )
-        )
-        SELECT * FROM potential_dupes
-        ORDER BY match_reason DESC, last_name_1, first_name_1
-        LIMIT 100
-      `);
-      res.json(dupes.rows);
-    } catch (err: any) {
-      res.status(500).json({ message: err.message });
-    }
-  });
-
-  app.post("/api/physicians/merge", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
-    try {
-      const { keepId, removeId } = req.body;
-      if (!keepId || !removeId) return res.status(400).json({ message: "keepId and removeId required" });
-      if (keepId === removeId) return res.status(400).json({ message: "Cannot merge physician with itself" });
-      
-      await db.execute(sql`UPDATE referrals SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
-      await db.execute(sql`UPDATE interactions SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
-      await db.execute(sql`UPDATE tasks SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
-      await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
-      await db.execute(sql`DELETE FROM physicians WHERE id = ${removeId}`);
-
-      await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId } });
-      res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
