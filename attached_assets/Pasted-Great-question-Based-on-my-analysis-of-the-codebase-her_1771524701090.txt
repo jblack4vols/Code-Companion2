@@ -1,0 +1,32 @@
+Great question. Based on my analysis of the codebase, here are the areas where I could help improve Tristar 360°:
+
+Performance & Scalability
+server/routes.ts is ~2,075 lines — I can split it into modular route files (physicians, referrals, dashboard, integrations, etc.) for maintainability
+server/storage.ts is ~1,323 lines — same treatment, break into domain-specific storage modules
+Add database indexes where missing for common query patterns (filtered/paginated physician searches, referral lookups by date range, audit log queries)
+Optimize the ETL job — currently clears and recomputes all 6 months of summaries nightly; could do incremental/delta processing
+Security Hardening
+CSRF protection — I didn't see CSRF tokens; important for session-based auth
+Rate limiting — add rate limiting on login and public API endpoints to prevent brute force
+Input sanitization — audit all routes for injection risks beyond what Drizzle/Zod provide
+API key rotation — add expiration dates and rotation workflows for API keys
+Code Quality
+Add tests — I didn't see a test suite; I can add unit tests for the storage layer, API route tests, and frontend component tests
+Error handling — standardize error responses across all endpoints with consistent error codes
+TypeScript strictness — tighten types where any is used, add return type annotations on route handlers
+Features & UX
+Real-time notifications — WebSocket or SSE for activity feed updates, task assignments, declining referral alerts
+Advanced filtering/search — add saved filters, date range pickers, and multi-field search on the physicians and referrals pages
+Bulk operations — expand bulk actions (bulk email, bulk territory reassignment)
+Report builder — let users create custom reports beyond the scheduled ones
+Mobile responsiveness — audit and improve the responsive layout for tablet/phone use in the field
+DevOps & Reliability
+Add CI/CD pipeline — automated linting, type checking, and tests on push
+Database migrations — you're using db:push (schema push); I can set up proper Drizzle migration files for safer production deploys
+Logging — add structured logging (e.g., pino) instead of console.log for production debugging
+Health check endpoint — add /api/health for monitoring
+Environment validation — centralize and validate all env vars at startup with Zod
+Data Integrity
+Soft deletes — audit whether hard deletes are happening where soft deletes would be safer (HIPAA retention)
+Data validation gaps — check for missing Zod validation on any endpoints
+Referral deduplication — similar to physician duplicate detection, add it for referrals
