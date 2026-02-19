@@ -70,7 +70,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id] });
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       setEditing(false);
-      toast({ title: "Physician updated" });
+      toast({ title: "Referring provider updated" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -140,8 +140,8 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   if (!physician) {
     return (
       <div className="p-4 sm:p-6 max-w-5xl mx-auto">
-        <p className="text-muted-foreground">Physician not found</p>
-        <Link href="/physicians"><Button variant="outline" className="mt-4">Back to Physicians</Button></Link>
+        <p className="text-muted-foreground">Referring provider not found</p>
+        <Link href="/physicians"><Button variant="outline" className="mt-4">Back to Referring Providers</Button></Link>
       </div>
     );
   }

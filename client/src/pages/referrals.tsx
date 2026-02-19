@@ -374,7 +374,7 @@ export default function ReferralsPage() {
                               </button>
                             )) : (
                               <div className="px-3 py-3 text-sm text-muted-foreground text-center">
-                                No physicians found
+                                No referring providers found
                               </div>
                             )}
                           </div>

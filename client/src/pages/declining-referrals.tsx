@@ -39,7 +39,7 @@ export default function DecliningReferralsPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-declining-title">Declining Referrals</h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Physicians whose referral volume has dropped vs. the prior period
+            Referring providers whose referral volume has dropped vs. the prior period
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -65,7 +65,7 @@ export default function DecliningReferralsPage() {
               <TrendingDown className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Declining Physicians</p>
+              <p className="text-sm text-muted-foreground">Declining Referring Providers</p>
               <p className="text-2xl font-bold" data-testid="text-declining-count">{results.length}</p>
             </div>
           </CardContent>
@@ -154,7 +154,7 @@ export default function DecliningReferralsPage() {
                     <TableCell colSpan={6} className="text-center py-12">
                       <TrendingDown className="w-8 h-8 mx-auto mb-2 opacity-20" />
                       <p className="text-sm text-muted-foreground">No declining referral relationships found</p>
-                      <p className="text-xs text-muted-foreground mt-1">All physician referrals are stable or growing</p>
+                      <p className="text-xs text-muted-foreground mt-1">All referring provider referrals are stable or growing</p>
                     </TableCell>
                   </TableRow>
                 )}

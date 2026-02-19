@@ -67,7 +67,7 @@ export default function DuplicateDetectionPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/duplicates"] });
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
-      toast({ title: "Physicians merged successfully" });
+      toast({ title: "Referring providers merged successfully" });
     },
     onError: (err: any) => {
       toast({ title: "Merge failed", description: err.message, variant: "destructive" });
@@ -113,7 +113,7 @@ export default function DuplicateDetectionPage() {
               Duplicate Detection
             </h1>
             <p className="text-xs sm:text-sm text-muted-foreground">
-              Review and merge potential duplicate physician records
+              Review and merge potential duplicate referring provider records
             </p>
           </div>
         </div>
@@ -128,7 +128,7 @@ export default function DuplicateDetectionPage() {
         <Card>
           <CardContent className="p-8 flex flex-col items-center justify-center text-center">
             <CheckCircle2 className="w-10 h-10 text-chart-4 mb-3" />
-            <p className="text-sm font-medium" data-testid="text-no-duplicates">No duplicate physicians found</p>
+            <p className="text-sm font-medium" data-testid="text-no-duplicates">No duplicate referring providers found</p>
             <p className="text-xs text-muted-foreground mt-1">All records appear to be unique</p>
           </CardContent>
         </Card>
@@ -153,7 +153,7 @@ export default function DuplicateDetectionPage() {
                 <CardContent className="p-4 pt-0 space-y-3">
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <PhysicianInfo
-                      label="Physician 1"
+                      label="Provider 1"
                       name={name1}
                       npi={pair.npi_1}
                       practice={pair.practice_1}
@@ -161,7 +161,7 @@ export default function DuplicateDetectionPage() {
                       status={pair.status_1}
                     />
                     <PhysicianInfo
-                      label="Physician 2"
+                      label="Provider 2"
                       name={name2}
                       npi={pair.npi_2}
                       practice={pair.practice_2}

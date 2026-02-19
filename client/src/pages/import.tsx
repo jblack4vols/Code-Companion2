@@ -223,7 +223,7 @@ export default function ImportPage() {
       <div className="max-w-4xl mx-auto space-y-6">
         <div>
           <h1 className="text-2xl font-bold" data-testid="text-import-title">Import Data</h1>
-          <p className="text-sm text-muted-foreground mt-1">Upload Excel spreadsheets to import physicians or referrals</p>
+          <p className="text-sm text-muted-foreground mt-1">Upload Excel spreadsheets to import referring providers or referrals</p>
         </div>
 
         <div className="flex items-center gap-2">
@@ -257,7 +257,7 @@ export default function ImportPage() {
               <CardContent className="p-6 text-center">
                 <FileSpreadsheet className="w-10 h-10 mx-auto mb-3 text-chart-1" />
                 <h3 className="font-semibold text-lg">Referring Providers</h3>
-                <p className="text-sm text-muted-foreground mt-2">Import physicians from a provider list spreadsheet</p>
+                <p className="text-sm text-muted-foreground mt-2">Import referring providers from a provider list spreadsheet</p>
               </CardContent>
             </Card>
             <Card
@@ -281,7 +281,7 @@ export default function ImportPage() {
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div>
-                <h2 className="font-semibold">Upload {importType === "physicians" ? "Physician" : "Referral"} File</h2>
+                <h2 className="font-semibold">Upload {importType === "physicians" ? "Referring Provider" : "Referral"} File</h2>
                 <p className="text-sm text-muted-foreground">Select an Excel (.xlsx) or CSV file</p>
               </div>
             </CardHeader>
@@ -414,7 +414,7 @@ export default function ImportPage() {
             <div className="flex justify-end gap-3">
               <Button variant="outline" onClick={reset} data-testid="button-cancel">Cancel</Button>
               <Button onClick={handleImport} disabled={requiredMapped < requiredTotal} data-testid="button-start-import">
-                Import {preview.totalRows.toLocaleString()} {importType === "physicians" ? "Physicians" : "Referrals"}
+                Import {preview.totalRows.toLocaleString()} {importType === "physicians" ? "Referring Providers" : "Referrals"}
               </Button>
             </div>
           </>
@@ -424,7 +424,7 @@ export default function ImportPage() {
           <Card>
             <CardContent className="p-12 text-center">
               <Loader2 className="w-12 h-12 mx-auto mb-4 animate-spin text-primary" />
-              <h2 className="text-lg font-semibold">Importing {importType}...</h2>
+              <h2 className="text-lg font-semibold">Importing {importType === "physicians" ? "referring providers" : "referrals"}...</h2>
               <p className="text-sm text-muted-foreground mt-2">
                 Processing {preview?.totalRows.toLocaleString()} rows. This may take a moment for large files.
               </p>

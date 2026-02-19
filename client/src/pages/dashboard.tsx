@@ -119,7 +119,7 @@ export default function DashboardPage() {
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Overview of your physician referral pipeline</p>
+          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Overview of your referring provider pipeline</p>
         </div>
         <div className="flex items-center gap-2">
           {hasActiveFilters && (
@@ -180,13 +180,13 @@ export default function DashboardPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Physician</Label>
+                <Label className="text-xs">Referring Provider</Label>
                 <Select value={physicianId} onValueChange={(v) => setPhysicianId(v === "all" ? "" : v)}>
                   <SelectTrigger data-testid="select-filter-physician">
-                    <SelectValue placeholder="All Physicians" />
+                    <SelectValue placeholder="All Referring Providers" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">All Physicians</SelectItem>
+                    <SelectItem value="all">All Referring Providers</SelectItem>
                     {physicians?.map(p => (
                       <SelectItem key={p.id} value={p.id}>Dr. {p.lastName}, {p.firstName}</SelectItem>
                     ))}
@@ -201,7 +201,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <StatCard
           icon={Stethoscope}
-          label="Active Physicians"
+          label="Active Referring Providers"
           value={stats?.activePhysicians || 0}
           sub={`${physicians?.length || 0} total`}
           color="bg-chart-1/15 text-chart-1"
@@ -268,7 +268,7 @@ export default function DashboardPage() {
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <div>
-              <h3 className="text-sm font-semibold">Top Referring Physicians</h3>
+              <h3 className="text-sm font-semibold">Top Referring Providers</h3>
               <p className="text-xs text-muted-foreground">By referral count</p>
             </div>
             <Users className="w-4 h-4 text-muted-foreground" />
@@ -298,7 +298,7 @@ export default function DashboardPage() {
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <div>
               <h3 className="text-sm font-semibold">Relationship Stages</h3>
-              <p className="text-xs text-muted-foreground">Physician distribution</p>
+              <p className="text-xs text-muted-foreground">Provider distribution</p>
             </div>
             <Activity className="w-4 h-4 text-muted-foreground" />
           </CardHeader>
@@ -335,7 +335,7 @@ export default function DashboardPage() {
         <Card className="lg:col-span-2">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
             <div>
-              <h3 className="text-sm font-semibold">At-Risk Physicians</h3>
+              <h3 className="text-sm font-semibold">At-Risk Referring Providers</h3>
               <p className="text-xs text-muted-foreground">Need attention</p>
             </div>
             <AlertTriangle className="w-4 h-4 text-chart-5" />
@@ -358,7 +358,7 @@ export default function DashboardPage() {
               </div>
             ) : (
               <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-                No at-risk physicians
+                No at-risk referring providers
               </div>
             )}
           </CardContent>

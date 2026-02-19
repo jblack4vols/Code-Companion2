@@ -239,7 +239,7 @@ export default function LocationDashboardPage() {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead className="min-w-[180px]">Physician</TableHead>
+                        <TableHead className="min-w-[180px]">Referring Provider</TableHead>
                         <TableHead>Referrals</TableHead>
                       </TableRow>
                     </TableHeader>

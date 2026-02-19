@@ -33,7 +33,7 @@ export default function LoginPage() {
         <div className="text-center mb-8">
           <img src={tristarLogo} alt="Tristar Physical Therapy" className="h-16 w-auto mx-auto mb-4 dark:invert" data-testid="img-login-logo" />
           <h1 className="text-2xl font-bold" data-testid="text-login-title">Tristar 360</h1>
-          <p className="text-sm text-muted-foreground mt-1">Physician Relationship Management</p>
+          <p className="text-sm text-muted-foreground mt-1">Referring Provider Relationship Management</p>
         </div>
 
         <Card>

@@ -11,7 +11,7 @@ import { format } from "date-fns";
 
 const entityOptions = [
   { label: "All Entities", value: "all" },
-  { label: "Physician", value: "Physician" },
+  { label: "Referring Provider", value: "Physician" },
   { label: "Interaction", value: "Interaction" },
   { label: "Referral", value: "Referral" },
   { label: "Location", value: "Location" },

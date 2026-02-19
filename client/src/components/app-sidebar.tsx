@@ -16,7 +16,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Physicians", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Referring Providers", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Referrals", url: "/referrals", icon: FileText },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
@@ -100,7 +100,7 @@ export function AppSidebar() {
           <img src={tristarLogo} alt="Tristar Physical Therapy" className="h-9 w-auto object-contain" data-testid="img-logo" />
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-semibold truncate" data-testid="text-app-title">Tristar 360</span>
-            <span className="text-xs text-muted-foreground">Physician CRM</span>
+            <span className="text-xs text-muted-foreground">Provider CRM</span>
           </div>
         </div>
       </SidebarHeader>

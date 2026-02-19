@@ -826,7 +826,7 @@ export async function registerRoutes(
         dateTo: qstr(req.query.dateTo as any),
         physicianId: qstr(req.query.physicianId as any),
       });
-      const headers = ["Referral Date","Patient Name","Account #","Case Title","Therapist","Discipline","Status","Insurance","Scheduled Visits","Arrived Visits","Initial Eval","Discharge Date","Discharge Reason","Referral Source","Physician First","Physician Last","Location"];
+      const headers = ["Referral Date","Patient Name","Account #","Case Title","Therapist","Discipline","Status","Insurance","Scheduled Visits","Arrived Visits","Initial Eval","Discharge Date","Discharge Reason","Referral Source","Provider First","Provider Last","Location"];
       const csv = [headers.join(","), ...data.map(r =>
         [r.referralDate, r.patientFullName, r.patientAccountNumber, r.caseTitle, r.caseTherapist, r.discipline, r.status, r.primaryInsurance, r.scheduledVisits, r.arrivedVisits, r.dateOfInitialEval, r.dischargeDate, r.dischargeReason, r.referralSource, r.physicianFirstName, r.physicianLastName, r.locationName].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
       )].join("\n");
@@ -846,7 +846,7 @@ export async function registerRoutes(
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });
-      const headers = ["Date","Type","Summary","Next Step","Physician First","Physician Last","User","Location"];
+      const headers = ["Date","Type","Summary","Next Step","Provider First","Provider Last","User","Location"];
       const csv = [headers.join(","), ...data.map(r =>
         [r.occurredAt ? new Date(r.occurredAt).toISOString().slice(0,10) : '', r.type, r.summary, r.nextStep, r.physicianFirstName, r.physicianLastName, r.userName, r.locationName].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
       )].join("\n");

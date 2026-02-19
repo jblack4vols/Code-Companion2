@@ -132,17 +132,17 @@ export default function MapViewPage() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-map-title">
-            Physician Map
+            Referring Provider Map
           </h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Geographic view of your physician network
+            Geographic view of your referring provider network
           </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
             <Input
-              placeholder="Search physicians..."
+              placeholder="Search referring providers..."
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className="pl-9 w-48"
@@ -186,7 +186,7 @@ export default function MapViewPage() {
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 shrink-0">
             <div className="flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-muted-foreground" />
-              <h3 className="text-sm font-semibold">Physicians</h3>
+              <h3 className="text-sm font-semibold">Referring Providers</h3>
             </div>
             <Badge variant="secondary" className="text-[10px]" data-testid="badge-physician-count">
               {filtered.length}
@@ -255,7 +255,7 @@ export default function MapViewPage() {
               {filtered.length === 0 && (
                 <div className="flex flex-col items-center justify-center py-8 text-center">
                   <MapPin className="w-8 h-8 text-muted-foreground/30 mb-2" />
-                  <p className="text-sm text-muted-foreground">No physicians match filters</p>
+                  <p className="text-sm text-muted-foreground">No referring providers match filters</p>
                 </div>
               )}
             </div>

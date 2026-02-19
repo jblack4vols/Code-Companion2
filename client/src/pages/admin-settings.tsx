@@ -27,7 +27,7 @@ export default function AdminSettingsPage() {
           <div>
             <h3 className="text-sm font-semibold text-chart-3">HIPAA Safety Notice</h3>
             <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
-              <li>This application is for Physician Relationship Management (PRM) only</li>
+              <li>This application is for Referring Provider Relationship Management (PRM) only</li>
               <li>Do NOT enter Protected Health Information (PHI)</li>
               <li>Referrals use anonymized patient IDs only (initials or generated codes)</li>
               <li>Import tools will block columns that appear to contain PHI (DOB, SSN, MRN, etc.)</li>

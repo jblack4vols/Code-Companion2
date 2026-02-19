@@ -104,9 +104,9 @@ export default function TasksPage() {
               <DialogHeader><DialogTitle>Create Task</DialogTitle></DialogHeader>
               <form onSubmit={handleAdd} className="space-y-4">
                 <div className="space-y-1.5">
-                  <Label>Physician *</Label>
+                  <Label>Referring Provider *</Label>
                   <select name="physicianId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-task-physician">
-                    <option value="">Select physician...</option>
+                    <option value="">Select referring provider...</option>
                     {physicians?.map(p => <option key={p.id} value={p.id}>Dr. {p.firstName} {p.lastName}</option>)}
                   </select>
                 </div>

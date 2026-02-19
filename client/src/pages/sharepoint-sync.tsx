@@ -28,7 +28,7 @@ interface SPSite {
 }
 
 const ENTITY_META: Record<string, { label: string; icon: any; description: string }> = {
-  physicians: { label: "Physicians", icon: Stethoscope, description: "Referring provider directory" },
+  physicians: { label: "Referring Providers", icon: Stethoscope, description: "Referring provider directory" },
   referrals: { label: "Referrals", icon: FileText, description: "Patient referral cases" },
   interactions: { label: "Interactions", icon: MessageSquare, description: "Outreach and visit logs" },
   tasks: { label: "Tasks", icon: ClipboardList, description: "Follow-up work queue" },

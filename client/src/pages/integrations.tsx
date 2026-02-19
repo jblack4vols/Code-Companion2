@@ -170,7 +170,7 @@ export default function IntegrationsPage() {
   };
 
   const availableScopes = [
-    { value: "physicians:read", label: "Physicians (Read)" },
+    { value: "physicians:read", label: "Referring Providers (Read)" },
     { value: "referrals:read", label: "Referrals (Read)" },
     { value: "locations:read", label: "Locations (Read)" },
     { value: "interactions:read", label: "Interactions (Read)" },
@@ -221,7 +221,7 @@ export default function IntegrationsPage() {
                 </div>
                 <div>
                   <CardTitle className="text-base">GoHighLevel</CardTitle>
-                  <CardDescription>Two-way sync of physician contacts and leads</CardDescription>
+                  <CardDescription>Two-way sync of referring provider contacts and leads</CardDescription>
                 </div>
               </div>
               {statusBadge(ghlConfig?.status || "DISCONNECTED")}
@@ -585,7 +585,7 @@ export default function IntegrationsPage() {
                   <h3 className="text-sm font-semibold">SharePoint Lists</h3>
                 </div>
                 <div className="rounded-md border p-4 space-y-3 text-sm">
-                  <p className="text-muted-foreground">SharePoint sync pushes physicians, referrals, interactions, tasks, and locations to SharePoint Lists for reporting.</p>
+                  <p className="text-muted-foreground">SharePoint sync pushes referring providers, referrals, interactions, tasks, and locations to SharePoint Lists for reporting.</p>
                   <div className="space-y-2">
                     <p className="font-medium">How to connect:</p>
                     <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground ml-1">

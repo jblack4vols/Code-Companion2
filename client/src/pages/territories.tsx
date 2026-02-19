@@ -62,7 +62,7 @@ export default function TerritoriesPage() {
       return res.json();
     },
     onSuccess: (_, vars) => {
-      toast({ title: "Assigned", description: `${vars.physicianIds.length} physician(s) assigned successfully` });
+      toast({ title: "Assigned", description: `${vars.physicianIds.length} referring provider(s) assigned successfully` });
       queryClient.invalidateQueries({ queryKey: ["/api/territories"] });
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
       setShowAssignDialog(false);
@@ -114,13 +114,13 @@ export default function TerritoriesPage() {
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-territories-title">Territory Management</h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
-            Assign physicians to marketers and track coverage
+            Assign referring providers to marketers and track coverage
           </p>
         </div>
         {canAssign && (
           <Button size="sm" onClick={() => setShowAssignDialog(true)} data-testid="button-bulk-assign">
             <UserPlus className="w-4 h-4 mr-1.5" />
-            Assign Physicians
+            Assign Referring Providers
           </Button>
         )}
       </div>
@@ -132,7 +132,7 @@ export default function TerritoriesPage() {
               <Users className="w-5 h-5" />
             </div>
             <div>
-              <p className="text-sm text-muted-foreground">Total Physicians</p>
+              <p className="text-sm text-muted-foreground">Total Referring Providers</p>
               <p className="text-2xl font-bold" data-testid="text-total-physicians">{totalPhysicians}</p>
             </div>
           </CardContent>
@@ -175,7 +175,7 @@ export default function TerritoriesPage() {
               <TableRow>
                 <TableHead className="text-xs">Team Member</TableHead>
                 <TableHead className="text-xs">Role</TableHead>
-                <TableHead className="text-xs text-right">Assigned Physicians</TableHead>
+                <TableHead className="text-xs text-right">Assigned Referring Providers</TableHead>
                 <TableHead className="text-xs text-right">Coverage %</TableHead>
               </TableRow>
             </TableHeader>
@@ -222,8 +222,8 @@ export default function TerritoriesPage() {
       <Dialog open={showAssignDialog} onOpenChange={setShowAssignDialog}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Bulk Assign Physicians</DialogTitle>
-            <DialogDescription>Select physicians and assign them to a marketer</DialogDescription>
+            <DialogTitle>Bulk Assign Referring Providers</DialogTitle>
+            <DialogDescription>Select referring providers and assign them to a marketer</DialogDescription>
           </DialogHeader>
           <div className="space-y-4">
             <div className="space-y-1.5">
@@ -242,7 +242,7 @@ export default function TerritoriesPage() {
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input
-                placeholder="Search unassigned physicians..."
+                placeholder="Search unassigned referring providers..."
                 value={assignSearch}
                 onChange={(e) => setAssignSearch(e.target.value)}
                 className="pl-9"
@@ -266,7 +266,7 @@ export default function TerritoriesPage() {
                 </label>
               ))}
               {filteredUnassigned.length === 0 && (
-                <p className="text-center py-4 text-sm text-muted-foreground">No unassigned physicians found</p>
+                <p className="text-center py-4 text-sm text-muted-foreground">No unassigned referring providers found</p>
               )}
             </div>
             <div className="flex items-center justify-between gap-2">

@@ -46,11 +46,11 @@ scripts/
 ## Key Features
 - **Authentication**: Session-based, email/password login
 - **RBAC**: OWNER (full access), DIRECTOR, MARKETER, FRONT_DESK (referrals only), ANALYST (read-only)
-- **Physicians**: 3,765 referring providers (deduplicated) imported from Excel with credentials, NPI, practice info, paginated (50/page) with sortable columns
-- **Referrals**: 6,041 real cases imported with full case details, 5,842 linked to physicians by NPI, 199 self-referrals/walk-ins unlinked. Referral table includes referring_provider_name and referring_provider_npi columns.
-- **Interactions**: Log visits, calls, emails, events with physician timeline
+- **Referring Providers**: 3,765 referring providers (deduplicated) imported from Excel with credentials, NPI, practice info, paginated (50/page) with sortable columns. UI labels use "Referring Providers" (database/API still uses `physicians` internally).
+- **Referrals**: 6,041 real cases imported with full case details, 5,842 linked to providers by NPI, 199 self-referrals/walk-ins unlinked. Referral table includes referring_provider_name and referring_provider_npi columns.
+- **Interactions**: Log visits, calls, emails, events with provider timeline
 - **Tasks**: Follow-up work queue with completion tracking
-- **Dashboard**: Charts for referral trends, top referrers, at-risk physicians, activity feed
+- **Dashboard**: Charts for referral trends, top referrers, at-risk providers, activity feed
 - **Revenue Intelligence Dashboards**: Three BI dashboards under /dashboards/* route:
   - **Executive Dashboard** (/dashboards/executive): Top 20 referral sources, KPI cards (referrals, revenue, concentration risk, volatility index), growth rate chart, monthly volume chart. Month filter.
   - **Territory Dashboard** (/dashboards/territory): Territory selector with per-territory KPIs (referrals, visits, revenue, revenue/rep, visits/rep). Empty state when no territories configured.
@@ -58,9 +58,9 @@ scripts/
 - **Nightly ETL**: node-cron job at 2 AM computing physician_monthly_summary (1,737 records), location_monthly_summary (49 records), weighted physician tiering (A/B/C/D). Manual trigger: POST /api/etl/run. Server file: server/etl.ts.
 - **Weighted Tiering**: Configurable weights (revenue 0.4, trend 0.2, conversion 0.2, payer mix 0.2) with tier thresholds (A>=0.8, B>=0.5, C>=0.2, D<0.2). Config: GET/PATCH /api/tiering-weights.
 - **Activity Feed**: Dashboard widget showing recent interactions, completed tasks, and new referrals combined and sorted by timestamp. API: GET /api/activity-feed
-- **Referral Source Attribution**: Track how physician relationships originated (Website, Conference, Cold Call, Referral, Marketing, Existing, Lunch & Learn, Other). Field on physician edit form and detail view.
-- **Map View**: Leaflet map at /map showing physicians plotted on East Tennessee map with colored markers by relationship stage. Sidebar physician list with filters. City-based geocoding for 8 clinic territories.
-- **Duplicate Detection**: Admin page at /admin/duplicates detecting potential duplicate physicians via NPI match or name+city match. Side-by-side comparison with merge capability. API: GET /api/physicians/duplicates, POST /api/physicians/merge
+- **Referral Source Attribution**: Track how provider relationships originated (Website, Conference, Cold Call, Referral, Marketing, Existing, Lunch & Learn, Other). Field on provider edit form and detail view.
+- **Map View**: Leaflet map at /map showing referring providers plotted on East Tennessee map with colored markers by relationship stage. Sidebar provider list with filters. City-based geocoding for 8 clinic territories.
+- **Duplicate Detection**: Admin page at /admin/duplicates detecting potential duplicate providers via NPI match or name+city match. Side-by-side comparison with merge capability. API: GET /api/physicians/duplicates, POST /api/physicians/merge
 - **User Activity Reports**: Admin page at /admin/reports showing per-user interaction counts (visits, calls, emails, lunches), task completion metrics, and on-time rates. Date range filters and stacked bar chart. API: GET /api/reports/user-activity
 - **Calendar**: Office/practice-centric event scheduling. Events linked to Office/Practice Name (not individual physicians) via searchable dropdown. Shows all physicians at selected office. Practice filter in toolbar. Outlook sync capability. API: GET /api/physicians/practice-names, GET /api/physicians/by-practice?name=X
 - **Import**: Excel (.xlsx) import for physicians and referrals with auto column mapping, preview, deduplication/upsert, and progress tracking. Supports Referring Provider List and Created Cases Report formats. Available at /import route. OWNER/DIRECTOR role required.

@@ -628,7 +628,7 @@ export default function CalendarPage() {
 
             {selectedPracticeName && practicePhysicians && practicePhysicians.length > 0 && (
               <div className="space-y-1.5">
-                <Label className="text-xs text-muted-foreground">Physicians at {selectedPracticeName}</Label>
+                <Label className="text-xs text-muted-foreground">Referring Providers at {selectedPracticeName}</Label>
                 <div className="border rounded-md p-2 space-y-1 max-h-[120px] overflow-y-auto bg-muted/30">
                   {practicePhysicians.map((p) => (
                     <div key={p.id} className="flex items-center gap-2 text-xs" data-testid={`text-practice-physician-${p.id}`}>
@@ -710,13 +710,13 @@ export default function CalendarPage() {
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-2">
-            <p className="text-sm text-muted-foreground">Physicians at this office:</p>
+            <p className="text-sm text-muted-foreground">Referring Providers at this office:</p>
             {!detailPhysicians ? (
               <div className="space-y-2">
                 {[1, 2, 3].map(i => <Skeleton key={i} className="h-8 w-full" />)}
               </div>
             ) : detailPhysicians.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No physicians found for this practice.</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">No referring providers found for this practice.</p>
             ) : (
               <div className="border rounded-md divide-y max-h-[400px] overflow-y-auto">
                 {detailPhysicians.map((p) => (

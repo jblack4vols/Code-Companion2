@@ -76,7 +76,7 @@ export default function PhysicianTieringPage() {
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-tiering-title">Physician Tiering</h1>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-tiering-title">Referring Provider Tiering</h1>
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">
             Categorize providers by referral volume ({period === "month" ? `${months[month-1]} ${year}` : year})
           </p>
