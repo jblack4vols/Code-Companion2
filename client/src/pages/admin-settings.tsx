@@ -1,9 +1,10 @@
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, MapPin, Cloud, CheckCircle, XCircle, Loader2 } from "lucide-react";
+import { Shield, MapPin, Cloud, CheckCircle, XCircle, Loader2, Lock, Timer, KeyRound, ShieldCheck, Eye } from "lucide-react";
 import type { Location } from "@shared/schema";
 import { getQueryFn } from "@/lib/queryClient";
+import { Link } from "wouter";
 
 export default function AdminSettingsPage() {
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
@@ -12,11 +13,50 @@ export default function AdminSettingsPage() {
     queryFn: getQueryFn({ on401: "throw" }),
   });
 
+  const securityFeatures = [
+    {
+      icon: Timer,
+      title: "Auto Session Timeout",
+      description: "Sessions expire after 15 minutes of inactivity with a 2-minute warning",
+      status: "Active",
+    },
+    {
+      icon: Lock,
+      title: "Account Lockout",
+      description: "Accounts lock for 15 minutes after 5 failed login attempts",
+      status: "Active",
+    },
+    {
+      icon: KeyRound,
+      title: "Password Strength Policy",
+      description: "Minimum 8 characters with uppercase, lowercase, number, and special character required",
+      status: "Active",
+    },
+    {
+      icon: Eye,
+      title: "Audit Logging",
+      description: "All data access, logins, and modifications are logged with IP address and timestamp",
+      status: "Active",
+    },
+    {
+      icon: ShieldCheck,
+      title: "Security Headers",
+      description: "X-Frame-Options, HSTS, CSP, XSS Protection, and Referrer-Policy headers enforced",
+      status: "Active",
+    },
+    {
+      icon: Shield,
+      title: "Role-Based Access Control",
+      description: "5 role levels (Owner, Director, Marketer, Front Desk, Analyst) with granular permissions",
+      status: "Active",
+    },
+  ];
+
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-5xl mx-auto">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-settings-title">Settings</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">Application configuration and compliance</p>
+        <p className="text-xs sm:text-sm text-muted-foreground">Application configuration, security, and compliance</p>
       </div>
 
       <Card className="border-chart-3/30" data-testid="card-hipaa-banner">
@@ -25,14 +65,46 @@ export default function AdminSettingsPage() {
             <Shield className="w-5 h-5 text-chart-3" />
           </div>
           <div>
-            <h3 className="text-sm font-semibold text-chart-3">HIPAA Safety Notice</h3>
+            <h3 className="text-sm font-semibold text-chart-3">HIPAA Compliance Status</h3>
             <ul className="text-xs text-muted-foreground mt-2 space-y-1 list-disc list-inside">
-              <li>This application is for Referring Provider Relationship Management (PRM) only</li>
-              <li>Do NOT enter Protected Health Information (PHI)</li>
-              <li>Referrals use anonymized patient IDs only (initials or generated codes)</li>
-              <li>Import tools will block columns that appear to contain PHI (DOB, SSN, MRN, etc.)</li>
-              <li>Contact your compliance officer with questions about data handling</li>
+              <li>All data access is logged with audit trail (IP, timestamp, user, action)</li>
+              <li>Sessions auto-expire after 15 minutes of inactivity</li>
+              <li>Account lockout after 5 failed login attempts</li>
+              <li>Strong password policy enforced (8+ chars, complexity requirements)</li>
+              <li>Role-based access control limits data visibility by user role</li>
+              <li>Security headers protect against XSS, clickjacking, and data leaks</li>
+              <li>All connections encrypted via HTTPS/TLS</li>
+              <li>Import tools block columns that appear to contain PHI (DOB, SSN, MRN)</li>
             </ul>
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card data-testid="card-security-safeguards">
+        <CardHeader className="flex flex-row items-center gap-2 pb-2">
+          <ShieldCheck className="w-4 h-4 text-muted-foreground" />
+          <h3 className="text-sm font-semibold">Security Safeguards</h3>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          {securityFeatures.map((feature) => (
+            <div key={feature.title} className="flex items-center gap-3 p-3 rounded-md border" data-testid={`security-${feature.title.toLowerCase().replace(/\s+/g, "-")}`}>
+              <div className="w-8 h-8 rounded-md bg-chart-4/15 flex items-center justify-center shrink-0">
+                <feature.icon className="w-4 h-4 text-chart-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium">{feature.title}</p>
+                <p className="text-xs text-muted-foreground">{feature.description}</p>
+              </div>
+              <Badge variant="outline" className="bg-chart-4/15 text-chart-4 text-[10px] gap-1 shrink-0">
+                <CheckCircle className="w-3 h-3" />
+                {feature.status}
+              </Badge>
+            </div>
+          ))}
+          <div className="pt-2">
+            <Link href="/admin/audit-log" className="text-xs text-primary hover:underline" data-testid="link-view-audit-log">
+              View Full Audit Log
+            </Link>
           </div>
         </CardContent>
       </Card>

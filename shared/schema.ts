@@ -47,6 +47,10 @@ export const users = pgTable("users", {
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   role: userRoleEnum("role").notNull().default("MARKETER"),
+  failedLoginAttempts: integer("failed_login_attempts").default(0).notNull(),
+  lockedUntil: timestamp("locked_until"),
+  lastLoginAt: timestamp("last_login_at"),
+  passwordChangedAt: timestamp("password_changed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -210,7 +214,13 @@ export const auditLogs = pgTable("audit_logs", {
   entityId: text("entity_id").notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   detailJson: json("detail_json"),
-});
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+}, (table) => [
+  index("audit_logs_user_idx").on(table.userId),
+  index("audit_logs_timestamp_idx").on(table.timestamp),
+  index("audit_logs_entity_idx").on(table.entity, table.action),
+]);
 
 export const tierLabelEnum = pgEnum("tier_label", ["A", "B", "C", "D"]);
 
@@ -302,8 +312,15 @@ export const tieringWeights = pgTable("tiering_weights", {
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
-  id: true, createdAt: true, updatedAt: true,
+  id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true,
 });
+
+export const passwordSchema = z.string()
+  .min(8, "Password must be at least 8 characters")
+  .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+  .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+  .regex(/[0-9]/, "Password must contain at least one number")
+  .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
 export const insertLocationSchema = createInsertSchema(locations).omit({
   id: true, createdAt: true, updatedAt: true,
 });

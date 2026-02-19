@@ -8,15 +8,18 @@ import { Badge } from "@/components/ui/badge";
 import { ScrollText } from "lucide-react";
 import type { AuditLog, User } from "@shared/schema";
 import { format } from "date-fns";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 const entityOptions = [
   { label: "All Entities", value: "all" },
+  { label: "Authentication", value: "Auth" },
   { label: "Referring Provider", value: "Physician" },
   { label: "Interaction", value: "Interaction" },
   { label: "Referral", value: "Referral" },
   { label: "Location", value: "Location" },
   { label: "CalendarEvent", value: "CalendarEvent" },
   { label: "Task", value: "Task" },
+  { label: "User", value: "User" },
 ];
 
 const actionOptions = [
@@ -24,6 +27,10 @@ const actionOptions = [
   { label: "CREATE", value: "CREATE" },
   { label: "UPDATE", value: "UPDATE" },
   { label: "DELETE", value: "DELETE" },
+  { label: "LOGIN_SUCCESS", value: "LOGIN_SUCCESS" },
+  { label: "LOGIN_FAILED", value: "LOGIN_FAILED" },
+  { label: "ACCOUNT_LOCKED", value: "ACCOUNT_LOCKED" },
+  { label: "LOGOUT", value: "LOGOUT" },
   { label: "SYNC_OUTLOOK", value: "SYNC_OUTLOOK" },
 ];
 
@@ -31,6 +38,11 @@ const actionBadge: Record<string, string> = {
   CREATE: "bg-chart-4/15 text-chart-4",
   UPDATE: "bg-chart-1/15 text-chart-1",
   DELETE: "bg-chart-5/15 text-chart-5",
+  LOGIN_SUCCESS: "bg-chart-4/15 text-chart-4",
+  LOGIN_FAILED: "bg-destructive/15 text-destructive",
+  LOGIN_LOCKED: "bg-chart-5/15 text-chart-5",
+  ACCOUNT_LOCKED: "bg-chart-5/15 text-chart-5",
+  LOGOUT: "bg-muted text-muted-foreground",
   SYNC_OUTLOOK: "bg-chart-3/15 text-chart-3",
 };
 
@@ -61,7 +73,7 @@ export default function AuditLogPage() {
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       <div>
         <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-audit-log-title">Audit Log</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">Chronological history of all system actions</p>
+        <p className="text-xs sm:text-sm text-muted-foreground">HIPAA-compliant audit trail of all system access and modifications</p>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
@@ -108,7 +120,7 @@ export default function AuditLogPage() {
                     <TableHead>User</TableHead>
                     <TableHead>Action</TableHead>
                     <TableHead>Entity</TableHead>
-                    <TableHead>Entity ID</TableHead>
+                    <TableHead>IP Address</TableHead>
                     <TableHead>Details</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -133,8 +145,17 @@ export default function AuditLogPage() {
                       <TableCell className="text-sm" data-testid={`text-audit-entity-${log.id}`}>
                         {log.entity}
                       </TableCell>
-                      <TableCell className="text-sm text-muted-foreground font-mono text-xs" data-testid={`text-audit-entity-id-${log.id}`}>
-                        {log.entityId}
+                      <TableCell className="text-xs text-muted-foreground font-mono" data-testid={`text-audit-ip-${log.id}`}>
+                        {log.ipAddress ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <span className="cursor-default">{log.ipAddress}</span>
+                            </TooltipTrigger>
+                            <TooltipContent side="top" className="max-w-xs">
+                              <p className="text-xs break-all">{log.userAgent || "No user agent"}</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : "-"}
                       </TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[300px] truncate" data-testid={`text-audit-details-${log.id}`}>
                         {log.detailJson ? JSON.stringify(log.detailJson) : "-"}

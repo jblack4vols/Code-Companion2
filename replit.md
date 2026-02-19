@@ -73,6 +73,14 @@ scripts/
   - **Microsoft**: Setup instructions for Outlook and SharePoint connections via Replit integrations panel.
   - **Public API**: GET /api/public/physicians, /referrals, /locations, /interactions. POST /api/public/webhook. Auth via X-TRISTAR-API-KEY header.
 
+- **HIPAA Technical Safeguards**: Comprehensive security features:
+  - **Audit Logging**: All data access, login/logout, account lockout events logged with IP address, user agent, timestamp, and action details. Enhanced audit_logs table with ipAddress, userAgent columns and performance indexes. Audit log page at /admin/audit-log with entity/action filters and IP tooltip.
+  - **Session Timeout**: 15-minute auto-expiration with 2-minute warning dialog (IdleTimeout component in App.tsx). Detects mouse, keyboard, scroll, touch activity. Rolling session cookie resets on activity.
+  - **Account Lockout**: 5 failed login attempts triggers 15-minute lockout. Login shows remaining attempts, lockout duration, and lock icon. Users table tracks failedLoginAttempts, lockedUntil fields.
+  - **Password Policy**: Minimum 8 chars with uppercase, lowercase, number, and special character. Enforced on both frontend (validatePassword in admin-users.tsx) and backend (passwordSchema in schema.ts). Bcrypt hash rounds: 12.
+  - **Security Headers**: X-Frame-Options (DENY), X-Content-Type-Options (nosniff), Referrer-Policy (strict-origin-when-cross-origin), X-XSS-Protection, Permissions-Policy, Cache-Control (no-store for API). Applied in server/routes.ts middleware.
+  - **Settings Page**: Admin settings at /admin/settings shows all security safeguards with active status badges and links to audit log.
+
 ## Real Data
 - **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
 - **Physicians**: 3,765 referring providers (deduplicated) imported from Referring Provider List Excel

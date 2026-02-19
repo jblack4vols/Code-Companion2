@@ -93,12 +93,22 @@ export default function AdminUsersPage() {
     },
   });
 
+  const validatePassword = (pw: string): string | null => {
+    if (pw.length < 8) return "Password must be at least 8 characters";
+    if (!/[A-Z]/.test(pw)) return "Password must contain an uppercase letter";
+    if (!/[a-z]/.test(pw)) return "Password must contain a lowercase letter";
+    if (!/[0-9]/.test(pw)) return "Password must contain a number";
+    if (!/[^A-Za-z0-9]/.test(pw)) return "Password must contain a special character";
+    return null;
+  };
+
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
     const password = fd.get("password") as string;
-    if (password.length < 6) {
-      toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+    const pwError = validatePassword(password);
+    if (pwError) {
+      toast({ title: pwError, variant: "destructive" });
       return;
     }
     addMutation.mutate({
@@ -120,8 +130,9 @@ export default function AdminUsersPage() {
       role: fd.get("role"),
     };
     if (password && password.length > 0) {
-      if (password.length < 6) {
-        toast({ title: "Password must be at least 6 characters", variant: "destructive" });
+      const pwError = validatePassword(password);
+      if (pwError) {
+        toast({ title: pwError, variant: "destructive" });
         return;
       }
       data.password = password;
@@ -157,7 +168,7 @@ export default function AdminUsersPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Password *</Label>
-                  <Input name="password" type="password" required placeholder="Min 6 characters" data-testid="input-user-password" />
+                  <Input name="password" type="password" required placeholder="Min 8 chars, upper/lower/number/special" data-testid="input-user-password" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Role *</Label>

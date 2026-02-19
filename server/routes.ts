@@ -7,7 +7,7 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { sql, eq, and, gte, lt } from "drizzle-orm";
 import { referrals } from "@shared/schema";
-import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema, physicians, integrationConfigs } from "@shared/schema";
+import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema, physicians, integrationConfigs, passwordSchema, users as usersTable } from "@shared/schema";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
@@ -46,11 +46,33 @@ function requireRole(...roles: string[]) {
   };
 }
 
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
+
+function getClientIp(req: Request): string {
+  return (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim() || req.ip || "unknown";
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   const PgStore = connectPgSimple(session);
+
+  app.use((_req, res, next) => {
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "DENY");
+    res.setHeader("X-XSS-Protection", "1; mode=block");
+    res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+    res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
+    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.tile.openstreetmap.org wss:; frame-ancestors 'none'");
+    if (process.env.NODE_ENV === "production") {
+      res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+    }
+    next();
+  });
+
   app.use(
     session({
       store: new PgStore({
@@ -60,8 +82,9 @@ export async function registerRoutes(
       secret: process.env.SESSION_SECRET || "tristar-360-dev-secret-change-in-prod",
       resave: false,
       saveUninitialized: false,
+      rolling: true,
       cookie: {
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: SESSION_TIMEOUT_MS,
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
@@ -77,14 +100,45 @@ export async function registerRoutes(
     res.json(safeUser);
   });
 
+  app.get("/api/auth/session-timeout", (_req, res) => {
+    res.json({ timeoutMs: SESSION_TIMEOUT_MS });
+  });
+
   app.post("/api/auth/login", async (req, res) => {
     try {
       const { email, password } = loginSchema.parse(req.body);
+      const ip = getClientIp(req);
+      const ua = req.headers["user-agent"] || "unknown";
       const user = await storage.getUserByEmail(email);
-      if (!user) return res.status(401).json({ message: "Invalid email or password" });
+      if (!user) {
+        await storage.createAuditLog({ userId: null, action: "LOGIN_FAILED", entity: "Auth", entityId: "unknown", detailJson: { email, reason: "user_not_found" }, ipAddress: ip, userAgent: ua });
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+        const remainingMs = new Date(user.lockedUntil).getTime() - Date.now();
+        const remainingMin = Math.ceil(remainingMs / 60000);
+        await storage.createAuditLog({ userId: user.id, action: "LOGIN_LOCKED", entity: "Auth", entityId: user.id, detailJson: { email }, ipAddress: ip, userAgent: ua });
+        return res.status(423).json({ message: `Account is locked. Try again in ${remainingMin} minute${remainingMin !== 1 ? "s" : ""}.`, locked: true, remainingMs });
+      }
       const valid = await bcrypt.compare(password, user.password);
-      if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+      if (!valid) {
+        const attempts = (user.failedLoginAttempts || 0) + 1;
+        const updateData: any = { failedLoginAttempts: attempts };
+        if (attempts >= MAX_LOGIN_ATTEMPTS) {
+          updateData.lockedUntil = new Date(Date.now() + LOCKOUT_DURATION_MS);
+          await storage.createAuditLog({ userId: user.id, action: "ACCOUNT_LOCKED", entity: "Auth", entityId: user.id, detailJson: { email, attempts }, ipAddress: ip, userAgent: ua });
+        }
+        await storage.updateUser(user.id, updateData);
+        await storage.createAuditLog({ userId: user.id, action: "LOGIN_FAILED", entity: "Auth", entityId: user.id, detailJson: { email, attempts, reason: "bad_password" }, ipAddress: ip, userAgent: ua });
+        const remaining = MAX_LOGIN_ATTEMPTS - attempts;
+        if (remaining > 0) {
+          return res.status(401).json({ message: `Invalid email or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.` });
+        }
+        return res.status(423).json({ message: `Account locked after ${MAX_LOGIN_ATTEMPTS} failed attempts. Try again in 15 minutes.`, locked: true, remainingMs: LOCKOUT_DURATION_MS });
+      }
+      await storage.updateUser(user.id, { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() });
       req.session.userId = user.id;
+      await storage.createAuditLog({ userId: user.id, action: "LOGIN_SUCCESS", entity: "Auth", entityId: user.id, detailJson: { email }, ipAddress: ip, userAgent: ua });
       const { password: _, ...safeUser } = user;
       res.json(safeUser);
     } catch (err: any) {
@@ -93,6 +147,12 @@ export async function registerRoutes(
   });
 
   app.post("/api/auth/logout", (req, res) => {
+    const userId = req.session.userId;
+    const ip = getClientIp(req);
+    const ua = req.headers["user-agent"] || "unknown";
+    if (userId) {
+      storage.createAuditLog({ userId, action: "LOGOUT", entity: "Auth", entityId: userId, detailJson: {}, ipAddress: ip, userAgent: ua });
+    }
     req.session.destroy((err) => {
       if (err) return res.status(500).json({ message: "Logout failed" });
       res.json({ success: true });
@@ -107,12 +167,16 @@ export async function registerRoutes(
   app.post("/api/users", requireRole("OWNER"), async (req, res) => {
     try {
       const validated = insertUserSchema.parse(req.body);
+      const pwResult = passwordSchema.safeParse(validated.password);
+      if (!pwResult.success) {
+        return res.status(400).json({ message: pwResult.error.errors[0].message });
+      }
       const existing = await storage.getUserByEmail(validated.email);
       if (existing) return res.status(409).json({ message: "A user with this email already exists" });
       const plainPassword = validated.password;
-      const hashedPassword = await bcrypt.hash(plainPassword, 10);
+      const hashedPassword = await bcrypt.hash(plainPassword, 12);
       const user = await storage.createUser({ ...validated, password: hashedPassword });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
 
       const host = req.headers.host || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -134,14 +198,19 @@ export async function registerRoutes(
     try {
       const body = { ...req.body };
       if (body.password) {
-        body.password = await bcrypt.hash(body.password, 10);
+        const pwResult = passwordSchema.safeParse(body.password);
+        if (!pwResult.success) {
+          return res.status(400).json({ message: pwResult.error.errors[0].message });
+        }
+        body.password = await bcrypt.hash(body.password, 12);
+        body.passwordChangedAt = new Date();
       } else {
         delete body.password;
       }
       const validated = insertUserSchema.partial().parse(body);
       const user = await storage.updateUser(req.params.id, validated);
       if (!user) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "User", entityId: user.id, detailJson: { name: user.name, role: user.role } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "User", entityId: user.id, detailJson: { name: user.name, role: user.role }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       const { password: _, ...safe } = user;
       res.json(safe);
     } catch (err: any) {
@@ -155,7 +224,7 @@ export async function registerRoutes(
         return res.status(400).json({ message: "You cannot delete your own account" });
       }
       await storage.deleteUser(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id, detailJson: {} });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(409).json({ message: err.message });
@@ -177,7 +246,7 @@ export async function registerRoutes(
     try {
       const validated = insertLocationSchema.parse(req.body);
       const loc = await storage.createLocation(validated);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Location", entityId: loc.id, detailJson: { name: loc.name } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Location", entityId: loc.id, detailJson: { name: loc.name }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(loc);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -189,7 +258,7 @@ export async function registerRoutes(
       const validated = insertLocationSchema.partial().parse(req.body);
       const loc = await storage.updateLocation(req.params.id, validated);
       if (!loc) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Location", entityId: loc.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Location", entityId: loc.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(loc);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -199,7 +268,7 @@ export async function registerRoutes(
   app.delete("/api/locations/:id", requireRole("OWNER"), async (req, res) => {
     try {
       await storage.deleteLocation(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Location", entityId: req.params.id, detailJson: {} });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Location", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(409).json({ message: err.message });
@@ -275,7 +344,7 @@ export async function registerRoutes(
       const { physicianIds, marketerId } = req.body;
       if (!Array.isArray(physicianIds) || physicianIds.length === 0) return res.status(400).json({ message: "physicianIds required" });
       const count = await storage.bulkAssignPhysiciansToMarketer(physicianIds, marketerId || null);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_ASSIGN", entity: "Physician", entityId: "bulk", detailJson: { count, marketerId } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_ASSIGN", entity: "Physician", entityId: "bulk", detailJson: { count, marketerId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -288,7 +357,7 @@ export async function registerRoutes(
       if (!Array.isArray(physicianIds) || physicianIds.length === 0) return res.status(400).json({ message: "physicianIds required" });
       if (!["PROSPECT", "ACTIVE", "INACTIVE"].includes(status)) return res.status(400).json({ message: "Invalid status" });
       const count = await storage.bulkUpdatePhysicianStatus(physicianIds, status);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_STATUS", entity: "Physician", entityId: "bulk", detailJson: { count, status } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_STATUS", entity: "Physician", entityId: "bulk", detailJson: { count, status }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -352,7 +421,7 @@ export async function registerRoutes(
       await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
       await db.execute(sql`DELETE FROM physicians WHERE id = ${removeId}`);
 
-      await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -369,7 +438,7 @@ export async function registerRoutes(
     try {
       const validated = insertPhysicianSchema.parse(req.body);
       const phys = await storage.createPhysician(validated);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: phys.id, detailJson: { firstName: phys.firstName, lastName: phys.lastName } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: phys.id, detailJson: { firstName: phys.firstName, lastName: phys.lastName }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -381,7 +450,7 @@ export async function registerRoutes(
       const validated = insertPhysicianSchema.partial().parse(req.body);
       const phys = await storage.updatePhysician(req.params.id, validated);
       if (!phys) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Physician", entityId: phys.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Physician", entityId: phys.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -401,7 +470,7 @@ export async function registerRoutes(
       if (typeof body.followUpDueAt === "string") body.followUpDueAt = new Date(body.followUpDueAt);
       const validated = insertInteractionSchema.parse(body);
       const inter = await storage.createInteraction(validated);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Interaction", entityId: inter.id, detailJson: { type: inter.type, physicianId: inter.physicianId } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Interaction", entityId: inter.id, detailJson: { type: inter.type, physicianId: inter.physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(inter);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -444,7 +513,7 @@ export async function registerRoutes(
           priority: "MEDIUM",
         });
         const newPhys = await storage.createPhysician(newPhysData);
-        await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: newPhys.id, detailJson: { firstName: newPhys.firstName, lastName: newPhys.lastName, createdVia: "referral_form" } });
+        await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: newPhys.id, detailJson: { firstName: newPhys.firstName, lastName: newPhys.lastName, createdVia: "referral_form" }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
         body.physicianId = newPhys.id;
         body.referringProviderName = `${newPhys.firstName} ${newPhys.lastName}`;
         body.referringProviderNpi = newPhys.npi || null;
@@ -452,7 +521,7 @@ export async function registerRoutes(
       delete body.newPhysician;
       const validated = insertReferralSchema.parse(body);
       const ref = await storage.createReferral(validated);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Referral", entityId: ref.id, detailJson: { physicianId: ref.physicianId } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Referral", entityId: ref.id, detailJson: { physicianId: ref.physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(ref);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -466,7 +535,7 @@ export async function registerRoutes(
       if (!parsed.success) return res.status(400).json({ message: parsed.error.errors[0].message });
       const { ids } = parsed.data;
       const count = await storage.bulkDeleteReferrals(ids);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Referral", entityId: "bulk", detailJson: { count, ids } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Referral", entityId: "bulk", detailJson: { count, ids }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -529,7 +598,7 @@ export async function registerRoutes(
       if (typeof body.endAt === "string") body.endAt = new Date(body.endAt);
       const validated = insertCalendarEventSchema.parse(body);
       const event = await storage.createCalendarEvent(validated);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "CalendarEvent", entityId: event.id, detailJson: { title: event.title } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "CalendarEvent", entityId: event.id, detailJson: { title: event.title }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(event);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -544,7 +613,7 @@ export async function registerRoutes(
       const validated = insertCalendarEventSchema.partial().parse(body);
       const event = await storage.updateCalendarEvent(req.params.id, validated);
       if (!event) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "CalendarEvent", entityId: event.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "CalendarEvent", entityId: event.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(event);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -554,7 +623,7 @@ export async function registerRoutes(
   app.delete("/api/calendar-events/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
       await storage.deleteCalendarEvent(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "CalendarEvent", entityId: req.params.id, detailJson: {} });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "CalendarEvent", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -575,7 +644,7 @@ export async function registerRoutes(
   app.post("/api/territories", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const territory = await storage.createTerritory(req.body);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Territory", entityId: territory.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Territory", entityId: territory.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(territory);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -586,7 +655,7 @@ export async function registerRoutes(
     try {
       const territory = await storage.updateTerritory(req.params.id, req.body);
       if (!territory) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: req.params.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: req.params.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(territory);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -596,7 +665,7 @@ export async function registerRoutes(
   app.delete("/api/territories/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       await storage.deleteTerritory(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Territory", entityId: req.params.id, detailJson: {} });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Territory", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -617,7 +686,7 @@ export async function registerRoutes(
   app.post("/api/collections", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const col = await storage.createCollection(req.body);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Collection", entityId: col.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Collection", entityId: col.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(col);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -634,7 +703,7 @@ export async function registerRoutes(
     try {
       const updated = await storage.updateTieringWeights(req.body);
       if (!updated) return res.status(404).json({ message: "No weights configured" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: req.body });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -786,7 +855,7 @@ export async function registerRoutes(
       const { marketerId } = req.body;
       const phys = await storage.assignPhysicianToMarketer(req.params.id, marketerId || null);
       if (!phys) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "ASSIGN", entity: "Physician", entityId: phys.id, detailJson: { marketerId } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "ASSIGN", entity: "Physician", entityId: phys.id, detailJson: { marketerId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1026,6 +1095,8 @@ export async function registerRoutes(
         entity: "physician",
         entityId: "bulk",
         detailJson: { inserted: result.inserted, updated: result.updated, total: mapped.length },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
       });
       res.json(result);
     } catch (err: any) {
@@ -1174,6 +1245,8 @@ export async function registerRoutes(
         entity: "referral",
         entityId: "bulk",
         detailJson: { inserted: result.inserted, updated: result.updated, total: mapped.length, skipped: errors.length },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
       });
       res.json(result);
     } catch (err: any) {
@@ -1277,7 +1350,7 @@ export async function registerRoutes(
 
       const data = await result.json();
       await storage.updateCalendarEvent(eventId, { outlookEventId: data.id });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
 
       res.json({ success: true, outlookEventId: data.id });
     } catch (err: any) {
@@ -1467,7 +1540,7 @@ export async function registerRoutes(
       const existing = await storage.getIntegrationConfigByType(parsed.type);
       if (existing) return res.status(400).json({ message: `Integration of type ${parsed.type} already exists` });
       const config = await storage.createIntegrationConfig(parsed);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_INTEGRATION", entity: "Integration", entityId: config.id, detailJson: { type: parsed.type, name: parsed.name } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_INTEGRATION", entity: "Integration", entityId: config.id, detailJson: { type: parsed.type, name: parsed.name }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(config);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1485,7 +1558,7 @@ export async function registerRoutes(
       const parsed = updateIntegrationSchema.parse(req.body);
       const updated = await storage.updateIntegrationConfig(req.params.id, parsed);
       if (!updated) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE_INTEGRATION", entity: "Integration", entityId: updated.id, detailJson: { changes: Object.keys(req.body) } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE_INTEGRATION", entity: "Integration", entityId: updated.id, detailJson: { changes: Object.keys(req.body) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1496,7 +1569,7 @@ export async function registerRoutes(
     try {
       const deleted = await storage.deleteIntegrationConfig(req.params.id);
       if (!deleted) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE_INTEGRATION", entity: "Integration", entityId: req.params.id, detailJson: {} });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE_INTEGRATION", entity: "Integration", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1704,7 +1777,7 @@ export async function registerRoutes(
         createdBy: req.session.userId!,
       });
 
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_API_KEY", entity: "ApiKey", entityId: apiKey.id, detailJson: { name, scopes } });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_API_KEY", entity: "ApiKey", entityId: apiKey.id, detailJson: { name, scopes }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ ...apiKey, rawKey, keyHash: undefined });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -1715,7 +1788,7 @@ export async function registerRoutes(
     try {
       const deactivated = await storage.deactivateApiKey(req.params.id);
       if (!deactivated) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: req.params.id, detailJson: {} });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -1799,6 +1872,8 @@ export async function registerRoutes(
         entity: "Webhook",
         entityId: (req as any).apiKeyId,
         detailJson: { event, dataKeys: Object.keys(data) },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
       });
 
       res.json({ received: true, event });

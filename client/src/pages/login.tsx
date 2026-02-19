@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
-import { AlertCircle, Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, Lock } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 
 export default function LoginPage() {
@@ -14,14 +14,21 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
+  const [isLocked, setIsLocked] = useState(false);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
+    setIsLocked(false);
     setLoading(true);
     try {
       await login(email, password);
     } catch (err: any) {
-      setError(err.message || "Invalid credentials");
+      const msg = err.message || "Invalid credentials";
+      if (msg.includes("locked") || msg.includes("Locked")) {
+        setIsLocked(true);
+      }
+      setError(msg);
     } finally {
       setLoading(false);
     }
@@ -43,8 +50,8 @@ export default function LoginPage() {
           <CardContent>
             <form onSubmit={handleSubmit} className="space-y-4">
               {error && (
-                <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 text-destructive text-sm" data-testid="text-login-error">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
+                <div className={`flex items-center gap-2 p-3 rounded-md text-sm ${isLocked ? "bg-chart-5/10 text-chart-5" : "bg-destructive/10 text-destructive"}`} data-testid="text-login-error">
+                  {isLocked ? <Lock className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
                   {error}
                 </div>
               )}

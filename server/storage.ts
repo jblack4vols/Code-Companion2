@@ -61,7 +61,7 @@ export interface IStorage {
   getUserByEmail(email: string): Promise<User | undefined>;
   getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, data: Partial<InsertUser>): Promise<User | undefined>;
+  updateUser(id: string, data: Partial<InsertUser> & { failedLoginAttempts?: number; lockedUntil?: Date | null; lastLoginAt?: Date; passwordChangedAt?: Date }): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
 
   getLocations(): Promise<Location[]>;
@@ -95,7 +95,7 @@ export interface IStorage {
   deleteCalendarEvent(id: string): Promise<boolean>;
 
   getAuditLogs(filters?: { userId?: string; entity?: string; action?: string; limit?: number }): Promise<AuditLog[]>;
-  createAuditLog(log: Omit<AuditLog, "id" | "timestamp">): Promise<void>;
+  createAuditLog(log: Omit<AuditLog, "id" | "timestamp" | "ipAddress" | "userAgent"> & { ipAddress?: string | null; userAgent?: string | null }): Promise<void>;
 
   getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }): Promise<any>;
 
@@ -175,7 +175,7 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async updateUser(id: string, data: Partial<InsertUser>) {
+  async updateUser(id: string, data: Partial<InsertUser> & { failedLoginAttempts?: number; lockedUntil?: Date | null; lastLoginAt?: Date; passwordChangedAt?: Date }) {
     const [updated] = await db.update(users)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(users.id, id))
@@ -568,7 +568,7 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(auditLogs).orderBy(desc(auditLogs.timestamp)).limit(limit);
   }
 
-  async createAuditLog(log: Omit<AuditLog, "id" | "timestamp">) {
+  async createAuditLog(log: Omit<AuditLog, "id" | "timestamp" | "ipAddress" | "userAgent"> & { ipAddress?: string | null; userAgent?: string | null }) {
     await db.insert(auditLogs).values(log);
   }
 

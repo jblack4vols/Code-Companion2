@@ -33,6 +33,7 @@ import IntegrationsPage from "@/pages/integrations";
 import ExecutiveDashboardPage from "@/pages/executive-dashboard";
 import TerritoryDashboardPage from "@/pages/territory-dashboard";
 import LocationDashboardPage from "@/pages/location-dashboard";
+import { IdleTimeout } from "@/components/idle-timeout";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRouter() {
@@ -114,6 +115,7 @@ function App() {
         <TooltipProvider>
           <AuthProvider>
             <AppLayout />
+            <IdleTimeout />
           </AuthProvider>
           <Toaster />
         </TooltipProvider>
