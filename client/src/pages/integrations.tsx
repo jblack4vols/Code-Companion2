@@ -510,24 +510,154 @@ export default function IntegrationsPage() {
                 </div>
               )}
 
-              <div className="mt-6 rounded-md border p-4 space-y-3">
-                <h3 className="text-sm font-semibold flex items-center gap-2">
-                  <Shield className="w-4 h-4" />
-                  API Documentation
-                </h3>
-                <div className="text-xs text-muted-foreground space-y-2">
-                  <p>Your external software can access Tristar data using these endpoints:</p>
-                  <div className="bg-muted/50 rounded-md p-3 font-mono text-xs space-y-1">
-                    <p className="text-foreground">GET /api/public/physicians</p>
-                    <p className="text-foreground">GET /api/public/physicians/:id</p>
-                    <p className="text-foreground">GET /api/public/referrals</p>
-                    <p className="text-foreground">GET /api/public/locations</p>
-                    <p className="text-foreground">GET /api/public/interactions</p>
-                    <p className="text-foreground">POST /api/public/webhook</p>
+              <div className="mt-6 space-y-4">
+                <div className="rounded-md border p-4 space-y-4">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Shield className="w-4 h-4" />
+                    Quick Start Guide
+                  </h3>
+                  <div className="text-sm text-muted-foreground space-y-3">
+                    <p>
+                      The Tristar API lets other tools and software pull your referring provider, referral, and location data automatically — no manual exports needed. Here's how to get started:
+                    </p>
+
+                    <div className="space-y-2">
+                      <p className="font-medium text-foreground">Step 1: Create an API Key</p>
+                      <p>Click the <strong>"Create API Key"</strong> button above. Give it a name (e.g. "Zapier" or "My Report Tool"), choose what data it can access, and click <strong>Generate Key</strong>. Copy the key immediately — you won't be able to see it again.</p>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="font-medium text-foreground">Step 2: Use Your Key</p>
+                      <p>Every request to the API must include your key in a special header. Here is exactly what to provide when any tool asks for it:</p>
+                      <div className="bg-muted/50 rounded-md p-3 space-y-2 text-xs">
+                        <div className="flex items-start gap-2">
+                          <span className="text-muted-foreground shrink-0 w-20">Header name:</span>
+                          <code className="text-foreground font-mono select-all">X-TRISTAR-API-KEY</code>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <span className="text-muted-foreground shrink-0 w-20">Header value:</span>
+                          <code className="text-foreground font-mono">tsk_your_key_here</code>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <p className="font-medium text-foreground">Step 3: Pick a Data Endpoint</p>
+                      <p>Each URL below returns a different set of data. Replace <code className="text-xs bg-muted px-1 py-0.5 rounded">your-app-url</code> with your published Tristar 360 web address.</p>
+                      <div className="bg-muted/50 rounded-md p-3 font-mono text-xs space-y-2">
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-mono">GET</Badge>
+                          <div>
+                            <p className="text-foreground select-all">https://your-app-url/api/public/physicians</p>
+                            <p className="text-muted-foreground font-sans mt-0.5">All referring providers with name, NPI, specialty, and contact info</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-mono">GET</Badge>
+                          <div>
+                            <p className="text-foreground select-all">https://your-app-url/api/public/referrals</p>
+                            <p className="text-muted-foreground font-sans mt-0.5">All patient referral cases with dates, status, and linked provider</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-mono">GET</Badge>
+                          <div>
+                            <p className="text-foreground select-all">https://your-app-url/api/public/locations</p>
+                            <p className="text-muted-foreground font-sans mt-0.5">All 8 Tristar clinic locations</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-mono">GET</Badge>
+                          <div>
+                            <p className="text-foreground select-all">https://your-app-url/api/public/interactions</p>
+                            <p className="text-muted-foreground font-sans mt-0.5">All logged outreach visits, calls, and emails</p>
+                          </div>
+                        </div>
+                        <div className="flex items-start gap-2">
+                          <Badge variant="outline" className="text-[10px] shrink-0 font-mono">POST</Badge>
+                          <div>
+                            <p className="text-foreground select-all">https://your-app-url/api/public/webhook</p>
+                            <p className="text-muted-foreground font-sans mt-0.5">Send data into Tristar from an outside system</p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                  <p>Include your API key in every request:</p>
-                  <div className="bg-muted/50 rounded-md p-3 font-mono text-xs">
-                    <p className="text-foreground">X-TRISTAR-API-KEY: tsk_your_key_here</p>
+                </div>
+
+                <div className="rounded-md border p-4 space-y-4">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Globe className="w-4 h-4" />
+                    Where Can I Use This?
+                  </h3>
+                  <div className="text-sm text-muted-foreground space-y-3">
+                    <p>You don't need to write code. Many popular tools can connect to the Tristar API with just a few clicks:</p>
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-md border p-3 space-y-1">
+                        <p className="font-medium text-foreground text-sm">Microsoft Power Automate</p>
+                        <p className="text-xs">Use the "HTTP" action. Paste a Tristar endpoint URL, set Method to GET, and add a header <code className="bg-muted px-1 py-0.5 rounded">X-TRISTAR-API-KEY</code> with your key as the value.</p>
+                      </div>
+                      <div className="rounded-md border p-3 space-y-1">
+                        <p className="font-medium text-foreground text-sm">Zapier</p>
+                        <p className="text-xs">Use the "Webhooks by Zapier" action (Custom Request). Enter the URL, choose GET, and add <code className="bg-muted px-1 py-0.5 rounded">X-TRISTAR-API-KEY</code> under Headers.</p>
+                      </div>
+                      <div className="rounded-md border p-3 space-y-1">
+                        <p className="font-medium text-foreground text-sm">Google Sheets</p>
+                        <p className="text-xs">Use a Google Apps Script or a plugin like "Import API" to pull Tristar data directly into a spreadsheet on a schedule.</p>
+                      </div>
+                      <div className="rounded-md border p-3 space-y-1">
+                        <p className="font-medium text-foreground text-sm">Excel / Power Query</p>
+                        <p className="text-xs">In Excel, go to Data &gt; Get Data &gt; From Web. Enter a Tristar endpoint URL and add the API key header under Advanced settings.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-md border p-4 space-y-4">
+                  <h3 className="text-sm font-semibold flex items-center gap-2">
+                    <Eye className="w-4 h-4" />
+                    Example: What the Data Looks Like
+                  </h3>
+                  <div className="text-sm text-muted-foreground space-y-3">
+                    <p>When you call the referring providers endpoint, you get back a list like this (simplified):</p>
+                    <div className="bg-muted/50 rounded-md p-3 font-mono text-xs overflow-x-auto">
+                      <pre className="text-foreground whitespace-pre">{`[
+  {
+    "firstName": "John",
+    "lastName": "Smith",
+    "npi": "1234567890",
+    "specialty": "Orthopedic Surgery",
+    "practiceName": "East TN Ortho",
+    "city": "Johnson City",
+    "phone": "(423) 555-0100",
+    "status": "ACTIVE",
+    "tier": "A"
+  },
+  ...
+]`}</pre>
+                    </div>
+                    <p>The referrals endpoint returns case records like this:</p>
+                    <div className="bg-muted/50 rounded-md p-3 font-mono text-xs overflow-x-auto">
+                      <pre className="text-foreground whitespace-pre">{`[
+  {
+    "patientFullName": "Jane Doe",
+    "referralDate": "2025-06-15",
+    "status": "EVAL_COMPLETED",
+    "locationName": "Johnson City",
+    "referringProviderName": "Dr. John Smith",
+    "referringProviderNpi": "1234567890"
+  },
+  ...
+]`}</pre>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-md bg-blue-500/10 p-4 text-sm flex items-start gap-3 text-blue-700 dark:text-blue-300">
+                  <AlertTriangle className="w-5 h-5 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p className="font-medium">Need help connecting?</p>
+                    <p className="text-xs opacity-80">If you're working with an IT consultant or developer, share this page with them. They'll need your published app URL and an API key (which you create above). All endpoints return standard JSON data and require the <code className="bg-blue-500/20 px-1 py-0.5 rounded">X-TRISTAR-API-KEY</code> header.</p>
                   </div>
                 </div>
               </div>
