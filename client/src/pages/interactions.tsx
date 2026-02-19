@@ -184,13 +184,13 @@ export default function InteractionsPage() {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:flex lg:flex-wrap items-center gap-3">
+        <div className="relative sm:col-span-2 lg:flex-1 lg:min-w-[200px] lg:max-w-sm">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input placeholder="Search interactions..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9" data-testid="input-search-interactions" />
         </div>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
-          <SelectTrigger className="w-[130px]" data-testid="select-filter-type">
+          <SelectTrigger data-testid="select-filter-type">
             <SelectValue placeholder="Type" />
           </SelectTrigger>
           <SelectContent>
@@ -204,7 +204,7 @@ export default function InteractionsPage() {
           </SelectContent>
         </Select>
         <Select value={locationFilter} onValueChange={setLocationFilter}>
-          <SelectTrigger className="w-[160px]" data-testid="select-filter-interaction-location">
+          <SelectTrigger data-testid="select-filter-interaction-location">
             <SelectValue placeholder="Location" />
           </SelectTrigger>
           <SelectContent>
@@ -212,20 +212,18 @@ export default function InteractionsPage() {
             {locations?.map(l => <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>)}
           </SelectContent>
         </Select>
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 sm:col-span-2 lg:col-span-1">
           <Input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="w-[140px]"
             data-testid="input-filter-interaction-date-from"
           />
-          <span className="text-xs text-muted-foreground">to</span>
+          <span className="text-xs text-muted-foreground shrink-0">to</span>
           <Input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="w-[140px]"
             data-testid="input-filter-interaction-date-to"
           />
         </div>

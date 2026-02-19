@@ -7,14 +7,23 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight } from "lucide-react";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import type { Physician, Location } from "@shared/schema";
-import { format, subMonths } from "date-fns";
+import { format, subMonths, differenceInDays, subDays } from "date-fns";
 import { getQueryFn } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 
-function StatCard({ icon: Icon, label, value, sub, color, onClick }: { icon: any; label: string; value: string | number; sub?: string; color: string; onClick?: () => void }) {
+function StatCard({ icon: Icon, label, value, sub, color, onClick, prevValue }: { icon: any; label: string; value: string | number; sub?: string; color: string; onClick?: () => void; prevValue?: number | null }) {
+  const numVal = typeof value === "number" ? value : parseInt(String(value), 10);
+  const showChange = prevValue != null && !isNaN(numVal);
+  let changePercent = 0;
+  if (showChange && prevValue > 0) {
+    changePercent = Math.round(((numVal - prevValue) / prevValue) * 100);
+  } else if (showChange && prevValue === 0 && numVal > 0) {
+    changePercent = 100;
+  }
+
   return (
     <Card
       className={onClick ? "cursor-pointer hover-elevate" : ""}
@@ -28,7 +37,13 @@ function StatCard({ icon: Icon, label, value, sub, color, onClick }: { icon: any
         <div className="flex-1 min-w-0">
           <p className="text-sm text-muted-foreground">{label}</p>
           <p className="text-2xl font-bold mt-0.5">{value}</p>
-          {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
+          {showChange && (
+            <div className={`flex items-center gap-1 mt-0.5 text-xs ${changePercent > 0 ? "text-green-600 dark:text-green-400" : changePercent < 0 ? "text-red-600 dark:text-red-400" : "text-muted-foreground"}`} data-testid={`text-change-${label.toLowerCase().replace(/\s+/g, '-')}`}>
+              {changePercent > 0 ? <ArrowUpRight className="w-3 h-3" /> : changePercent < 0 ? <ArrowDownRight className="w-3 h-3" /> : <Minus className="w-3 h-3" />}
+              {Math.abs(changePercent)}% vs prev period ({prevValue})
+            </div>
+          )}
+          {!showChange && sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
         </div>
         {onClick && <ChevronRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />}
       </CardContent>
@@ -50,6 +65,7 @@ export default function DashboardPage() {
   const [locationId, setLocationId] = useState("");
   const [physicianId, setPhysicianId] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [comparePeriod, setComparePeriod] = useState(false);
 
   const params = new URLSearchParams();
   if (startDate) params.set("startDate", startDate);
@@ -62,6 +78,21 @@ export default function DashboardPage() {
   const { data: stats, isLoading: loadingStats } = useQuery<any>({
     queryKey: [statsUrl],
     queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const daySpan = Math.max(differenceInDays(new Date(endDate), new Date(startDate)), 1);
+  const prevEnd = format(subDays(new Date(startDate), 1), "yyyy-MM-dd");
+  const prevStart = format(subDays(new Date(startDate), daySpan), "yyyy-MM-dd");
+  const prevParams = new URLSearchParams();
+  prevParams.set("startDate", prevStart);
+  prevParams.set("endDate", prevEnd);
+  if (locationId) prevParams.set("locationId", locationId);
+  if (physicianId) prevParams.set("physicianId", physicianId);
+
+  const { data: prevStats } = useQuery<any>({
+    queryKey: [`/api/dashboard/stats?${prevParams.toString()}`],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: comparePeriod,
   });
 
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
@@ -122,6 +153,16 @@ export default function DashboardPage() {
           <p className="text-xs sm:text-sm text-muted-foreground mt-1">Overview of your referring provider pipeline</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant={comparePeriod ? "secondary" : "outline"}
+            size="sm"
+            onClick={() => setComparePeriod(!comparePeriod)}
+            className="toggle-elevate"
+            data-testid="button-compare-period"
+          >
+            <GitCompare className="w-4 h-4 mr-1" />
+            Compare
+          </Button>
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
               <X className="w-4 h-4 mr-1" />
@@ -198,6 +239,12 @@ export default function DashboardPage() {
         </Card>
       )}
 
+      {comparePeriod && (
+        <div className="text-xs text-muted-foreground bg-muted/50 rounded-md px-3 py-2" data-testid="text-compare-info">
+          Comparing {startDate} to {endDate} vs previous period {prevStart} to {prevEnd}
+        </div>
+      )}
+
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
         <StatCard
           icon={Stethoscope}
@@ -206,6 +253,7 @@ export default function DashboardPage() {
           sub={`${physicians?.length || 0} total`}
           color="bg-chart-1/15 text-chart-1"
           onClick={() => navigate("/physicians?status=ACTIVE")}
+          prevValue={comparePeriod && prevStats ? prevStats.activePhysicians : null}
         />
         <StatCard
           icon={FileText}
@@ -213,6 +261,7 @@ export default function DashboardPage() {
           value={stats?.totalReferrals || 0}
           color="bg-chart-2/15 text-chart-2"
           onClick={() => navigate("/referrals")}
+          prevValue={comparePeriod && prevStats ? prevStats.totalReferrals : null}
         />
         <StatCard
           icon={MessageSquare}
@@ -220,6 +269,7 @@ export default function DashboardPage() {
           value={stats?.totalInteractions || 0}
           color="bg-chart-3/15 text-chart-3"
           onClick={() => navigate("/interactions")}
+          prevValue={comparePeriod && prevStats ? prevStats.totalInteractions : null}
         />
         <StatCard
           icon={AlertTriangle}
@@ -227,6 +277,7 @@ export default function DashboardPage() {
           value={stats?.atRiskPhysicians || 0}
           color="bg-chart-5/15 text-chart-5"
           onClick={() => navigate("/physicians?stage=AT_RISK")}
+          prevValue={comparePeriod && prevStats ? prevStats.atRiskPhysicians : null}
         />
         <StatCard
           icon={ClipboardList}
@@ -234,6 +285,7 @@ export default function DashboardPage() {
           value={stats?.openTasks || 0}
           color="bg-chart-4/15 text-chart-4"
           onClick={() => navigate("/tasks?status=OPEN")}
+          prevValue={comparePeriod && prevStats ? prevStats.openTasks : null}
         />
       </div>
 

@@ -33,6 +33,7 @@ import IntegrationsPage from "@/pages/integrations";
 import ExecutiveDashboardPage from "@/pages/executive-dashboard";
 import TerritoryDashboardPage from "@/pages/territory-dashboard";
 import LocationDashboardPage from "@/pages/location-dashboard";
+import ScheduledReportsPage from "@/pages/scheduled-reports";
 import { IdleTimeout } from "@/components/idle-timeout";
 import { Loader2 } from "lucide-react";
 
@@ -62,6 +63,7 @@ function AuthenticatedRouter() {
       <Route path="/admin/settings" component={AdminSettingsPage} />
       <Route path="/admin/audit-log" component={AuditLogPage} />
       <Route path="/admin/integrations" component={IntegrationsPage} />
+      <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
       <Route component={NotFound} />
     </Switch>
   );

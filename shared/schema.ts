@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, index, pgEnum, numeric, uniqueIndex,
+  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, jsonb, index, pgEnum, numeric, uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -458,6 +458,24 @@ export type ApiKey = typeof apiKeys.$inferSelect;
 export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
 export type IntegrationSyncLog = typeof integrationSyncLogs.$inferSelect;
 export type InsertIntegrationSyncLog = z.infer<typeof insertIntegrationSyncLogSchema>;
+
+export const scheduledReports = pgTable("scheduled_reports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  name: varchar("name", { length: 255 }).notNull(),
+  frequency: varchar("frequency", { length: 50 }).notNull(),
+  reportType: varchar("report_type", { length: 50 }).notNull(),
+  recipients: text("recipients").notNull(),
+  lastRunAt: timestamp("last_run_at"),
+  nextRunAt: timestamp("next_run_at"),
+  isActive: boolean("is_active").default(true),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  config: jsonb("config"),
+});
+
+export const insertScheduledReportSchema = createInsertSchema(scheduledReports).omit({ id: true, createdAt: true, lastRunAt: true });
+export type InsertScheduledReport = z.infer<typeof insertScheduledReportSchema>;
+export type ScheduledReport = typeof scheduledReports.$inferSelect;
 
 export const loginSchema = z.object({
   email: z.string().email(),

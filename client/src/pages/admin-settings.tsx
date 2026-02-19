@@ -1,13 +1,54 @@
-import { useQuery } from "@tanstack/react-query";
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Shield, MapPin, Cloud, CheckCircle, XCircle, Loader2, Lock, Timer, KeyRound, ShieldCheck, Eye } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Shield, MapPin, Cloud, CheckCircle, XCircle, Loader2, Lock, Timer, KeyRound, ShieldCheck, Eye, Trash2, Database } from "lucide-react";
 import type { Location } from "@shared/schema";
-import { getQueryFn } from "@/lib/queryClient";
+import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 import { Link } from "wouter";
 
 export default function AdminSettingsPage() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const isOwner = user?.role === "OWNER";
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+  const { data: retentionSetting } = useQuery<{ value: string }>({
+    queryKey: ["/api/settings/audit-retention"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: isOwner,
+  });
+  const [retentionDays, setRetentionDays] = useState("");
+
+  const updateRetentionMutation = useMutation({
+    mutationFn: async (days: string) => {
+      await apiRequest("PATCH", "/api/settings/audit-retention", { days: parseInt(days) });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/audit-retention"] });
+      toast({ title: "Retention policy updated" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const purgeAuditLogsMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/audit-logs/purge");
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/audit-logs"] });
+      toast({ title: `Purged ${data.deleted} audit log entries older than retention period` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const currentRetention = retentionSetting?.value || "365";
+
   const { data: integrationStatus, isLoading: loadingStatus } = useQuery<{ outlook: boolean; sharepoint: boolean }>({
     queryKey: ["/api/integrations/status"],
     queryFn: getQueryFn({ on401: "throw" }),
@@ -166,6 +207,64 @@ export default function AdminSettingsPage() {
           )}
         </CardContent>
       </Card>
+
+      {isOwner && (
+        <Card data-testid="card-data-retention">
+          <CardHeader className="flex flex-row items-center gap-2 pb-2">
+            <Database className="w-4 h-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">Data Retention Policy</h3>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Configure how long audit logs are retained. HIPAA requires a minimum of 6 years (2,190 days) for covered entities. Older records will be automatically purged.
+            </p>
+            <div className="flex flex-wrap items-end gap-3">
+              <div className="space-y-1.5">
+                <Label className="text-xs">Retention Period</Label>
+                <Select
+                  value={retentionDays || currentRetention}
+                  onValueChange={(v) => setRetentionDays(v)}
+                >
+                  <SelectTrigger className="w-[200px]" data-testid="select-retention-period">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="90">90 days</SelectItem>
+                    <SelectItem value="180">180 days (6 months)</SelectItem>
+                    <SelectItem value="365">365 days (1 year)</SelectItem>
+                    <SelectItem value="730">730 days (2 years)</SelectItem>
+                    <SelectItem value="1095">1,095 days (3 years)</SelectItem>
+                    <SelectItem value="2190">2,190 days (6 years - HIPAA)</SelectItem>
+                    <SelectItem value="2555">2,555 days (7 years)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={updateRetentionMutation.isPending || (!retentionDays || retentionDays === currentRetention)}
+                onClick={() => updateRetentionMutation.mutate(retentionDays)}
+                data-testid="button-save-retention"
+              >
+                {updateRetentionMutation.isPending ? "Saving..." : "Save Policy"}
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={purgeAuditLogsMutation.isPending}
+                onClick={() => purgeAuditLogsMutation.mutate()}
+                data-testid="button-purge-audit-logs"
+              >
+                <Trash2 className="w-3 h-3 mr-1.5" />
+                {purgeAuditLogsMutation.isPending ? "Purging..." : "Purge Old Logs Now"}
+              </Button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              Current policy: {currentRetention} day retention. Logs older than this will be removed during purge.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       <Card>
         <CardHeader className="flex flex-row items-center gap-2 pb-2">

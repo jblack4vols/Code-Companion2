@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -44,6 +44,7 @@ const adminItems = [
   { title: "Import", url: "/import", icon: Upload },
   { title: "SharePoint Sync", url: "/admin/sharepoint", icon: Cloud },
   { title: "Integrations", url: "/admin/integrations", icon: Plug },
+  { title: "Scheduled Reports", url: "/admin/scheduled-reports", icon: CalendarClock },
   { title: "Audit Log", url: "/admin/audit-log", icon: ScrollText },
   { title: "Settings", url: "/admin/settings", icon: Settings },
 ];

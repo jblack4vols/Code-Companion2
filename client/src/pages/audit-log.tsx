@@ -5,7 +5,9 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { ScrollText } from "lucide-react";
+import { ScrollText, Download } from "lucide-react";
+import { useAuth } from "@/lib/auth";
+import { Button } from "@/components/ui/button";
 import type { AuditLog, User } from "@shared/schema";
 import { format } from "date-fns";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
@@ -47,8 +49,25 @@ const actionBadge: Record<string, string> = {
 };
 
 export default function AuditLogPage() {
+  const { user } = useAuth();
   const [entityFilter, setEntityFilter] = useState("all");
   const [actionFilter, setActionFilter] = useState("all");
+  const canExport = user?.role === "OWNER";
+
+  const handleExport = async () => {
+    const params = new URLSearchParams();
+    if (entityFilter !== "all") params.set("entity", entityFilter);
+    if (actionFilter !== "all") params.set("action", actionFilter);
+    const res = await fetch(`/api/export/audit-logs?${params.toString()}`, { credentials: "include" });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `audit-logs-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const queryParams = new URLSearchParams();
   if (entityFilter !== "all") queryParams.set("entity", entityFilter);
@@ -71,9 +90,16 @@ export default function AuditLogPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-audit-log-title">Audit Log</h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">HIPAA-compliant audit trail of all system access and modifications</p>
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-audit-log-title">Audit Log</h1>
+          <p className="text-xs sm:text-sm text-muted-foreground">HIPAA-compliant audit trail of all system access and modifications</p>
+        </div>
+        {canExport && (
+          <Button variant="outline" onClick={handleExport} data-testid="button-export-audit-logs">
+            <Download className="w-4 h-4 mr-2" />Export CSV
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-wrap items-center gap-3">

@@ -10,11 +10,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare } from "lucide-react";
+import { Textarea } from "@/components/ui/textarea";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Physician, User } from "@shared/schema";
+import type { Physician, User, Location } from "@shared/schema";
 import { Link } from "wouter";
 
 const stageBadge: Record<string, string> = {
@@ -128,6 +129,23 @@ export default function PhysiciansPage() {
   });
 
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
+  const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+
+  const [quickAddPhysician, setQuickAddPhysician] = useState<any>(null);
+
+  const quickInteractionMutation = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", "/api/interactions", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/interactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      setQuickAddPhysician(null);
+      toast({ title: "Interaction logged" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const canCreate = user ? hasPermission(user.role, "create", "physician") : false;
   const canBulkAction = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
@@ -522,100 +540,154 @@ export default function PhysiciansPage() {
               <p className="text-xs text-muted-foreground mt-1">Try adjusting your search or filters</p>
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {canBulkAction && (
-                      <TableHead className="w-10">
-                        <Checkbox
-                          checked={physicians.length > 0 && selectedIds.size === physicians.length}
-                          onCheckedChange={toggleSelectAll}
-                          aria-label="Select all"
-                          data-testid="checkbox-select-all"
-                        />
-                      </TableHead>
-                    )}
-                    <SortableHead label="Provider" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="min-w-[180px]" />
-                    <TableHead className="min-w-[100px]">NPI</TableHead>
-                    <TableHead>Office/Practice Name</TableHead>
-                    <SortableHead label="Location" field="location" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                    <SortableHead label="Status" field="status" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                    <SortableHead label="Stage" field="stage" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                    <SortableHead label="Priority" field="priority" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                    <SortableHead label="Referrals" field="referrals" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {physicians.map((p: any) => {
-                    const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
-                    return (
-                      <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
-                        {canBulkAction && (
-                          <TableCell onClick={(e) => e.stopPropagation()}>
-                            <Checkbox
-                              checked={selectedIds.has(p.id)}
-                              onCheckedChange={() => toggleSelect(p.id)}
-                              aria-label={`Select ${p.firstName} ${p.lastName}`}
-                              data-testid={`checkbox-physician-${p.id}`}
-                            />
-                          </TableCell>
-                        )}
-                        <TableCell>
-                          <Link href={`/physicians/${p.id}`} className="block">
-                            <div className="flex items-center gap-3">
-                              <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary text-xs font-medium">
-                                {p.firstName[0]}{p.lastName[0]}
-                              </div>
-                              <div>
-                                <p className="text-sm font-medium" data-testid={`text-physician-name-${p.id}`}>{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
-                                {owner && <p className="text-xs text-muted-foreground">{owner.name}</p>}
-                              </div>
-                            </div>
-                          </Link>
-                        </TableCell>
-                        <TableCell className="font-mono text-xs text-muted-foreground" data-testid={`text-physician-npi-${p.id}`}>
-                          {p.npi || "-"}
-                        </TableCell>
-                        <TableCell className="text-sm">
-                          {p.practiceName ? (
-                            <button
-                              type="button"
-                              className="text-left hover:underline text-primary/80 cursor-pointer"
-                              onClick={(e) => { e.stopPropagation(); setSelectedPractice(p.practiceName); }}
-                              data-testid={`link-practice-${p.id}`}
-                            >
-                              {p.practiceName}
-                            </button>
-                          ) : "-"}
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {[p.city, p.state].filter(Boolean).join(", ") || "-"}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage]}`}>
-                            {p.relationshipStage.replace("_", " ")}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className={`text-[10px] ${priorityBadge[p.priority]}`}>{p.priority}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-center" data-testid={`text-referral-count-${p.id}`}>
-                          {Number(p.referralCount) > 0 ? (
-                            <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)}</Badge>
-                          ) : (
-                            <span className="text-muted-foreground">0</span>
+            <>
+              <div className="hidden sm:block overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      {canBulkAction && (
+                        <TableHead className="w-10">
+                          <Checkbox
+                            checked={physicians.length > 0 && selectedIds.size === physicians.length}
+                            onCheckedChange={toggleSelectAll}
+                            aria-label="Select all"
+                            data-testid="checkbox-select-all"
+                          />
+                        </TableHead>
+                      )}
+                      <SortableHead label="Provider" field="name" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} className="min-w-[180px]" />
+                      <TableHead className="min-w-[100px]">NPI</TableHead>
+                      <TableHead>Office/Practice Name</TableHead>
+                      <SortableHead label="Location" field="location" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                      <SortableHead label="Status" field="status" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                      <SortableHead label="Stage" field="stage" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                      <SortableHead label="Priority" field="priority" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                      <SortableHead label="Referrals" field="referrals" currentSort={sortBy} currentOrder={sortOrder} onSort={handleSort} />
+                      {canCreate && <TableHead className="w-10"></TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {physicians.map((p: any) => {
+                      const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
+                      return (
+                        <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
+                          {canBulkAction && (
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Checkbox
+                                checked={selectedIds.has(p.id)}
+                                onCheckedChange={() => toggleSelect(p.id)}
+                                aria-label={`Select ${p.firstName} ${p.lastName}`}
+                                data-testid={`checkbox-physician-${p.id}`}
+                              />
+                            </TableCell>
                           )}
-                        </TableCell>
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
-            </div>
+                          <TableCell>
+                            <Link href={`/physicians/${p.id}`} className="block">
+                              <div className="flex items-center gap-3">
+                                <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary text-xs font-medium">
+                                  {p.firstName[0]}{p.lastName[0]}
+                                </div>
+                                <div>
+                                  <p className="text-sm font-medium" data-testid={`text-physician-name-${p.id}`}>{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
+                                  {owner && <p className="text-xs text-muted-foreground">{owner.name}</p>}
+                                </div>
+                              </div>
+                            </Link>
+                          </TableCell>
+                          <TableCell className="font-mono text-xs text-muted-foreground" data-testid={`text-physician-npi-${p.id}`}>
+                            {p.npi || "-"}
+                          </TableCell>
+                          <TableCell className="text-sm">
+                            {p.practiceName ? (
+                              <button
+                                type="button"
+                                className="text-left hover:underline text-primary/80 cursor-pointer"
+                                onClick={(e) => { e.stopPropagation(); setSelectedPractice(p.practiceName); }}
+                                data-testid={`link-practice-${p.id}`}
+                              >
+                                {p.practiceName}
+                              </button>
+                            ) : "-"}
+                          </TableCell>
+                          <TableCell className="text-sm text-muted-foreground">
+                            {[p.city, p.state].filter(Boolean).join(", ") || "-"}
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage]}`}>
+                              {p.relationshipStage.replace("_", " ")}
+                            </Badge>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="outline" className={`text-[10px] ${priorityBadge[p.priority]}`}>{p.priority}</Badge>
+                          </TableCell>
+                          <TableCell className="text-sm text-center" data-testid={`text-referral-count-${p.id}`}>
+                            {Number(p.referralCount) > 0 ? (
+                              <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)}</Badge>
+                            ) : (
+                              <span className="text-muted-foreground">0</span>
+                            )}
+                          </TableCell>
+                          {canCreate && (
+                            <TableCell onClick={(e) => e.stopPropagation()}>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => setQuickAddPhysician(p)}
+                                data-testid={`button-quick-interaction-${p.id}`}
+                              >
+                                <MessageSquare className="w-4 h-4" />
+                              </Button>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+
+              <div className="sm:hidden divide-y">
+                {physicians.map((p: any) => {
+                  const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
+                  return (
+                    <div key={p.id} className="p-3 hover-elevate" data-testid={`card-physician-mobile-${p.id}`}>
+                      <Link href={`/physicians/${p.id}`} className="block">
+                        <div className="flex items-start gap-3">
+                          <div className="w-9 h-9 rounded-md bg-primary/10 flex items-center justify-center text-primary text-xs font-medium shrink-0">
+                            {p.firstName[0]}{p.lastName[0]}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-sm font-medium truncate">{p.firstName} {p.lastName}{p.credentials ? `, ${p.credentials}` : ""}</p>
+                            {p.practiceName && <p className="text-xs text-muted-foreground truncate">{p.practiceName}</p>}
+                            <p className="text-xs text-muted-foreground">{[p.city, p.state].filter(Boolean).join(", ") || "-"}</p>
+                            <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                              <Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge>
+                              <Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage]}`}>{p.relationshipStage.replace("_", " ")}</Badge>
+                              {Number(p.referralCount) > 0 && (
+                                <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)} referrals</Badge>
+                              )}
+                            </div>
+                          </div>
+                          {canCreate && (
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={(e) => { e.preventDefault(); e.stopPropagation(); setQuickAddPhysician(p); }}
+                              data-testid={`button-quick-interaction-mobile-${p.id}`}
+                            >
+                              <MessageSquare className="w-4 h-4" />
+                            </Button>
+                          )}
+                        </div>
+                      </Link>
+                    </div>
+                  );
+                })}
+              </div>
+            </>
           )}
         </CardContent>
       </Card>
@@ -636,6 +708,73 @@ export default function PhysiciansPage() {
           </div>
         )}
       </div>
+
+      <Dialog open={!!quickAddPhysician} onOpenChange={(open) => { if (!open) setQuickAddPhysician(null); }}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Log Interaction</DialogTitle>
+            <DialogDescription>
+              Quick log for {quickAddPhysician?.firstName} {quickAddPhysician?.lastName}{quickAddPhysician?.credentials ? `, ${quickAddPhysician.credentials}` : ""}
+            </DialogDescription>
+          </DialogHeader>
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              const fd = new FormData(e.currentTarget);
+              quickInteractionMutation.mutate({
+                physicianId: quickAddPhysician?.id,
+                type: fd.get("type"),
+                summary: fd.get("summary") || "",
+                nextStep: fd.get("nextStep") || "",
+                occurredAt: fd.get("occurredAt") || new Date().toISOString().slice(0, 10),
+                locationId: fd.get("locationId") || undefined,
+              });
+            }}
+            className="space-y-4"
+          >
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Type *</Label>
+                <select name="type" required className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-quick-type">
+                  <option value="VISIT">Visit</option>
+                  <option value="CALL">Call</option>
+                  <option value="EMAIL">Email</option>
+                  <option value="LUNCH">Lunch</option>
+                  <option value="EVENT">Event</option>
+                  <option value="OTHER">Other</option>
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Date</Label>
+                <Input name="occurredAt" type="date" defaultValue={new Date().toISOString().slice(0, 10)} data-testid="input-quick-date" />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Location</Label>
+              <select name="locationId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" data-testid="select-quick-location">
+                <option value="">Select location...</option>
+                {locations?.map((l: Location) => (
+                  <option key={l.id} value={l.id}>{l.name}</option>
+                ))}
+              </select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Summary</Label>
+              <Textarea name="summary" placeholder="Brief description of the interaction..." rows={2} data-testid="input-quick-summary" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Next Step</Label>
+              <Input name="nextStep" placeholder="Follow-up action..." data-testid="input-quick-next-step" />
+            </div>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setQuickAddPhysician(null)}>Cancel</Button>
+              <Button type="submit" disabled={quickInteractionMutation.isPending} data-testid="button-submit-quick-interaction">
+                {quickInteractionMutation.isPending ? "Logging..." : "Log Interaction"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
 
       <PracticeDetailDialog
         practiceName={selectedPractice}

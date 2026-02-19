@@ -3,7 +3,7 @@ import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray } from "drizzle-o
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
-  integrationConfigs, apiKeys, integrationSyncLogs, physicianComments,
+  integrationConfigs, apiKeys, integrationSyncLogs, physicianComments, scheduledReports,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -22,6 +22,7 @@ import {
   type ApiKey, type InsertApiKey,
   type IntegrationSyncLog, type InsertIntegrationSyncLog,
   type PhysicianComment, type InsertPhysicianComment,
+  type ScheduledReport, type InsertScheduledReport,
 } from "@shared/schema";
 
 export interface PaginatedResult<T> {
@@ -104,6 +105,8 @@ export interface IStorage {
   exportPhysiciansCsv(filters: PhysicianFilters): Promise<any[]>;
   exportReferralsCsv(filters: ReferralFilters): Promise<any[]>;
   exportInteractionsCsv(filters?: { physicianId?: string; type?: string; dateFrom?: string; dateTo?: string }): Promise<any[]>;
+  exportTasksCsv(filters?: { status?: string; assignedToUserId?: string }): Promise<any[]>;
+  exportAuditLogsCsv(filters?: { entity?: string; action?: string }): Promise<any[]>;
   getMarketers(): Promise<any[]>;
   getMarketerTerritories(): Promise<any>;
   assignPhysicianToMarketer(physicianId: string, marketerId: string | null): Promise<Physician | undefined>;
@@ -153,6 +156,12 @@ export interface IStorage {
   createPhysicianComment(comment: InsertPhysicianComment): Promise<PhysicianComment>;
   updatePhysicianComment(id: string, content: string): Promise<PhysicianComment | undefined>;
   deletePhysicianComment(id: string): Promise<boolean>;
+
+  getScheduledReports(): Promise<ScheduledReport[]>;
+  getScheduledReport(id: string): Promise<ScheduledReport | undefined>;
+  createScheduledReport(report: InsertScheduledReport): Promise<ScheduledReport>;
+  updateScheduledReport(id: string, data: Partial<InsertScheduledReport>): Promise<ScheduledReport>;
+  deleteScheduledReport(id: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -839,6 +848,50 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(interactions.occurredAt));
   }
 
+  async exportTasksCsv(filters?: { status?: string; assignedToUserId?: string }) {
+    const conditions: any[] = [];
+    if (filters?.status && filters.status !== "all") conditions.push(eq(tasks.status, filters.status as any));
+    if (filters?.assignedToUserId && filters.assignedToUserId !== "all") conditions.push(eq(tasks.assignedToUserId, filters.assignedToUserId));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    return db.select({
+      description: tasks.description,
+      status: tasks.status,
+      priority: tasks.priority,
+      dueDate: tasks.dueAt,
+      assignedTo: users.name,
+      physicianFirstName: physicians.firstName,
+      physicianLastName: physicians.lastName,
+    })
+      .from(tasks)
+      .leftJoin(users, eq(tasks.assignedToUserId, users.id))
+      .leftJoin(physicians, eq(tasks.physicianId, physicians.id))
+      .where(where)
+      .orderBy(desc(tasks.dueAt));
+  }
+
+  async exportAuditLogsCsv(filters?: { entity?: string; action?: string }) {
+    const conditions: any[] = [];
+    if (filters?.entity && filters.entity !== "all") conditions.push(eq(auditLogs.entity, filters.entity));
+    if (filters?.action && filters.action !== "all") conditions.push(eq(auditLogs.action, filters.action));
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    return db.select({
+      timestamp: auditLogs.timestamp,
+      userName: users.name,
+      action: auditLogs.action,
+      entity: auditLogs.entity,
+      entityId: auditLogs.entityId,
+      ipAddress: auditLogs.ipAddress,
+      detailJson: auditLogs.detailJson,
+    })
+      .from(auditLogs)
+      .leftJoin(users, eq(auditLogs.userId, users.id))
+      .where(where)
+      .orderBy(desc(auditLogs.timestamp))
+      .limit(5000);
+  }
+
   async getMarketers() {
     return db.select({ id: users.id, name: users.name, email: users.email, role: users.role })
       .from(users)
@@ -1237,6 +1290,32 @@ export class DatabaseStorage implements IStorage {
   async deletePhysicianComment(id: string) {
     const result = await db.delete(physicianComments).where(eq(physicianComments.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async getScheduledReports() {
+    return db.select().from(scheduledReports).orderBy(desc(scheduledReports.createdAt));
+  }
+
+  async getScheduledReport(id: string) {
+    const [report] = await db.select().from(scheduledReports).where(eq(scheduledReports.id, id));
+    return report;
+  }
+
+  async createScheduledReport(report: InsertScheduledReport) {
+    const [created] = await db.insert(scheduledReports).values(report).returning();
+    return created;
+  }
+
+  async updateScheduledReport(id: string, data: Partial<InsertScheduledReport>) {
+    const [updated] = await db.update(scheduledReports)
+      .set(data)
+      .where(eq(scheduledReports.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteScheduledReport(id: string) {
+    await db.delete(scheduledReports).where(eq(scheduledReports.id, id));
   }
 }
 

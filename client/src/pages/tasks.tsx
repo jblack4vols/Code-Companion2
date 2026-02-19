@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, ClipboardList, CheckCircle2, Circle, X } from "lucide-react";
+import { Plus, ClipboardList, CheckCircle2, Circle, X, Download } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -32,6 +32,22 @@ export default function TasksPage() {
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
 
   const canCreate = user ? hasPermission(user.role, "create", "interaction") : false;
+  const canExport = user ? ["OWNER", "DIRECTOR"].includes(user.role) : false;
+
+  const handleExport = async () => {
+    const params = new URLSearchParams();
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (assigneeFilter !== "all") params.set("assignedToUserId", assigneeFilter);
+    const res = await fetch(`/api/export/tasks?${params.toString()}`, { credentials: "include" });
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `tasks-${format(new Date(), "yyyy-MM-dd")}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const addMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -95,6 +111,12 @@ export default function TasksPage() {
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-tasks-title">Tasks</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">Follow-up work queue</p>
         </div>
+        <div className="flex items-center gap-2 flex-wrap">
+        {canExport && (
+          <Button variant="outline" onClick={handleExport} data-testid="button-export-tasks">
+            <Download className="w-4 h-4 mr-2" />Export CSV
+          </Button>
+        )}
         {canCreate && (
           <Dialog open={showAdd} onOpenChange={setShowAdd}>
             <DialogTrigger asChild>
@@ -145,6 +167,7 @@ export default function TasksPage() {
             </DialogContent>
           </Dialog>
         )}
+        </div>
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
