@@ -3,6 +3,7 @@ import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray } from "drizzle-o
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
+  integrationConfigs, apiKeys, integrationSyncLogs,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -17,6 +18,9 @@ import {
   type TerritoryMonthlySummary,
   type LocationMonthlySummary,
   type TieringWeights,
+  type IntegrationConfig, type InsertIntegrationConfig,
+  type ApiKey, type InsertApiKey,
+  type IntegrationSyncLog, type InsertIntegrationSyncLog,
 } from "@shared/schema";
 
 export interface PaginatedResult<T> {
@@ -126,6 +130,23 @@ export interface IStorage {
   getPhysicianMonthlySummaries(filters?: { physicianId?: string; month?: string; months?: number }): Promise<PhysicianMonthlySummary[]>;
   getTerritoryMonthlySummaries(filters?: { territoryId?: string; month?: string }): Promise<TerritoryMonthlySummary[]>;
   getLocationMonthlySummaries(filters?: { locationId?: string; month?: string }): Promise<LocationMonthlySummary[]>;
+
+  getIntegrationConfigs(): Promise<IntegrationConfig[]>;
+  getIntegrationConfig(id: string): Promise<IntegrationConfig | undefined>;
+  getIntegrationConfigByType(type: string): Promise<IntegrationConfig | undefined>;
+  createIntegrationConfig(config: InsertIntegrationConfig): Promise<IntegrationConfig>;
+  updateIntegrationConfig(id: string, data: Partial<InsertIntegrationConfig>): Promise<IntegrationConfig | undefined>;
+  deleteIntegrationConfig(id: string): Promise<boolean>;
+
+  getApiKeys(): Promise<ApiKey[]>;
+  createApiKey(key: InsertApiKey): Promise<ApiKey>;
+  getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined>;
+  updateApiKeyLastUsed(id: string): Promise<void>;
+  deactivateApiKey(id: string): Promise<boolean>;
+
+  getIntegrationSyncLogs(integrationId?: string, limit?: number): Promise<IntegrationSyncLog[]>;
+  createIntegrationSyncLog(log: InsertIntegrationSyncLog): Promise<IntegrationSyncLog>;
+  updateIntegrationSyncLog(id: string, data: Partial<IntegrationSyncLog>): Promise<IntegrationSyncLog | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1111,6 +1132,82 @@ export class DatabaseStorage implements IStorage {
       return db.select().from(locationMonthlySummary).where(and(...conditions)).orderBy(desc(locationMonthlySummary.month));
     }
     return db.select().from(locationMonthlySummary).orderBy(desc(locationMonthlySummary.month));
+  }
+
+  async getIntegrationConfigs() {
+    return db.select().from(integrationConfigs).orderBy(asc(integrationConfigs.name));
+  }
+
+  async getIntegrationConfig(id: string) {
+    const [config] = await db.select().from(integrationConfigs).where(eq(integrationConfigs.id, id));
+    return config;
+  }
+
+  async getIntegrationConfigByType(type: string) {
+    const [config] = await db.select().from(integrationConfigs).where(eq(integrationConfigs.type, type as any));
+    return config;
+  }
+
+  async createIntegrationConfig(config: InsertIntegrationConfig) {
+    const [created] = await db.insert(integrationConfigs).values(config).returning();
+    return created;
+  }
+
+  async updateIntegrationConfig(id: string, data: Partial<InsertIntegrationConfig>) {
+    const [updated] = await db.update(integrationConfigs)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(integrationConfigs.id, id)).returning();
+    return updated;
+  }
+
+  async deleteIntegrationConfig(id: string) {
+    const result = await db.delete(integrationConfigs).where(eq(integrationConfigs.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getApiKeys() {
+    return db.select().from(apiKeys).orderBy(desc(apiKeys.createdAt));
+  }
+
+  async createApiKey(key: InsertApiKey) {
+    const [created] = await db.insert(apiKeys).values(key).returning();
+    return created;
+  }
+
+  async getApiKeyByHash(keyHash: string) {
+    const [key] = await db.select().from(apiKeys).where(eq(apiKeys.keyHash, keyHash));
+    return key;
+  }
+
+  async updateApiKeyLastUsed(id: string) {
+    await db.update(apiKeys).set({ lastUsedAt: new Date() }).where(eq(apiKeys.id, id));
+  }
+
+  async deactivateApiKey(id: string) {
+    const result = await db.update(apiKeys).set({ isActive: false }).where(eq(apiKeys.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async getIntegrationSyncLogs(integrationId?: string, limit = 50) {
+    if (integrationId) {
+      return db.select().from(integrationSyncLogs)
+        .where(eq(integrationSyncLogs.integrationId, integrationId))
+        .orderBy(desc(integrationSyncLogs.startedAt))
+        .limit(limit);
+    }
+    return db.select().from(integrationSyncLogs).orderBy(desc(integrationSyncLogs.startedAt)).limit(limit);
+  }
+
+  async createIntegrationSyncLog(log: InsertIntegrationSyncLog) {
+    const [created] = await db.insert(integrationSyncLogs).values(log).returning();
+    return created;
+  }
+
+  async updateIntegrationSyncLog(id: string, data: Partial<IntegrationSyncLog>) {
+    const [updated] = await db.update(integrationSyncLogs)
+      .set(data)
+      .where(eq(integrationSyncLogs.id, id)).returning();
+    return updated;
   }
 }
 

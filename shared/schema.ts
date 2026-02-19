@@ -364,6 +364,69 @@ export type TerritoryMonthlySummary = typeof territoryMonthlySummary.$inferSelec
 export type LocationMonthlySummary = typeof locationMonthlySummary.$inferSelect;
 export type TieringWeights = typeof tieringWeights.$inferSelect;
 
+// --- API Integrations ---
+
+export const integrationTypeEnum = pgEnum("integration_type", [
+  "GOHIGHLEVEL", "CUSTOM_API", "MICROSOFT",
+]);
+
+export const integrationStatusEnum = pgEnum("integration_status", [
+  "DISCONNECTED", "CONNECTED", "ERROR",
+]);
+
+export const integrationConfigs = pgTable("integration_configs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  type: integrationTypeEnum("type").notNull(),
+  name: text("name").notNull(),
+  status: integrationStatusEnum("status").notNull().default("DISCONNECTED"),
+  settings: json("settings").$type<Record<string, any>>().default({}),
+  lastSyncAt: timestamp("last_sync_at"),
+  lastSyncStatus: text("last_sync_status"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const apiKeys = pgTable("api_keys", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  keyHash: text("key_hash").notNull(),
+  keyPrefix: varchar("key_prefix", { length: 8 }).notNull(),
+  scopes: json("scopes").$type<string[]>().default([]),
+  isActive: boolean("is_active").notNull().default(true),
+  lastUsedAt: timestamp("last_used_at"),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const integrationSyncLogs = pgTable("integration_sync_logs", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  integrationId: varchar("integration_id", { length: 36 }).references(() => integrationConfigs.id).notNull(),
+  direction: varchar("direction", { length: 10 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull(),
+  recordsProcessed: integer("records_processed").default(0),
+  recordsFailed: integer("records_failed").default(0),
+  details: json("details").$type<Record<string, any>>().default({}),
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  finishedAt: timestamp("finished_at"),
+});
+
+export const insertIntegrationConfigSchema = createInsertSchema(integrationConfigs).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertApiKeySchema = createInsertSchema(apiKeys).omit({
+  id: true, createdAt: true,
+});
+export const insertIntegrationSyncLogSchema = createInsertSchema(integrationSyncLogs).omit({
+  id: true, startedAt: true,
+});
+
+export type IntegrationConfig = typeof integrationConfigs.$inferSelect;
+export type InsertIntegrationConfig = z.infer<typeof insertIntegrationConfigSchema>;
+export type ApiKey = typeof apiKeys.$inferSelect;
+export type InsertApiKey = z.infer<typeof insertApiKeySchema>;
+export type IntegrationSyncLog = typeof integrationSyncLogs.$inferSelect;
+export type InsertIntegrationSyncLog = z.infer<typeof insertIntegrationSyncLogSchema>;
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),

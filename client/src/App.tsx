@@ -29,6 +29,7 @@ import SharePointSyncPage from "@/pages/sharepoint-sync";
 import MapViewPage from "@/pages/map-view";
 import DuplicateDetectionPage from "@/pages/duplicate-detection";
 import UserActivityReportsPage from "@/pages/user-activity-reports";
+import IntegrationsPage from "@/pages/integrations";
 import ExecutiveDashboardPage from "@/pages/executive-dashboard";
 import TerritoryDashboardPage from "@/pages/territory-dashboard";
 import LocationDashboardPage from "@/pages/location-dashboard";
@@ -59,6 +60,7 @@ function AuthenticatedRouter() {
       <Route path="/admin/locations" component={AdminLocationsPage} />
       <Route path="/admin/settings" component={AdminSettingsPage} />
       <Route path="/admin/audit-log" component={AuditLogPage} />
+      <Route path="/admin/integrations" component={IntegrationsPage} />
       <Route component={NotFound} />
     </Switch>
   );

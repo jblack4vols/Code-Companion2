@@ -7,7 +7,8 @@ import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { sql, eq, and, gte, lt } from "drizzle-orm";
 import { referrals } from "@shared/schema";
-import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema } from "@shared/schema";
+import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema, physicians, integrationConfigs } from "@shared/schema";
+import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
 import { searchSites as searchSPSites, getSiteId as getSPSiteId, setSiteId as setSPSiteId, validateSite as validateSPSite, getSyncStatuses as getSPSyncStatuses, syncEntity as syncSPEntity, syncAll as syncSPAll } from "./sharepoint";
@@ -1386,6 +1387,367 @@ export async function registerRoutes(
     }).catch(err => {
       console.error("SharePoint sync all failed:", err.message);
     });
+  });
+
+  // --- Integration Management Routes ---
+  app.get("/api/integrations", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      res.json(await storage.getIntegrationConfigs());
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const createIntegrationSchema = z.object({
+    type: z.enum(["GOHIGHLEVEL", "CUSTOM_API", "MICROSOFT"]),
+    name: z.string().min(1).max(100),
+    settings: z.record(z.any()).optional().default({}),
+  });
+
+  app.post("/api/integrations", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const parsed = createIntegrationSchema.parse(req.body);
+      const existing = await storage.getIntegrationConfigByType(parsed.type);
+      if (existing) return res.status(400).json({ message: `Integration of type ${parsed.type} already exists` });
+      const config = await storage.createIntegrationConfig(parsed);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_INTEGRATION", entity: "Integration", entityId: config.id, detailJson: { type: parsed.type, name: parsed.name } });
+      res.json(config);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  const updateIntegrationSchema = z.object({
+    name: z.string().min(1).max(100).optional(),
+    status: z.enum(["CONNECTED", "DISCONNECTED", "ERROR"]).optional(),
+    settings: z.record(z.any()).optional(),
+  });
+
+  app.patch("/api/integrations/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const parsed = updateIntegrationSchema.parse(req.body);
+      const updated = await storage.updateIntegrationConfig(req.params.id, parsed);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE_INTEGRATION", entity: "Integration", entityId: updated.id, detailJson: { changes: Object.keys(req.body) } });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/integrations/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const deleted = await storage.deleteIntegrationConfig(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE_INTEGRATION", entity: "Integration", entityId: req.params.id, detailJson: {} });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/integrations/:id/test", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const config = await storage.getIntegrationConfig(req.params.id);
+      if (!config) return res.status(404).json({ message: "Not found" });
+
+      if (config.type === "GOHIGHLEVEL") {
+        const apiKey = config.settings?.apiKey;
+        if (!apiKey) return res.json({ success: false, message: "No API key configured" });
+        try {
+          const resp = await fetch("https://rest.gohighlevel.com/v1/custom-values/", {
+            headers: { Authorization: `Bearer ${apiKey}` },
+          });
+          if (resp.ok) {
+            await storage.updateIntegrationConfig(config.id, { status: "CONNECTED" } as any);
+            return res.json({ success: true, message: "Connected to GoHighLevel successfully" });
+          } else {
+            await storage.updateIntegrationConfig(config.id, { status: "ERROR" } as any);
+            return res.json({ success: false, message: `GoHighLevel returned ${resp.status}: ${resp.statusText}` });
+          }
+        } catch (fetchErr: any) {
+          await storage.updateIntegrationConfig(config.id, { status: "ERROR" } as any);
+          return res.json({ success: false, message: `Connection failed: ${fetchErr.message}` });
+        }
+      }
+
+      if (config.type === "CUSTOM_API") {
+        const baseUrl = config.settings?.baseUrl;
+        const apiKey = config.settings?.apiKey;
+        if (!baseUrl) return res.json({ success: false, message: "No base URL configured" });
+        try {
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+          const resp = await fetch(baseUrl, { method: "GET", headers });
+          if (resp.ok || resp.status === 401 || resp.status === 403) {
+            await storage.updateIntegrationConfig(config.id, { status: "CONNECTED" } as any);
+            return res.json({ success: true, message: `Reached ${baseUrl} (HTTP ${resp.status})` });
+          } else {
+            await storage.updateIntegrationConfig(config.id, { status: "ERROR" } as any);
+            return res.json({ success: false, message: `Endpoint returned ${resp.status}` });
+          }
+        } catch (fetchErr: any) {
+          await storage.updateIntegrationConfig(config.id, { status: "ERROR" } as any);
+          return res.json({ success: false, message: `Connection failed: ${fetchErr.message}` });
+        }
+      }
+
+      res.json({ success: false, message: "Test not available for this integration type" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/integrations/:id/sync", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const config = await storage.getIntegrationConfig(req.params.id);
+      if (!config) return res.status(404).json({ message: "Not found" });
+      const direction = req.body.direction || "push";
+
+      const log = await storage.createIntegrationSyncLog({
+        integrationId: config.id,
+        direction,
+        status: "running",
+        details: { triggeredBy: req.session.userId },
+      });
+
+      if (config.type === "GOHIGHLEVEL" && config.settings?.apiKey) {
+        const apiKey = config.settings.apiKey;
+        const locationId = config.settings.locationId || "";
+
+        if (direction === "push") {
+          try {
+            const allPhysicians = await storage.getPhysicians();
+            let processed = 0;
+            let failed = 0;
+
+            for (const phys of allPhysicians.slice(0, 100)) {
+              try {
+                const contactData: Record<string, any> = {
+                  firstName: phys.firstName,
+                  lastName: phys.lastName,
+                  email: phys.email || "",
+                  phone: phys.phone || "",
+                  companyName: phys.practiceName || "",
+                  address1: phys.primaryOfficeAddress || "",
+                  city: phys.city || "",
+                  state: phys.state || "",
+                  postalCode: phys.zip || "",
+                  tags: ["tristar-physician", phys.status?.toLowerCase() || "prospect"],
+                  customField: { npi: phys.npi || "", credentials: phys.credentials || "", specialty: phys.specialty || "" },
+                };
+                if (locationId) contactData.locationId = locationId;
+
+                const resp = await fetch("https://rest.gohighlevel.com/v1/contacts/", {
+                  method: "POST",
+                  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                  body: JSON.stringify(contactData),
+                });
+
+                if (resp.ok || resp.status === 200 || resp.status === 201) {
+                  processed++;
+                } else {
+                  failed++;
+                }
+              } catch {
+                failed++;
+              }
+            }
+
+            await storage.updateIntegrationSyncLog(log.id, {
+              status: "completed",
+              recordsProcessed: processed,
+              recordsFailed: failed,
+              finishedAt: new Date(),
+            });
+            await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: `Pushed ${processed} contacts` } as any);
+            return res.json({ success: true, processed, failed });
+          } catch (syncErr: any) {
+            await storage.updateIntegrationSyncLog(log.id, {
+              status: "error",
+              details: { error: syncErr.message },
+              finishedAt: new Date(),
+            });
+            return res.json({ success: false, message: syncErr.message });
+          }
+        }
+
+        if (direction === "pull") {
+          try {
+            const resp = await fetch(`https://rest.gohighlevel.com/v1/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`, {
+              headers: { Authorization: `Bearer ${apiKey}` },
+            });
+            if (!resp.ok) {
+              await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { httpStatus: resp.status }, finishedAt: new Date() });
+              return res.json({ success: false, message: `GHL API returned ${resp.status}` });
+            }
+            const data: any = await resp.json();
+            const contacts = data.contacts || [];
+            let processed = 0;
+
+            await storage.updateIntegrationSyncLog(log.id, {
+              status: "completed",
+              recordsProcessed: contacts.length,
+              details: { contactsReceived: contacts.length, message: "Contacts pulled from GoHighLevel. Review in sync logs." },
+              finishedAt: new Date(),
+            });
+            await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: `Pulled ${contacts.length} contacts` } as any);
+            return res.json({ success: true, contactsReceived: contacts.length });
+          } catch (syncErr: any) {
+            await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { error: syncErr.message }, finishedAt: new Date() });
+            return res.json({ success: false, message: syncErr.message });
+          }
+        }
+      }
+
+      await storage.updateIntegrationSyncLog(log.id, { status: "skipped", details: { message: "Sync not configured for this integration" }, finishedAt: new Date() });
+      res.json({ success: false, message: "Sync not available or not configured" });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/integrations/:id/logs", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const logs = await storage.getIntegrationSyncLogs(req.params.id, 20);
+      res.json(logs);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- API Key Management ---
+  app.get("/api/api-keys", requireRole("OWNER"), async (req, res) => {
+    try {
+      const keys = await storage.getApiKeys();
+      res.json(keys.map((k) => ({ ...k, keyHash: undefined })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const createApiKeySchema = z.object({
+    name: z.string().min(1).max(100),
+    scopes: z.array(z.string()).min(1).default(["physicians:read", "referrals:read", "locations:read"]),
+  });
+
+  app.post("/api/api-keys", requireRole("OWNER"), async (req, res) => {
+    try {
+      const { name, scopes } = createApiKeySchema.parse(req.body);
+
+      const rawKey = `tsk_${crypto.randomBytes(32).toString("hex")}`;
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 8);
+
+      const apiKey = await storage.createApiKey({
+        name,
+        keyHash,
+        keyPrefix,
+        scopes: scopes || ["physicians:read", "referrals:read", "locations:read"],
+        createdBy: req.session.userId!,
+      });
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_API_KEY", entity: "ApiKey", entityId: apiKey.id, detailJson: { name, scopes } });
+      res.json({ ...apiKey, rawKey, keyHash: undefined });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/api-keys/:id", requireRole("OWNER"), async (req, res) => {
+    try {
+      const deactivated = await storage.deactivateApiKey(req.params.id);
+      if (!deactivated) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: req.params.id, detailJson: {} });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  // --- Public API (API Key Auth) ---
+  const requireApiKey = (scope: string) => async (req: Request, res: Response, next: NextFunction) => {
+    const apiKeyHeader = req.headers["x-tristar-api-key"] as string;
+    if (!apiKeyHeader) return res.status(401).json({ error: "API key required. Set X-TRISTAR-API-KEY header." });
+
+    const keyHash = crypto.createHash("sha256").update(apiKeyHeader).digest("hex");
+    const key = await storage.getApiKeyByHash(keyHash);
+    if (!key || !key.isActive) return res.status(401).json({ error: "Invalid or inactive API key" });
+
+    const scopes = (key.scopes as string[]) || [];
+    if (!scopes.includes(scope) && !scopes.includes("*")) {
+      return res.status(403).json({ error: `Missing scope: ${scope}` });
+    }
+
+    await storage.updateApiKeyLastUsed(key.id);
+    (req as any).apiKeyId = key.id;
+    next();
+  };
+
+  app.get("/api/public/physicians", requireApiKey("physicians:read"), async (_req, res) => {
+    try {
+      const allPhysicians = await storage.getPhysicians();
+      res.json({ data: allPhysicians, total: allPhysicians.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/physicians/:id", requireApiKey("physicians:read"), async (req, res) => {
+    try {
+      const phys = await storage.getPhysician(req.params.id);
+      if (!phys) return res.status(404).json({ error: "Not found" });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/referrals", requireApiKey("referrals:read"), async (_req, res) => {
+    try {
+      const allReferrals = await storage.getReferrals();
+      res.json({ data: allReferrals, total: allReferrals.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/locations", requireApiKey("locations:read"), async (_req, res) => {
+    try {
+      const allLocations = await storage.getLocations();
+      res.json({ data: allLocations, total: allLocations.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/interactions", requireApiKey("interactions:read"), async (_req, res) => {
+    try {
+      const allInteractions = await storage.getInteractions();
+      res.json({ data: allInteractions, total: allInteractions.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // --- Webhook endpoint for external software to push data ---
+  app.post("/api/public/webhook", requireApiKey("webhook:write"), async (req, res) => {
+    try {
+      const { event, data } = req.body;
+      if (!event || !data) return res.status(400).json({ error: "event and data fields required" });
+
+      await storage.createAuditLog({
+        userId: "system",
+        action: "WEBHOOK_RECEIVED",
+        entity: "Webhook",
+        entityId: (req as any).apiKeyId,
+        detailJson: { event, dataKeys: Object.keys(data) },
+      });
+
+      res.json({ received: true, event });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   return httpServer;

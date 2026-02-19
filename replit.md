@@ -65,6 +65,11 @@ scripts/
 - **Calendar**: Office/practice-centric event scheduling. Events linked to Office/Practice Name (not individual physicians) via searchable dropdown. Shows all physicians at selected office. Practice filter in toolbar. Outlook sync capability. API: GET /api/physicians/practice-names, GET /api/physicians/by-practice?name=X
 - **Import**: Excel (.xlsx) import for physicians and referrals with auto column mapping, preview, deduplication/upsert, and progress tracking. Supports Referring Provider List and Created Cases Report formats. Available at /import route. OWNER/DIRECTOR role required.
 - **SharePoint Sync**: Sync all app data (physicians, referrals, interactions, tasks, locations) to SharePoint Lists via Microsoft Graph API. Uses batch operations (20 per request) with clear-and-reload approach. Async sync with status polling. Admin page at /admin/sharepoint. OWNER/DIRECTOR role required. DB tables: sharepoint_sync_status (tracks per-entity sync state), app_settings (stores site config).
+- **API Integrations**: Admin page at /admin/integrations with three tabs:
+  - **Connections**: GoHighLevel (two-way sync: push physician contacts, pull leads) and Custom API (connect to external software via REST). Test connection, manual sync. DB: integration_configs, integration_sync_logs.
+  - **API Keys**: Create/revoke API keys with granular scopes (physicians:read, referrals:read, etc.) for external software to access Tristar data via public API. SHA-256 hashed, shown once. DB: api_keys. OWNER role required.
+  - **Microsoft**: Setup instructions for Outlook and SharePoint connections via Replit integrations panel.
+  - **Public API**: GET /api/public/physicians, /referrals, /locations, /interactions. POST /api/public/webhook. Auth via X-TRISTAR-API-KEY header.
 
 ## Real Data
 - **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
