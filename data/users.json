@@ -3,7 +3,6 @@
     "id": "a0a9e2da-76af-483a-be7c-9c2a5c798e19",
     "name": "Sarah Mitchell",
     "email": "admin@tristar360.com",
-    "password": "$2b$10$bhuD9Wnvf2VaOjBah8ppuOFf8fS5a4sS8vNqOnt4dpImlYaZ0mkom",
     "role": "OWNER",
     "createdAt": "2026-02-11T08:41:30.229Z",
     "updatedAt": "2026-02-11T08:41:30.229Z"
@@ -12,7 +11,6 @@
     "id": "1329930b-8f91-43af-99b1-4cd40008b93e",
     "name": "James Wilson",
     "email": "james@tristar360.com",
-    "password": "$2b$10$LYocSUDZXGY2rpZYgjEMyelb7CuDiXdGzsv1ODdOsC4stZyiTEopa",
     "role": "DIRECTOR",
     "createdAt": "2026-02-11T08:41:30.229Z",
     "updatedAt": "2026-02-11T08:41:30.229Z"
@@ -21,7 +19,6 @@
     "id": "65123f2c-ac23-4be5-837c-ecf79f8e315a",
     "name": "Emily Chen",
     "email": "emily@tristar360.com",
-    "password": "$2b$10$LYocSUDZXGY2rpZYgjEMyelb7CuDiXdGzsv1ODdOsC4stZyiTEopa",
     "role": "MARKETER",
     "createdAt": "2026-02-11T08:41:30.229Z",
     "updatedAt": "2026-02-11T08:41:30.229Z"
@@ -30,7 +27,6 @@
     "id": "a20eda87-7437-4273-bb87-19ffff1f419d",
     "name": "Maria Santos",
     "email": "maria@tristar360.com",
-    "password": "$2b$10$LYocSUDZXGY2rpZYgjEMyelb7CuDiXdGzsv1ODdOsC4stZyiTEopa",
     "role": "FRONT_DESK",
     "createdAt": "2026-02-11T08:41:30.229Z",
     "updatedAt": "2026-02-11T08:41:30.229Z"
@@ -39,18 +35,8 @@
     "id": "cbc99214-af60-453a-8a50-f148bbf54051",
     "name": "David Park",
     "email": "david@tristar360.com",
-    "password": "$2b$10$LYocSUDZXGY2rpZYgjEMyelb7CuDiXdGzsv1ODdOsC4stZyiTEopa",
     "role": "ANALYST",
     "createdAt": "2026-02-11T08:41:30.229Z",
     "updatedAt": "2026-02-11T08:41:30.229Z"
-  },
-  {
-    "id": "5f6e6e1a-6d65-4897-bf59-dfc851ba9f3e",
-    "name": "Test User E2E",
-    "email": "testuser_e2e_JBHIh-@tristar360.com",
-    "password": "$2b$10$w5zSUfTqsVmkEobNWAm.m.sT3xtyMzeLZ1d.6K4XGu0E1.cbtqUby",
-    "role": "MARKETER",
-    "createdAt": "2026-02-11T09:38:54.826Z",
-    "updatedAt": "2026-02-11T09:38:54.826Z"
   }
 ]

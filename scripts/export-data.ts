@@ -12,7 +12,8 @@ async function exportData() {
   }
 
   const allUsers = await db.select().from(users);
-  fs.writeFileSync(path.join(dataDir, "users.json"), JSON.stringify(allUsers, null, 2));
+  const sanitizedUsers = allUsers.map(({ password, ...rest }) => rest);
+  fs.writeFileSync(path.join(dataDir, "users.json"), JSON.stringify(sanitizedUsers, null, 2));
   console.log(`Exported ${allUsers.length} users`);
 
   const allLocations = await db.select().from(locations);

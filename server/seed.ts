@@ -40,12 +40,17 @@ export async function seed() {
 
     const usersData = await loadJsonData("users.json");
     if (usersData.length > 0) {
+      const bcrypt = await import("bcryptjs");
+      const seedOwnerPw = process.env.SEED_OWNER_PASSWORD || "change_me_owner";
+      const seedUserPw = process.env.SEED_USER_PASSWORD || "change_me_user";
+      const ownerHash = await bcrypt.hash(seedOwnerPw, 10);
+      const userHash = await bcrypt.hash(seedUserPw, 10);
       for (const u of usersData) {
         await db.insert(users).values({
           id: u.id,
           name: u.name,
           email: u.email,
-          password: u.password,
+          password: u.role === "OWNER" ? ownerHash : userHash,
           role: u.role,
         }).onConflictDoNothing();
       }
@@ -185,8 +190,8 @@ export async function seed() {
   console.log("Seeding database with default data...");
 
   const bcrypt = await import("bcryptjs");
-  const adminHash = await bcrypt.hash("admin123", 10);
-  const passHash = await bcrypt.hash("pass123", 10);
+  const adminHash = await bcrypt.hash(process.env.SEED_OWNER_PASSWORD || "change_me_owner", 10);
+  const passHash = await bcrypt.hash(process.env.SEED_USER_PASSWORD || "change_me_user", 10);
 
   await db.insert(users).values([
     { name: "Sarah Mitchell", email: "admin@tristar360.com", password: adminHash, role: "OWNER" },
