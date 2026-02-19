@@ -410,6 +410,21 @@ export const integrationSyncLogs = pgTable("integration_sync_logs", {
   finishedAt: timestamp("finished_at"),
 });
 
+export const physicianComments = pgTable("physician_comments", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id).notNull(),
+  userId: varchar("user_id", { length: 36 }).references(() => users.id).notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPhysicianCommentSchema = createInsertSchema(physicianComments).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type PhysicianComment = typeof physicianComments.$inferSelect;
+export type InsertPhysicianComment = z.infer<typeof insertPhysicianCommentSchema>;
+
 export const insertIntegrationConfigSchema = createInsertSchema(integrationConfigs).omit({
   id: true, createdAt: true, updatedAt: true,
 });

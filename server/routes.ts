@@ -793,6 +793,63 @@ export async function registerRoutes(
     }
   });
 
+  // --- Physician Comments ---
+  app.get("/api/physicians/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const comments = await storage.getPhysicianComments(req.params.id);
+      res.json(comments);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ message: "Content is required" });
+      }
+      const comment = await storage.createPhysicianComment({
+        physicianId: req.params.id,
+        userId: req.session.userId!,
+        content: content.trim(),
+      });
+      res.json(comment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/physicians/:id/comments/:commentId", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ message: "Content is required" });
+      }
+      const existing = await storage.getPhysicianComments(req.params.id);
+      const target = existing.find(c => c.id === req.params.commentId);
+      if (!target) return res.status(404).json({ message: "Comment not found" });
+      if (target.userId !== req.session.userId) {
+        return res.status(403).json({ message: "You can only edit your own comments" });
+      }
+      const comment = await storage.updatePhysicianComment(req.params.commentId, content.trim());
+      if (!comment) return res.status(404).json({ message: "Comment not found" });
+      res.json(comment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/physicians/:id/comments/:commentId", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const deleted = await storage.deletePhysicianComment(req.params.commentId);
+      if (!deleted) return res.status(404).json({ message: "Comment not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   // --- CSV Exports ---
   app.get("/api/export/physicians", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
     try {

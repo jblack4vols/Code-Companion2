@@ -3,7 +3,7 @@ import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray } from "drizzle-o
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
-  integrationConfigs, apiKeys, integrationSyncLogs,
+  integrationConfigs, apiKeys, integrationSyncLogs, physicianComments,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -21,6 +21,7 @@ import {
   type IntegrationConfig, type InsertIntegrationConfig,
   type ApiKey, type InsertApiKey,
   type IntegrationSyncLog, type InsertIntegrationSyncLog,
+  type PhysicianComment, type InsertPhysicianComment,
 } from "@shared/schema";
 
 export interface PaginatedResult<T> {
@@ -147,6 +148,11 @@ export interface IStorage {
   getIntegrationSyncLogs(integrationId?: string, limit?: number): Promise<IntegrationSyncLog[]>;
   createIntegrationSyncLog(log: InsertIntegrationSyncLog): Promise<IntegrationSyncLog>;
   updateIntegrationSyncLog(id: string, data: Partial<IntegrationSyncLog>): Promise<IntegrationSyncLog | undefined>;
+
+  getPhysicianComments(physicianId: string): Promise<PhysicianComment[]>;
+  createPhysicianComment(comment: InsertPhysicianComment): Promise<PhysicianComment>;
+  updatePhysicianComment(id: string, content: string): Promise<PhysicianComment | undefined>;
+  deletePhysicianComment(id: string): Promise<boolean>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1208,6 +1214,29 @@ export class DatabaseStorage implements IStorage {
       .set(data)
       .where(eq(integrationSyncLogs.id, id)).returning();
     return updated;
+  }
+
+  async getPhysicianComments(physicianId: string) {
+    return db.select().from(physicianComments)
+      .where(eq(physicianComments.physicianId, physicianId))
+      .orderBy(desc(physicianComments.createdAt));
+  }
+
+  async createPhysicianComment(comment: InsertPhysicianComment) {
+    const [created] = await db.insert(physicianComments).values(comment).returning();
+    return created;
+  }
+
+  async updatePhysicianComment(id: string, content: string) {
+    const [updated] = await db.update(physicianComments)
+      .set({ content, updatedAt: new Date() })
+      .where(eq(physicianComments.id, id)).returning();
+    return updated;
+  }
+
+  async deletePhysicianComment(id: string) {
+    const result = await db.delete(physicianComments).where(eq(physicianComments.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 }
 

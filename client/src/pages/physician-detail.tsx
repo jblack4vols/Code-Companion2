@@ -10,11 +10,11 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2 } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Physician, Interaction, Referral, Task, User, Location } from "@shared/schema";
+import type { Physician, Interaction, Referral, Task, User, Location, PhysicianComment } from "@shared/schema";
 import { format } from "date-fns";
 import { useLocation, Link } from "wouter";
 
@@ -40,6 +40,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const [, setLoc] = useLocation();
   const [editing, setEditing] = useState(false);
   const [showInteraction, setShowInteraction] = useState(false);
+  const [newComment, setNewComment] = useState("");
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentContent, setEditingCommentContent] = useState("");
 
   const { data: physician, isLoading } = useQuery<Physician>({
     queryKey: ["/api/physicians", params.id],
@@ -58,8 +61,18 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+  const { data: comments } = useQuery<PhysicianComment[]>({
+    queryKey: ["/api/physicians", params.id, "comments"],
+    queryFn: async () => {
+      const res = await fetch(`/api/physicians/${params.id}/comments`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch comments");
+      return res.json();
+    },
+    enabled: !!params.id,
+  });
 
   const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
+  const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -90,6 +103,50 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const addCommentMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await apiRequest("POST", `/api/physicians/${params.id}/comments`, { content });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id, "comments"] });
+      setNewComment("");
+      toast({ title: "Comment added" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const updateCommentMutation = useMutation({
+    mutationFn: async ({ commentId, content }: { commentId: string; content: string }) => {
+      const res = await apiRequest("PATCH", `/api/physicians/${params.id}/comments/${commentId}`, { content });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id, "comments"] });
+      setEditingCommentId(null);
+      setEditingCommentContent("");
+      toast({ title: "Comment updated" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteCommentMutation = useMutation({
+    mutationFn: async (commentId: string) => {
+      const res = await apiRequest("DELETE", `/api/physicians/${params.id}/comments/${commentId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id, "comments"] });
+      toast({ title: "Comment deleted" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const handleAddComment = () => {
+    if (!newComment.trim()) return;
+    addCommentMutation.mutate(newComment);
+  };
 
   const handleUpdate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -372,6 +429,12 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                     <TabsTrigger value="tasks" data-testid="tab-tasks">
                       <ClipboardList className="w-3.5 h-3.5 mr-1.5" />Tasks
                     </TabsTrigger>
+                    <TabsTrigger value="comments" data-testid="tab-comments">
+                      <StickyNote className="w-3.5 h-3.5 mr-1.5" />Notes
+                      {comments && comments.length > 0 && (
+                        <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{comments.length}</Badge>
+                      )}
+                    </TabsTrigger>
                   </TabsList>
                   {canEdit && (
                     <Dialog open={showInteraction} onOpenChange={setShowInteraction}>
@@ -495,6 +558,108 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                     <div className="text-center py-12 text-sm text-muted-foreground">
                       <ClipboardList className="w-8 h-8 mx-auto mb-2 opacity-30" />
                       No tasks
+                    </div>
+                  )}
+                </TabsContent>
+                <TabsContent value="comments" className="mt-0 space-y-4">
+                  <div className="flex gap-2">
+                    <Textarea
+                      value={newComment}
+                      onChange={(e) => setNewComment(e.target.value)}
+                      placeholder="Add an internal note..."
+                      className="text-sm resize-none"
+                      rows={2}
+                      data-testid="input-new-comment"
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+                          handleAddComment();
+                        }
+                      }}
+                    />
+                    <Button
+                      size="icon"
+                      onClick={handleAddComment}
+                      disabled={!newComment.trim() || addCommentMutation.isPending}
+                      data-testid="button-add-comment"
+                    >
+                      <Send className="w-4 h-4" />
+                    </Button>
+                  </div>
+                  {comments?.length ? comments.map(c => {
+                    const author = users?.find(u => u.id === c.userId);
+                    const isOwn = user?.id === c.userId;
+                    const isEditing = editingCommentId === c.id;
+                    return (
+                      <div key={c.id} className="p-3 rounded-md border space-y-1" data-testid={`card-comment-${c.id}`}>
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <div className="flex items-center gap-2">
+                            <div className="w-6 h-6 rounded-md bg-primary/10 flex items-center justify-center text-primary text-[10px] font-medium">
+                              {author?.name?.split(" ").map(n => n[0]).join("") || "?"}
+                            </div>
+                            <span className="text-sm font-medium">{author?.name || "Unknown"}</span>
+                            <span className="text-xs text-muted-foreground">{format(new Date(c.createdAt), "MMM d, yyyy h:mm a")}</span>
+                            {c.updatedAt && new Date(c.updatedAt).getTime() - new Date(c.createdAt).getTime() > 1000 && (
+                              <span className="text-[10px] text-muted-foreground">(edited)</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1" style={{ visibility: (isOwn || canDeleteComments) ? "visible" : "hidden" }}>
+                            {isOwn && !isEditing && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                onClick={() => { setEditingCommentId(c.id); setEditingCommentContent(c.content); }}
+                                data-testid={`button-edit-comment-${c.id}`}
+                              >
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                            )}
+                            {canDeleteComments && (
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="text-destructive"
+                                onClick={() => deleteCommentMutation.mutate(c.id)}
+                                disabled={deleteCommentMutation.isPending}
+                                data-testid={`button-delete-comment-${c.id}`}
+                              >
+                                <Trash2 className="w-3 h-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        {isEditing ? (
+                          <div className="flex gap-2 mt-1">
+                            <Textarea
+                              value={editingCommentContent}
+                              onChange={(e) => setEditingCommentContent(e.target.value)}
+                              className="text-sm resize-none"
+                              rows={2}
+                              data-testid={`input-edit-comment-${c.id}`}
+                            />
+                            <div className="flex flex-col gap-1">
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                onClick={() => { updateCommentMutation.mutate({ commentId: c.id, content: editingCommentContent }); }}
+                                disabled={!editingCommentContent.trim() || updateCommentMutation.isPending}
+                                data-testid={`button-save-comment-${c.id}`}
+                              >
+                                <Save className="w-3 h-3" />
+                              </Button>
+                              <Button size="icon" variant="ghost" onClick={() => { setEditingCommentId(null); setEditingCommentContent(""); }} data-testid={`button-cancel-edit-${c.id}`}>
+                                <X className="w-3 h-3" />
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-sm whitespace-pre-wrap pl-8">{c.content}</p>
+                        )}
+                      </div>
+                    );
+                  }) : (
+                    <div className="text-center py-12 text-sm text-muted-foreground">
+                      <StickyNote className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                      No notes yet. Add the first note above.
                     </div>
                   )}
                 </TabsContent>

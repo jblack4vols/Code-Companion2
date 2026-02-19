@@ -158,6 +158,24 @@ export default function PhysiciansPage() {
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
+  const bulkAssignMutation = useMutation({
+    mutationFn: async ({ physicianIds, marketerId }: { physicianIds: string[]; marketerId: string | null }) => {
+      const res = await apiRequest("POST", "/api/physicians/bulk-assign", { physicianIds, marketerId });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      setSelectedIds(new Set());
+      toast({ title: `${data.count} referring provider(s) reassigned` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const handleBulkAssign = (marketerId: string) => {
+    if (selectedIds.size === 0) return;
+    bulkAssignMutation.mutate({ physicianIds: Array.from(selectedIds), marketerId: marketerId === "unassign" ? null : marketerId });
+  };
+
   const mergeMutation = useMutation({
     mutationFn: async ({ keepId, removeId }: { keepId: string; removeId: string }) => {
       const res = await apiRequest("POST", "/api/physicians/merge", { keepId, removeId });
@@ -471,6 +489,17 @@ export default function PhysiciansPage() {
                 >
                   Set Prospect
                 </Button>
+                <Select onValueChange={handleBulkAssign} disabled={bulkAssignMutation.isPending}>
+                  <SelectTrigger className="w-[180px]" data-testid="select-bulk-assign">
+                    <SelectValue placeholder="Assign Marketer" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="unassign">Unassign</SelectItem>
+                    {users?.filter((u: User) => u.role === "OWNER" || u.role === "DIRECTOR" || u.role === "MARKETER").map((u: User) => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection">
                 <X className="w-3 h-3 mr-1" />Clear Selection
