@@ -41,6 +41,7 @@ function AuthenticatedRouter() {
   return (
     <Switch>
       <Route path="/" component={DashboardPage} />
+      <Route path="/dashboard" component={DashboardPage} />
       <Route path="/physicians" component={PhysiciansPage} />
       <Route path="/physicians/:id">{(params) => <PhysicianDetailPage params={params} />}</Route>
       <Route path="/interactions" component={InteractionsPage} />
