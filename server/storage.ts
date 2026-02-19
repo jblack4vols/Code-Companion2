@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray, isNull } from "drizzle-orm";
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
@@ -113,6 +113,13 @@ export interface IStorage {
   bulkAssignPhysiciansToMarketer(physicianIds: string[], marketerId: string | null): Promise<number>;
   bulkUpdatePhysicianStatus(physicianIds: string[], status: string): Promise<number>;
 
+  softDeletePhysician(id: string): Promise<boolean>;
+  restorePhysician(id: string): Promise<boolean>;
+  softDeleteReferral(id: string): Promise<boolean>;
+  restoreReferral(id: string): Promise<boolean>;
+  softDeleteInteraction(id: string): Promise<boolean>;
+  restoreInteraction(id: string): Promise<boolean>;
+
   bulkUpsertPhysicians(rows: InsertPhysician[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
   bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }>;
   bulkDeleteReferrals(ids: string[]): Promise<number>;
@@ -143,6 +150,7 @@ export interface IStorage {
   deleteIntegrationConfig(id: string): Promise<boolean>;
 
   getApiKeys(): Promise<ApiKey[]>;
+  getApiKeyById(id: string): Promise<ApiKey | undefined>;
   createApiKey(key: InsertApiKey): Promise<ApiKey>;
   getApiKeyByHash(keyHash: string): Promise<ApiKey | undefined>;
   updateApiKeyLastUsed(id: string): Promise<void>;
@@ -240,7 +248,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPhysicians() {
-    return db.select().from(physicians).orderBy(asc(physicians.lastName), asc(physicians.firstName));
+    return db.select().from(physicians).where(isNull(physicians.deletedAt)).orderBy(asc(physicians.lastName), asc(physicians.firstName));
   }
 
   async searchPhysiciansTypeahead(query: string, limit: number = 15) {
@@ -255,12 +263,15 @@ export class DatabaseStorage implements IStorage {
       specialty: physicians.specialty,
     })
     .from(physicians)
-    .where(or(
-      ilike(physicians.firstName, term),
-      ilike(physicians.lastName, term),
-      ilike(sql`coalesce(${physicians.practiceName}, '')`, term),
-      ilike(sql`coalesce(${physicians.npi}, '')`, term),
-      ilike(sql`concat(${physicians.firstName}, ' ', ${physicians.lastName})`, term),
+    .where(and(
+      isNull(physicians.deletedAt),
+      or(
+        ilike(physicians.firstName, term),
+        ilike(physicians.lastName, term),
+        ilike(sql`coalesce(${physicians.practiceName}, '')`, term),
+        ilike(sql`coalesce(${physicians.npi}, '')`, term),
+        ilike(sql`concat(${physicians.firstName}, ' ', ${physicians.lastName})`, term),
+      )
     ))
     .orderBy(asc(physicians.lastName), asc(physicians.firstName))
     .limit(limit);
@@ -269,7 +280,7 @@ export class DatabaseStorage implements IStorage {
   async getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<any>> {
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 50;
-    const conditions: any[] = [];
+    const conditions: any[] = [isNull(physicians.deletedAt)];
 
     if (filters.status && filters.status !== "all") conditions.push(eq(physicians.status, filters.status as any));
     if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
@@ -348,6 +359,7 @@ export class DatabaseStorage implements IStorage {
       .from(physicians)
       .leftJoin(referrals, and(
         eq(referrals.physicianId, physicians.id),
+        isNull(referrals.deletedAt),
         sql`${referrals.referralDate} >= '2025-01-01'`,
         sql`${referrals.referralDate} <= '2026-01-31'`,
       ))
@@ -361,7 +373,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getPhysician(id: string) {
-    const [phys] = await db.select().from(physicians).where(eq(physicians.id, id));
+    const [phys] = await db.select().from(physicians).where(and(eq(physicians.id, id), isNull(physicians.deletedAt)));
     return phys;
   }
 
@@ -381,10 +393,10 @@ export class DatabaseStorage implements IStorage {
   async getInteractions(physicianId?: string) {
     if (physicianId) {
       return db.select().from(interactions)
-        .where(eq(interactions.physicianId, physicianId))
+        .where(and(eq(interactions.physicianId, physicianId), isNull(interactions.deletedAt)))
         .orderBy(desc(interactions.occurredAt));
     }
-    return db.select().from(interactions).orderBy(desc(interactions.occurredAt));
+    return db.select().from(interactions).where(isNull(interactions.deletedAt)).orderBy(desc(interactions.occurredAt));
   }
 
   async createInteraction(inter: InsertInteraction) {
@@ -398,16 +410,16 @@ export class DatabaseStorage implements IStorage {
   async getReferrals(physicianId?: string) {
     if (physicianId) {
       return db.select().from(referrals)
-        .where(eq(referrals.physicianId, physicianId))
+        .where(and(eq(referrals.physicianId, physicianId), isNull(referrals.deletedAt)))
         .orderBy(desc(referrals.referralDate));
     }
-    return db.select().from(referrals).orderBy(desc(referrals.referralDate));
+    return db.select().from(referrals).where(isNull(referrals.deletedAt)).orderBy(desc(referrals.referralDate));
   }
 
   async getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>> {
     const page = filters.page || 1;
     const pageSize = filters.pageSize || 50;
-    const conditions: any[] = [];
+    const conditions: any[] = [isNull(referrals.deletedAt)];
 
     if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
     if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
@@ -619,9 +631,11 @@ export class DatabaseStorage implements IStorage {
       .from(physicians)
       .leftJoin(referrals, and(
         eq(referrals.physicianId, physicians.id),
+        isNull(referrals.deletedAt),
         sql`${referrals.referralDate} >= ${dateFrom}`,
         sql`${referrals.referralDate} <= ${dateTo}`,
       ))
+      .where(isNull(physicians.deletedAt))
       .groupBy(physicians.id)
       .orderBy(desc(sql`count(${referrals.id})`));
 
@@ -665,6 +679,7 @@ export class DatabaseStorage implements IStorage {
       count: sql<number>`count(*)`,
     }).from(referrals)
       .where(and(
+        isNull(referrals.deletedAt),
         sql`${referrals.physicianId} IS NOT NULL`,
         sql`${referrals.referralDate} >= ${currentStartStr}`,
         sql`${referrals.referralDate} <= ${currentEnd}`,
@@ -676,6 +691,7 @@ export class DatabaseStorage implements IStorage {
       count: sql<number>`count(*)`,
     }).from(referrals)
       .where(and(
+        isNull(referrals.deletedAt),
         sql`${referrals.physicianId} IS NOT NULL`,
         sql`${referrals.referralDate} >= ${priorStartStr}`,
         sql`${referrals.referralDate} < ${priorEnd}`,
@@ -717,7 +733,7 @@ export class DatabaseStorage implements IStorage {
         state: physicians.state,
         assignedOwnerId: physicians.assignedOwnerId,
       }).from(physicians)
-        .where(sql`${physicians.id} IN (${sql.join(physicianIds.map(id => sql`${id}`), sql`, `)})`);
+        .where(and(isNull(physicians.deletedAt), sql`${physicians.id} IN (${sql.join(physicianIds.map(id => sql`${id}`), sql`, `)})`));
     }
 
     const physMap = new Map(physicianDetails.map(p => [p.id, p]));
@@ -735,7 +751,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async exportPhysiciansCsv(filters: PhysicianFilters) {
-    const conditions: any[] = [];
+    const conditions: any[] = [isNull(physicians.deletedAt)];
     if (filters.status && filters.status !== "all") conditions.push(eq(physicians.status, filters.status as any));
     if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
     if (filters.priority && filters.priority !== "all") conditions.push(eq(physicians.priority, filters.priority as any));
@@ -772,14 +788,14 @@ export class DatabaseStorage implements IStorage {
       referralCount: sql<number>`count(${referrals.id})`,
     })
       .from(physicians)
-      .leftJoin(referrals, eq(referrals.physicianId, physicians.id))
+      .leftJoin(referrals, and(eq(referrals.physicianId, physicians.id), isNull(referrals.deletedAt)))
       .where(where)
       .groupBy(physicians.id)
       .orderBy(asc(physicians.lastName), asc(physicians.firstName));
   }
 
   async exportReferralsCsv(filters: ReferralFilters) {
-    const conditions: any[] = [];
+    const conditions: any[] = [isNull(referrals.deletedAt)];
     if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
     if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
     if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
@@ -823,7 +839,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   async exportInteractionsCsv(filters?: { physicianId?: string; type?: string; dateFrom?: string; dateTo?: string }) {
-    const conditions: any[] = [];
+    const conditions: any[] = [isNull(interactions.deletedAt)];
     if (filters?.physicianId) conditions.push(eq(interactions.physicianId, filters.physicianId));
     if (filters?.type && filters.type !== "all") conditions.push(eq(interactions.type, filters.type as any));
     if (filters?.dateFrom) conditions.push(gte(interactions.occurredAt, new Date(filters.dateFrom)));
@@ -905,12 +921,12 @@ export class DatabaseStorage implements IStorage {
       count: sql<number>`count(*)`,
     })
       .from(physicians)
-      .where(sql`${physicians.assignedOwnerId} IS NOT NULL`)
+      .where(and(isNull(physicians.deletedAt), sql`${physicians.assignedOwnerId} IS NOT NULL`))
       .groupBy(physicians.assignedOwnerId);
 
     const [unassigned] = await db.select({ count: sql<number>`count(*)` })
       .from(physicians)
-      .where(sql`${physicians.assignedOwnerId} IS NULL`);
+      .where(and(isNull(physicians.deletedAt), sql`${physicians.assignedOwnerId} IS NULL`));
 
     const marketers = await this.getMarketers();
     const assignedMap = new Map(assigned.map(a => [a.marketerId, Number(a.count)]));
@@ -920,7 +936,7 @@ export class DatabaseStorage implements IStorage {
       assignedCount: assignedMap.get(m.id) || 0,
     }));
 
-    return { territories, unassignedCount: Number(unassigned?.count || 0), totalPhysicians: await db.select({ count: sql<number>`count(*)` }).from(physicians).then(r => Number(r[0]?.count || 0)) };
+    return { territories, unassignedCount: Number(unassigned?.count || 0), totalPhysicians: await db.select({ count: sql<number>`count(*)` }).from(physicians).where(isNull(physicians.deletedAt)).then(r => Number(r[0]?.count || 0)) };
   }
 
   async assignPhysicianToMarketer(physicianId: string, marketerId: string | null) {
@@ -970,27 +986,30 @@ export class DatabaseStorage implements IStorage {
       physConditions.push(eq(physicians.id, filters.physicianId));
     }
 
+    refConditions.push(isNull(referrals.deletedAt));
+    interConditions.push(isNull(interactions.deletedAt));
+
     const [refCountResult] = await db.select({ count: sql<number>`count(*)` }).from(referrals)
-      .where(refConditions.length > 0 ? and(...refConditions) : undefined);
+      .where(and(...refConditions));
 
     const [interCountResult] = await db.select({ count: sql<number>`count(*)` }).from(interactions)
-      .where(interConditions.length > 0 ? and(...interConditions) : undefined);
+      .where(and(...interConditions));
 
     const activePhysicians = await db.select({ count: sql<number>`count(*)` }).from(physicians)
       .where(physConditions.length > 0
-        ? and(eq(physicians.status, "ACTIVE"), ...physConditions)
-        : eq(physicians.status, "ACTIVE"));
+        ? and(isNull(physicians.deletedAt), eq(physicians.status, "ACTIVE"), ...physConditions)
+        : and(isNull(physicians.deletedAt), eq(physicians.status, "ACTIVE")));
 
     const atRiskPhysicians = await db.select({ count: sql<number>`count(*)` }).from(physicians)
       .where(physConditions.length > 0
-        ? and(eq(physicians.relationshipStage, "AT_RISK"), ...physConditions)
-        : eq(physicians.relationshipStage, "AT_RISK"));
+        ? and(isNull(physicians.deletedAt), eq(physicians.relationshipStage, "AT_RISK"), ...physConditions)
+        : and(isNull(physicians.deletedAt), eq(physicians.relationshipStage, "AT_RISK")));
 
     const refByMonth = await db.select({
       month: sql<string>`to_char(referral_date::date, 'YYYY-MM')`,
       count: sql<number>`count(*)`,
     }).from(referrals)
-      .where(refConditions.length > 0 ? and(...refConditions) : undefined)
+      .where(and(...refConditions))
       .groupBy(sql`to_char(referral_date::date, 'YYYY-MM')`)
       .orderBy(sql`to_char(referral_date::date, 'YYYY-MM')`);
 
@@ -998,7 +1017,7 @@ export class DatabaseStorage implements IStorage {
       physicianId: referrals.physicianId,
       count: sql<number>`count(*)`,
     }).from(referrals)
-      .where(refConditions.length > 0 ? and(...refConditions) : undefined)
+      .where(and(...refConditions))
       .groupBy(referrals.physicianId)
       .orderBy(desc(sql`count(*)`))
       .limit(5);
@@ -1018,7 +1037,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async findPhysicianByNameAndNpi(firstName: string, lastName: string, npi?: string | null): Promise<Physician | undefined> {
-    const conditions = [
+    const conditions: any[] = [
+      isNull(physicians.deletedAt),
       ilike(physicians.firstName, firstName.trim()),
       ilike(physicians.lastName, lastName.trim()),
     ];
@@ -1101,8 +1121,52 @@ export class DatabaseStorage implements IStorage {
   }
   async bulkDeleteReferrals(ids: string[]): Promise<number> {
     if (ids.length === 0) return 0;
-    const result = await db.delete(referrals).where(inArray(referrals.id, ids));
+    const result = await db.update(referrals)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(inArray(referrals.id, ids), isNull(referrals.deletedAt)));
     return result.rowCount ?? 0;
+  }
+
+  async softDeletePhysician(id: string): Promise<boolean> {
+    const result = await db.update(physicians)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(physicians.id, id), isNull(physicians.deletedAt)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async restorePhysician(id: string): Promise<boolean> {
+    const result = await db.update(physicians)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(physicians.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async softDeleteReferral(id: string): Promise<boolean> {
+    const result = await db.update(referrals)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(referrals.id, id), isNull(referrals.deletedAt)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async restoreReferral(id: string): Promise<boolean> {
+    const result = await db.update(referrals)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(referrals.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async softDeleteInteraction(id: string): Promise<boolean> {
+    const result = await db.update(interactions)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(and(eq(interactions.id, id), isNull(interactions.deletedAt)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async restoreInteraction(id: string): Promise<boolean> {
+    const result = await db.update(interactions)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(eq(interactions.id, id));
+    return (result.rowCount ?? 0) > 0;
   }
 
   async getTerritories() {
@@ -1226,6 +1290,11 @@ export class DatabaseStorage implements IStorage {
 
   async getApiKeys() {
     return db.select().from(apiKeys).orderBy(desc(apiKeys.createdAt));
+  }
+
+  async getApiKeyById(id: string) {
+    const [key] = await db.select().from(apiKeys).where(eq(apiKeys.id, id));
+    return key;
   }
 
   async createApiKey(key: InsertApiKey) {

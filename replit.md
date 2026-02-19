@@ -101,6 +101,18 @@ scripts/
 - Schema managed with Drizzle ORM
 - Real data imported via scripts in /scripts directory
 
+## Security & Infrastructure Improvements (Feb 2026)
+- **CSRF Protection**: Double-submit cookie pattern via `server/middleware/csrf.ts`. Frontend auto-includes CSRF tokens in mutation requests via queryClient.
+- **Rate Limiting**: Login endpoint (10 attempts/15min), general API (120 req/min) via `server/middleware/rateLimiter.ts`.
+- **API Key Expiration/Rotation**: API keys support `expiresAt` field, rotation endpoint (`POST /api/api-keys/:id/rotate`), expired keys rejected in auth middleware.
+- **Environment Validation**: Zod-based validation at startup via `server/middleware/envValidation.ts`. Health check at `GET /api/health`.
+- **Database Indexes**: Optimized indexes on interactions (physicianId, userId, occurredAt), referrals (physicianId, locationId, referralDate, status, patientAccountNumber), tasks (assignedToUserId, status, dueAt, physicianId).
+- **Incremental ETL**: `server/etl.ts` tracks last run in `appSettings` table, only recomputes months with changed data. Supports `fullRecompute` flag via `POST /api/etl/run`.
+- **Standardized Error Handling**: `AppError` class and `errorResponse` helper in `server/middleware/errorHandler.ts`. Global error handler middleware.
+- **Shared Auth Middleware**: Extracted `requireAuth`, `requireRole`, `getClientIp`, `createAuditLogEntry` to `server/middleware/auth.ts` for reuse.
+- **Soft Deletes**: `deletedAt` timestamp on physicians, referrals, interactions tables. All read queries filter `deletedAt IS NULL`. Delete operations set timestamp instead of removing. Restore endpoints: `POST /api/physicians/:id/restore`, `POST /api/referrals/:id/restore`.
+- **Referral Deduplication Detection**: `GET /api/referrals/duplicates` endpoint detects potential duplicates by account number match, name+date match, or name+physician match.
+
 ## User Preferences
 - Healthcare professional aesthetic
 - Data-dense, efficient UI

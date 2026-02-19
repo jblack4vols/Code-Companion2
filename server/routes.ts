@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { db } from "./db";
 import session from "express-session";
+import cookieParser from "cookie-parser";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
 import { sql, eq, and, gte, lt } from "drizzle-orm";
@@ -13,6 +14,8 @@ import connectPgSimple from "connect-pg-simple";
 import { sendWelcomeEmail } from "./outlook";
 import { searchSites as searchSPSites, getSiteId as getSPSiteId, setSiteId as setSPSiteId, validateSite as validateSPSite, getSyncStatuses as getSPSyncStatuses, syncEntity as syncSPEntity, syncAll as syncSPAll } from "./sharepoint";
 import { Readable } from "stream";
+import { loginLimiter, apiLimiter } from "./middleware/rateLimiter";
+import { csrfProtection, csrfTokenEndpoint } from "./middleware/csrf";
 
 declare module "express-session" {
   interface SessionData {
@@ -60,6 +63,8 @@ export async function registerRoutes(
 ): Promise<Server> {
   const PgStore = connectPgSimple(session);
 
+  app.use(cookieParser());
+
   app.use((_req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     res.setHeader("X-Frame-Options", "DENY");
@@ -92,6 +97,20 @@ export async function registerRoutes(
     })
   );
 
+  app.use("/api", apiLimiter);
+
+  app.use("/api", csrfProtection);
+  app.get("/api/csrf-token", csrfTokenEndpoint);
+
+  app.get("/api/health", (_req, res) => {
+    res.json({
+      status: "ok",
+      timestamp: new Date().toISOString(),
+      uptime: process.uptime(),
+      version: process.env.npm_package_version || "1.0.0",
+    });
+  });
+
   app.get("/api/auth/me", async (req, res) => {
     if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(req.session.userId);
@@ -104,7 +123,7 @@ export async function registerRoutes(
     res.json({ timeoutMs: SESSION_TIMEOUT_MS });
   });
 
-  app.post("/api/auth/login", async (req, res) => {
+  app.post("/api/auth/login", loginLimiter, async (req, res) => {
     try {
       const { email, password } = loginSchema.parse(req.body);
       const ip = getClientIp(req);
@@ -369,8 +388,8 @@ export async function registerRoutes(
       const npi = String(req.query.npi || "").trim();
       if (!npi) return res.json([]);
       const results = await db.execute(sql`
-        SELECT p.*, COALESCE((SELECT COUNT(*) FROM referrals r WHERE r.physician_id = p.id), 0)::int as "referralCount"
-        FROM physicians p WHERE p.npi = ${npi}
+        SELECT p.*, COALESCE((SELECT COUNT(*) FROM referrals r WHERE r.physician_id = p.id AND r.deleted_at IS NULL), 0)::int as "referralCount"
+        FROM physicians p WHERE p.npi = ${npi} AND p.deleted_at IS NULL
         ORDER BY p.last_name, p.first_name
       `);
       res.json(results.rows);
@@ -394,7 +413,7 @@ export async function registerRoutes(
             END as match_reason
           FROM physicians p1
           JOIN physicians p2 ON p1.id < p2.id
-          WHERE (
+          WHERE p1.deleted_at IS NULL AND p2.deleted_at IS NULL AND (
             (p1.npi IS NOT NULL AND p1.npi != '' AND p1.npi = p2.npi)
             OR (LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name))
           )
@@ -419,7 +438,7 @@ export async function registerRoutes(
       await db.execute(sql`UPDATE interactions SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
       await db.execute(sql`UPDATE tasks SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
       await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
-      await db.execute(sql`DELETE FROM physicians WHERE id = ${removeId}`);
+      await db.execute(sql`UPDATE physicians SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${removeId}`);
 
       await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
@@ -454,6 +473,28 @@ export async function registerRoutes(
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/physicians/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const deleted = await storage.softDeletePhysician(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/:id/restore", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const restored = await storage.restorePhysician(req.params.id);
+      if (!restored) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -537,6 +578,84 @@ export async function registerRoutes(
       const count = await storage.bulkDeleteReferrals(ids);
       await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Referral", entityId: "bulk", detailJson: { count, ids }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/referrals/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const deleted = await storage.softDeleteReferral(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/referrals/:id/restore", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const restored = await storage.restoreReferral(req.params.id);
+      if (!restored) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/referrals/duplicates", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const accountDupes = await db.execute(sql`
+        SELECT r1.id as id1, r2.id as id2,
+          r1.patient_account_number as account_1, r2.patient_account_number as account_2,
+          r1.patient_full_name as patient_1, r2.patient_full_name as patient_2,
+          r1.referral_date as date_1, r2.referral_date as date_2,
+          r1.physician_id as physician_id_1, r2.physician_id as physician_id_2,
+          r1.location_id as location_id_1, r2.location_id as location_id_2,
+          r1.status as status_1, r2.status as status_2,
+          'Account Number Match' as match_reason
+        FROM referrals r1
+        JOIN referrals r2 ON r1.patient_account_number = r2.patient_account_number AND r1.id < r2.id
+        WHERE r1.deleted_at IS NULL AND r2.deleted_at IS NULL
+          AND r1.patient_account_number IS NOT NULL AND r1.patient_account_number != ''
+        ORDER BY r1.patient_account_number
+        LIMIT 50
+      `);
+
+      const nameDupes = await db.execute(sql`
+        SELECT r1.id as id1, r2.id as id2,
+          r1.patient_account_number as account_1, r2.patient_account_number as account_2,
+          r1.patient_full_name as patient_1, r2.patient_full_name as patient_2,
+          r1.referral_date as date_1, r2.referral_date as date_2,
+          r1.physician_id as physician_id_1, r2.physician_id as physician_id_2,
+          r1.location_id as location_id_1, r2.location_id as location_id_2,
+          r1.status as status_1, r2.status as status_2,
+          CASE
+            WHEN r1.referral_date = r2.referral_date THEN 'Name + Date Match'
+            ELSE 'Name + Physician Match'
+          END as match_reason
+        FROM referrals r1
+        JOIN referrals r2
+          ON LOWER(r1.patient_full_name) = LOWER(r2.patient_full_name) AND r1.id < r2.id
+          AND (r1.referral_date = r2.referral_date OR (r1.physician_id IS NOT NULL AND r1.physician_id = r2.physician_id))
+        WHERE r1.deleted_at IS NULL AND r2.deleted_at IS NULL
+          AND r1.patient_full_name IS NOT NULL AND r2.patient_full_name IS NOT NULL
+        ORDER BY r1.patient_full_name, r1.referral_date
+        LIMIT 50
+      `);
+
+      const seenPairs = new Set<string>();
+      const combined = [];
+      for (const row of [...(accountDupes.rows as any[]), ...(nameDupes.rows as any[])]) {
+        const key = `${row.id1}-${row.id2}`;
+        if (!seenPairs.has(key)) {
+          seenPairs.add(key);
+          combined.push(row);
+        }
+      }
+      res.json(combined.slice(0, 100));
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -710,12 +829,16 @@ export async function registerRoutes(
     }
   });
 
-  // --- ETL Trigger ---
   app.post("/api/etl/run", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const { triggerETL } = await import("./etl");
-      res.json({ message: "ETL started" });
-      triggerETL().catch(err => console.error("[ETL] Manual trigger error:", err));
+      const { triggerETL, triggerFullETL } = await import("./etl");
+      const fullRecompute = req.body?.fullRecompute === true;
+      res.json({ message: `ETL started (${fullRecompute ? "full" : "incremental"})` });
+      if (fullRecompute) {
+        triggerFullETL().catch(err => console.error("[ETL] Manual trigger error:", err));
+      } else {
+        triggerETL().catch(err => console.error("[ETL] Manual trigger error:", err));
+      }
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -1441,6 +1564,7 @@ export async function registerRoutes(
         FROM interactions i
         LEFT JOIN physicians p ON i.physician_id = p.id
         LEFT JOIN users u ON i.user_id = u.id
+        WHERE i.deleted_at IS NULL
         ORDER BY i.occurred_at DESC LIMIT ${limit}
       `);
       const recentTasks = await db.execute(sql`
@@ -1460,6 +1584,7 @@ export async function registerRoutes(
         FROM referrals r
         LEFT JOIN physicians p ON r.physician_id = p.id
         LEFT JOIN locations l ON r.location_id = l.id
+        WHERE r.deleted_at IS NULL
         ORDER BY r.created_at DESC LIMIT ${limit}
       `);
       const combined = [
@@ -1497,7 +1622,7 @@ export async function registerRoutes(
           COUNT(CASE WHEN i.type = 'EMAIL' THEN 1 END)::int as email_count,
           COUNT(CASE WHEN i.type = 'LUNCH' THEN 1 END)::int as lunch_count
         FROM users u
-        LEFT JOIN interactions i ON u.id = i.user_id ${dateCondition}
+        LEFT JOIN interactions i ON u.id = i.user_id AND i.deleted_at IS NULL ${dateCondition}
         GROUP BY u.id, u.name, u.role
         ORDER BY interaction_count DESC
       `);
@@ -1831,15 +1956,21 @@ export async function registerRoutes(
   const createApiKeySchema = z.object({
     name: z.string().min(1).max(100),
     scopes: z.array(z.string()).min(1).default(["physicians:read", "referrals:read", "locations:read"]),
+    expiresInDays: z.number().int().min(1).max(365).optional(),
   });
 
   app.post("/api/api-keys", requireRole("OWNER"), async (req, res) => {
     try {
-      const { name, scopes } = createApiKeySchema.parse(req.body);
+      const { name, scopes, expiresInDays } = createApiKeySchema.parse(req.body);
 
       const rawKey = `tsk_${crypto.randomBytes(32).toString("hex")}`;
       const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
       const keyPrefix = rawKey.slice(0, 8);
+
+      let expiresAt: Date | undefined;
+      if (expiresInDays) {
+        expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      }
 
       const apiKey = await storage.createApiKey({
         name,
@@ -1847,12 +1978,51 @@ export async function registerRoutes(
         keyPrefix,
         scopes: scopes || ["physicians:read", "referrals:read", "locations:read"],
         createdBy: req.session.userId!,
+        ...(expiresAt && { expiresAt }),
       });
 
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_API_KEY", entity: "ApiKey", entityId: apiKey.id, detailJson: { name, scopes }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_API_KEY", entity: "ApiKey", entityId: apiKey.id, detailJson: { name, scopes, expiresAt: expiresAt?.toISOString() }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ ...apiKey, rawKey, keyHash: undefined });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/api-keys/:id/rotate", requireRole("OWNER"), async (req, res) => {
+    try {
+      const oldKey = await storage.getApiKeyById(req.params.id);
+      if (!oldKey) return res.status(404).json({ message: "Not found" });
+
+      await storage.deactivateApiKey(oldKey.id);
+
+      const rawKey = `tsk_${crypto.randomBytes(32).toString("hex")}`;
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 8);
+
+      const expiresInDays = req.body?.expiresInDays;
+      let expiresAt: Date | undefined;
+      if (expiresInDays && typeof expiresInDays === "number") {
+        expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      } else if (oldKey.expiresAt) {
+        const remainingMs = new Date(oldKey.expiresAt).getTime() - Date.now();
+        if (remainingMs > 0) {
+          expiresAt = new Date(Date.now() + remainingMs);
+        }
+      }
+
+      const newApiKey = await storage.createApiKey({
+        name: oldKey.name,
+        keyHash,
+        keyPrefix,
+        scopes: oldKey.scopes as string[],
+        createdBy: req.session.userId!,
+        ...(expiresAt && { expiresAt }),
+      });
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "ROTATE_API_KEY", entity: "ApiKey", entityId: newApiKey.id, detailJson: { oldKeyId: oldKey.id, name: oldKey.name }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ ...newApiKey, rawKey, keyHash: undefined });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
     }
   });
 
@@ -1867,7 +2037,6 @@ export async function registerRoutes(
     }
   });
 
-  // --- Public API (API Key Auth) ---
   const requireApiKey = (scope: string) => async (req: Request, res: Response, next: NextFunction) => {
     const apiKeyHeader = req.headers["x-tristar-api-key"] as string;
     if (!apiKeyHeader) return res.status(401).json({ error: "API key required. Set X-TRISTAR-API-KEY header." });
@@ -1875,6 +2044,10 @@ export async function registerRoutes(
     const keyHash = crypto.createHash("sha256").update(apiKeyHeader).digest("hex");
     const key = await storage.getApiKeyByHash(keyHash);
     if (!key || !key.isActive) return res.status(401).json({ error: "Invalid or inactive API key" });
+
+    if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
+      return res.status(401).json({ error: "API key has expired. Please rotate or create a new key." });
+    }
 
     const scopes = (key.scopes as string[]) || [];
     if (!scopes.includes(scope) && !scopes.includes("*")) {

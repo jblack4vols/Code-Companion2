@@ -98,6 +98,7 @@ export const physicians = pgTable("physicians", {
   nextFollowUpAt: timestamp("next_follow_up_at"),
   notes: text("notes"),
   tags: text("tags").array(),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [
@@ -115,9 +116,14 @@ export const interactions = pgTable("interactions", {
   summary: text("summary").notNull(),
   nextStep: text("next_step"),
   followUpDueAt: timestamp("follow_up_due_at"),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("interaction_physician_idx").on(table.physicianId),
+  index("interaction_user_idx").on(table.userId),
+  index("interaction_occurred_at_idx").on(table.occurredAt),
+]);
 
 export const referrals = pgTable("referrals", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -149,9 +155,16 @@ export const referrals = pgTable("referrals", {
   diagnosisCategory: text("diagnosis_category"),
   status: referralStatusEnum("status").notNull().default("RECEIVED"),
   valueEstimate: real("value_estimate"),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("referral_physician_idx").on(table.physicianId),
+  index("referral_location_idx").on(table.locationId),
+  index("referral_date_idx").on(table.referralDate),
+  index("referral_status_idx").on(table.status),
+  index("referral_patient_account_idx").on(table.patientAccountNumber),
+]);
 
 export const tasks = pgTable("tasks", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -163,7 +176,12 @@ export const tasks = pgTable("tasks", {
   description: text("description").notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (table) => [
+  index("task_assigned_user_idx").on(table.assignedToUserId),
+  index("task_status_idx").on(table.status),
+  index("task_due_at_idx").on(table.dueAt),
+  index("task_physician_idx").on(table.physicianId),
+]);
 
 export const calendarEvents = pgTable("calendar_events", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
@@ -410,6 +428,7 @@ export const apiKeys = pgTable("api_keys", {
   keyPrefix: varchar("key_prefix", { length: 8 }).notNull(),
   scopes: json("scopes").$type<string[]>().default([]),
   isActive: boolean("is_active").notNull().default(true),
+  expiresAt: timestamp("expires_at"),
   lastUsedAt: timestamp("last_used_at"),
   createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow().notNull(),

@@ -1,10 +1,10 @@
 import cron from "node-cron";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, asc } from "drizzle-orm";
+import { eq, and, gte, lte, sql, asc, or } from "drizzle-orm";
 import {
   physicians, referrals, collections, locations, territories,
   physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary,
-  tieringWeights,
+  tieringWeights, appSettings,
 } from "@shared/schema";
 
 function getMonthStart(d: Date): string {
@@ -31,9 +31,65 @@ function getNextMonth(month: string): string {
   return `${ny}-${String(nm).padStart(2, "0")}-01`;
 }
 
-export async function runETL() {
+async function getLastETLRun(): Promise<Date | null> {
+  const [setting] = await db.select().from(appSettings).where(eq(appSettings.key, "etl_last_run_at"));
+  if (setting?.value) {
+    return new Date(setting.value);
+  }
+  return null;
+}
+
+async function setLastETLRun(timestamp: Date): Promise<void> {
+  await db.insert(appSettings)
+    .values({ key: "etl_last_run_at", value: timestamp.toISOString() })
+    .onConflictDoUpdate({
+      target: appSettings.key,
+      set: { value: timestamp.toISOString(), updatedAt: new Date() },
+    });
+}
+
+async function getAffectedMonths(lastRun: Date, currentMonth: string): Promise<Set<string>> {
+  const changedReferrals = await db.select({ referralDate: referrals.referralDate })
+    .from(referrals)
+    .where(gte(referrals.updatedAt, lastRun));
+
+  const changedCollections = await db.select({ collectionDate: collections.collectionDate })
+    .from(collections)
+    .where(gte(collections.updatedAt, lastRun));
+
+  const affectedMonths = new Set<string>();
+
+  affectedMonths.add(currentMonth);
+
+  for (const r of changedReferrals) {
+    if (r.referralDate) {
+      affectedMonths.add(r.referralDate.slice(0, 7) + "-01");
+    }
+  }
+  for (const c of changedCollections) {
+    if (c.collectionDate) {
+      affectedMonths.add(c.collectionDate.slice(0, 7) + "-01");
+    }
+  }
+
+  return affectedMonths;
+}
+
+type PhysSummary = {
+  referralsCount: number;
+  scheduledCount: number;
+  evaluatedCount: number;
+  arrivedCount: number;
+  totalVisitsGenerated: number;
+  revenueGenerated: number;
+  commercialCount: number;
+  totalPayerCount: number;
+};
+
+export async function runETL(forceFullRecompute = false) {
   console.log("[ETL] Starting monthly summary computation...");
   const startTime = Date.now();
+  const runTimestamp = new Date();
 
   try {
     const now = new Date();
@@ -41,16 +97,32 @@ export async function runETL() {
     const sixMonthsAgo = new Date(now);
     sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
     const startMonth = getMonthStart(sixMonthsAgo);
+    const allMonths = getMonthsBetween(startMonth, currentMonth);
 
-    const months = getMonthsBetween(startMonth, currentMonth);
-    console.log(`[ETL] Computing summaries for ${months.length} months: ${startMonth} to ${currentMonth}`);
+    let months: string[];
+    const lastRun = forceFullRecompute ? null : await getLastETLRun();
 
-    const allPhysicians = await db.select({ id: physicians.id, territoryId: physicians.territoryId }).from(physicians);
+    if (lastRun) {
+      const affected = await getAffectedMonths(lastRun, currentMonth);
+      months = allMonths.filter(m => affected.has(m));
+      if (months.length === 0) {
+        console.log("[ETL] No changes detected since last run. Skipping.");
+        await setLastETLRun(runTimestamp);
+        return;
+      }
+      console.log(`[ETL] Incremental mode: ${months.length} of ${allMonths.length} months need recomputation`);
+    } else {
+      months = allMonths;
+      console.log(`[ETL] Full recompute: ${months.length} months (${startMonth} to ${currentMonth})`);
+    }
+
+    const allPhysicians = await db.select({ id: physicians.id, territoryId: physicians.territoryId }).from(physicians)
+      .where(sql`${physicians.deletedAt} IS NULL`);
     const allLocations = await db.select({ id: locations.id }).from(locations);
     const allTerritories = await db.select({ id: territories.id }).from(territories);
 
     const allReferrals = await db.select().from(referrals)
-      .where(gte(referrals.referralDate, startMonth));
+      .where(and(gte(referrals.referralDate, startMonth), sql`${referrals.deletedAt} IS NULL`));
 
     const allCollections = await db.select().from(collections)
       .where(gte(collections.collectionDate, startMonth));
@@ -64,22 +136,11 @@ export async function runETL() {
     const tierBThreshold = weights?.tierBThreshold ?? 0.5;
     const tierCThreshold = weights?.tierCThreshold ?? 0.2;
 
-    type PhysSummary = {
-      referralsCount: number;
-      scheduledCount: number;
-      evaluatedCount: number;
-      arrivedCount: number;
-      totalVisitsGenerated: number;
-      revenueGenerated: number;
-      commercialCount: number;
-      totalPayerCount: number;
-    };
-
     const physicianMonthlyData: Record<string, Record<string, PhysSummary>> = {};
 
     for (const physId of allPhysicians.map(p => p.id)) {
       physicianMonthlyData[physId] = {};
-      for (const m of months) {
+      for (const m of allMonths) {
         physicianMonthlyData[physId][m] = {
           referralsCount: 0, scheduledCount: 0, evaluatedCount: 0,
           arrivedCount: 0, totalVisitsGenerated: 0, revenueGenerated: 0,
@@ -131,13 +192,31 @@ export async function runETL() {
       physicianMonthlyData[col.physicianId][colMonth].revenueGenerated += parseFloat(String(col.amount));
     }
 
-    const summaryRows: any[] = [];
+    const summaryRows: Array<{
+      physicianId: string;
+      month: string;
+      referralsCount: number;
+      scheduledCount: number;
+      evaluatedCount: number;
+      arrivedCount: number;
+      arrivalRate: number;
+      totalVisitsGenerated: number;
+      revenueGenerated: string;
+      revenuePerReferral: string;
+      commercialMixPct: number;
+      growthRate3mo: number;
+      tierScore: number;
+      tierLabel: "A" | "B" | "C" | "D";
+    }> = [];
+
     for (const physId of Object.keys(physicianMonthlyData)) {
       const monthData = physicianMonthlyData[physId];
       const sortedMonths = Object.keys(monthData).sort();
 
       for (let i = 0; i < sortedMonths.length; i++) {
         const m = sortedMonths[i];
+        if (!months.includes(m)) continue;
+
         const d = monthData[m];
         const arrivalRate = d.scheduledCount > 0 ? d.arrivedCount / d.scheduledCount : 0;
         const revenuePerReferral = d.referralsCount > 0 ? d.revenueGenerated / d.referralsCount : 0;
@@ -327,6 +406,8 @@ export async function runETL() {
       }
     }
 
+    await setLastETLRun(runTimestamp);
+
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
     console.log(`[ETL] Completed in ${elapsed}s. ${activeRows.length} physician summaries, ${allLocations.length} location summaries processed.`);
   } catch (err) {
@@ -344,4 +425,8 @@ export function scheduleETL() {
 
 export async function triggerETL() {
   await runETL();
+}
+
+export async function triggerFullETL() {
+  await runETL(true);
 }
