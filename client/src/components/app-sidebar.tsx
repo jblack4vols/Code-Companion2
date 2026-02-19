@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -25,7 +25,6 @@ const navItems = [
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
-  { title: "Import", url: "/import", icon: Upload, roles: ["OWNER", "DIRECTOR"] as string[] },
 ];
 
 const dashboardItems = [
@@ -39,6 +38,7 @@ const adminItems = [
   { title: "Locations", url: "/admin/locations", icon: MapPin },
   { title: "Duplicates", url: "/admin/duplicates", icon: Copy },
   { title: "Team Reports", url: "/admin/reports", icon: BarChart3 },
+  { title: "Import", url: "/import", icon: Upload },
   { title: "SharePoint Sync", url: "/admin/sharepoint", icon: Cloud },
   { title: "Audit Log", url: "/admin/audit-log", icon: ScrollText },
   { title: "Settings", url: "/admin/settings", icon: Settings },
@@ -64,12 +64,18 @@ export function AppSidebar() {
   const { user, logout } = useAuth();
   const [location] = useLocation();
 
-  const isAdminActive = location.startsWith("/admin/");
+  const isAdminActive = location.startsWith("/admin/") || location === "/import";
+  const isIntelActive = location.startsWith("/dashboards/");
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
+  const [intelOpen, setIntelOpen] = useState(isIntelActive);
 
   useEffect(() => {
     if (!isAdminActive) setAdminOpen(false);
   }, [isAdminActive]);
+
+  useEffect(() => {
+    if (!isIntelActive) setIntelOpen(false);
+  }, [isIntelActive]);
 
   if (!user) return null;
 
@@ -114,24 +120,41 @@ export function AppSidebar() {
 
         {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
           <SidebarGroup>
-            <SidebarGroupLabel>Intelligence</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
-                {dashboardItems
-                  .filter((item) => !item.roles || item.roles.includes(user.role))
-                  .map((item) => (
-                  <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={location === item.url || location.startsWith(item.url)}
-                    >
-                      <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
-                        <item.icon className="w-4 h-4" />
-                        <span>{item.title}</span>
-                      </Link>
-                    </SidebarMenuButton>
+                <Collapsible open={intelOpen || isIntelActive} onOpenChange={setIntelOpen} className="group/intel">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isIntelActive}
+                        data-testid="button-intelligence-dropdown"
+                      >
+                        <LineChart className="w-4 h-4" />
+                        <span>Intelligence</span>
+                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/intel:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {dashboardItems
+                          .filter((item) => !item.roles || item.roles.includes(user.role))
+                          .map((item) => (
+                          <SidebarMenuSubItem key={item.title}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={location === item.url || location.startsWith(item.url)}
+                            >
+                              <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                                <item.icon className="w-3.5 h-3.5" />
+                                <span>{item.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
                   </SidebarMenuItem>
-                ))}
+                </Collapsible>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>
