@@ -79,7 +79,7 @@ export async function registerRoutes(
         conString: process.env.DATABASE_URL,
         createTableIfMissing: true,
       }),
-      secret: process.env.SESSION_SECRET || "tristar-360-dev-secret-change-in-prod",
+      secret: process.env.SESSION_SECRET ?? (() => { throw new Error("SESSION_SECRET environment variable is required"); })(),
       resave: false,
       saveUninitialized: false,
       rolling: true,
