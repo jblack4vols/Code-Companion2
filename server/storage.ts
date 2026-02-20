@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray, isNull } from "drizzle-orm";
+import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray, isNull, isNotNull } from "drizzle-orm";
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
@@ -119,6 +119,8 @@ export interface IStorage {
   restorePhysician(id: string): Promise<boolean>;
   softDeleteReferral(id: string): Promise<boolean>;
   restoreReferral(id: string): Promise<boolean>;
+  softDeleteAllReferrals(): Promise<number>;
+  restoreAllReferrals(): Promise<number>;
   softDeleteInteraction(id: string): Promise<boolean>;
   restoreInteraction(id: string): Promise<boolean>;
 
@@ -1176,6 +1178,20 @@ export class DatabaseStorage implements IStorage {
       .set({ deletedAt: null, updatedAt: new Date() })
       .where(eq(referrals.id, id));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async softDeleteAllReferrals(): Promise<number> {
+    const result = await db.update(referrals)
+      .set({ deletedAt: new Date(), updatedAt: new Date() })
+      .where(isNull(referrals.deletedAt));
+    return result.rowCount ?? 0;
+  }
+
+  async restoreAllReferrals(): Promise<number> {
+    const result = await db.update(referrals)
+      .set({ deletedAt: null, updatedAt: new Date() })
+      .where(isNotNull(referrals.deletedAt));
+    return result.rowCount ?? 0;
   }
 
   async softDeleteInteraction(id: string): Promise<boolean> {
