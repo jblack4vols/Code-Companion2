@@ -1,0 +1,189 @@
+import type { Express, Request, Response, NextFunction } from "express";
+import { storage } from "../storage";
+import { z } from "zod";
+import crypto from "crypto";
+import { requireRole, getClientIp } from "./shared";
+
+export function registerPublicApiRoutes(app: Express) {
+  app.get("/api/api-keys", requireRole("OWNER"), async (req, res) => {
+    try {
+      const keys = await storage.getApiKeys();
+      res.json(keys.map((k) => ({ ...k, keyHash: undefined })));
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const createApiKeySchema = z.object({
+    name: z.string().min(1).max(100),
+    scopes: z.array(z.string()).min(1).default(["physicians:read", "referrals:read", "locations:read"]),
+    expiresInDays: z.number().int().min(1).max(365).optional(),
+  });
+
+  app.post("/api/api-keys", requireRole("OWNER"), async (req, res) => {
+    try {
+      const { name, scopes, expiresInDays } = createApiKeySchema.parse(req.body);
+
+      const rawKey = `tsk_${crypto.randomBytes(32).toString("hex")}`;
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 8);
+
+      let expiresAt: Date | undefined;
+      if (expiresInDays) {
+        expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      }
+
+      const apiKey = await storage.createApiKey({
+        name,
+        keyHash,
+        keyPrefix,
+        scopes: scopes || ["physicians:read", "referrals:read", "locations:read"],
+        createdBy: req.session.userId!,
+        ...(expiresAt && { expiresAt }),
+      });
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_API_KEY", entity: "ApiKey", entityId: apiKey.id, detailJson: { name, scopes, expiresAt: expiresAt?.toISOString() }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ ...apiKey, rawKey, keyHash: undefined });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/api-keys/:id/rotate", requireRole("OWNER"), async (req, res) => {
+    try {
+      const oldKey = await storage.getApiKeyById(req.params.id);
+      if (!oldKey) return res.status(404).json({ message: "Not found" });
+
+      await storage.deactivateApiKey(oldKey.id);
+
+      const rawKey = `tsk_${crypto.randomBytes(32).toString("hex")}`;
+      const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
+      const keyPrefix = rawKey.slice(0, 8);
+
+      const expiresInDays = req.body?.expiresInDays;
+      let expiresAt: Date | undefined;
+      if (expiresInDays && typeof expiresInDays === "number") {
+        expiresAt = new Date(Date.now() + expiresInDays * 24 * 60 * 60 * 1000);
+      } else if (oldKey.expiresAt) {
+        const remainingMs = new Date(oldKey.expiresAt).getTime() - Date.now();
+        if (remainingMs > 0) {
+          expiresAt = new Date(Date.now() + remainingMs);
+        }
+      }
+
+      const newApiKey = await storage.createApiKey({
+        name: oldKey.name,
+        keyHash,
+        keyPrefix,
+        scopes: oldKey.scopes as string[],
+        createdBy: req.session.userId!,
+        ...(expiresAt && { expiresAt }),
+      });
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "ROTATE_API_KEY", entity: "ApiKey", entityId: newApiKey.id, detailJson: { oldKeyId: oldKey.id, name: oldKey.name }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ ...newApiKey, rawKey, keyHash: undefined });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/api-keys/:id", requireRole("OWNER"), async (req, res) => {
+    try {
+      const deactivated = await storage.deactivateApiKey(req.params.id);
+      if (!deactivated) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  const requireApiKey = (scope: string) => async (req: Request, res: Response, next: NextFunction) => {
+    const apiKeyHeader = req.headers["x-tristar-api-key"] as string;
+    if (!apiKeyHeader) return res.status(401).json({ error: "API key required. Set X-TRISTAR-API-KEY header." });
+
+    const keyHash = crypto.createHash("sha256").update(apiKeyHeader).digest("hex");
+    const key = await storage.getApiKeyByHash(keyHash);
+    if (!key || !key.isActive) return res.status(401).json({ error: "Invalid or inactive API key" });
+
+    if (key.expiresAt && new Date(key.expiresAt) < new Date()) {
+      return res.status(401).json({ error: "API key has expired. Please rotate or create a new key." });
+    }
+
+    const scopes = (key.scopes as string[]) || [];
+    if (!scopes.includes(scope) && !scopes.includes("*")) {
+      return res.status(403).json({ error: `Missing scope: ${scope}` });
+    }
+
+    await storage.updateApiKeyLastUsed(key.id);
+    (req as any).apiKeyId = key.id;
+    next();
+  };
+
+  app.get("/api/public/physicians", requireApiKey("physicians:read"), async (_req, res) => {
+    try {
+      const allPhysicians = await storage.getPhysicians();
+      res.json({ data: allPhysicians, total: allPhysicians.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/physicians/:id", requireApiKey("physicians:read"), async (req, res) => {
+    try {
+      const phys = await storage.getPhysician(req.params.id);
+      if (!phys) return res.status(404).json({ error: "Not found" });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/referrals", requireApiKey("referrals:read"), async (_req, res) => {
+    try {
+      const allReferrals = await storage.getReferrals();
+      res.json({ data: allReferrals, total: allReferrals.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/locations", requireApiKey("locations:read"), async (_req, res) => {
+    try {
+      const allLocations = await storage.getLocations();
+      res.json({ data: allLocations, total: allLocations.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.get("/api/public/interactions", requireApiKey("interactions:read"), async (_req, res) => {
+    try {
+      const allInteractions = await storage.getInteractions();
+      res.json({ data: allInteractions, total: allInteractions.length });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  app.post("/api/public/webhook", requireApiKey("webhook:write"), async (req, res) => {
+    try {
+      const { event, data } = req.body;
+      if (!event || !data) return res.status(400).json({ error: "event and data fields required" });
+
+      await storage.createAuditLog({
+        userId: "system",
+        action: "WEBHOOK_RECEIVED",
+        entity: "Webhook",
+        entityId: (req as any).apiKeyId,
+        detailJson: { event, dataKeys: Object.keys(data) },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
+      });
+
+      res.json({ received: true, event });
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+}

@@ -1,0 +1,283 @@
+import type { Express } from "express";
+import { storage } from "../storage";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+import { insertPhysicianSchema } from "@shared/schema";
+import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+
+export function registerPhysicianRoutes(app: Express) {
+  app.get("/api/physicians/paginated", requireAuth, async (req, res) => {
+    res.json(await storage.getPhysiciansPaginated({
+      search: qstr(req.query.search as any),
+      status: qstr(req.query.status as any),
+      stage: qstr(req.query.stage as any),
+      priority: qstr(req.query.priority as any),
+      practiceName: qstr(req.query.practiceName as any),
+      sortBy: qstr(req.query.sortBy as any),
+      sortOrder: qstr(req.query.sortOrder as any),
+      page: req.query.page ? parseInt(req.query.page as string) : 1,
+      pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : 50,
+    }));
+  });
+
+  app.get("/api/physicians/search", requireAuth, async (req, res) => {
+    const query = (req.query.q as string || "").trim();
+    if (query.length < 2) return res.json([]);
+    res.json(await storage.searchPhysiciansTypeahead(query));
+  });
+
+  app.get("/api/physicians/practice-names", requireAuth, async (req, res) => {
+    const allPhysicians = await storage.getPhysicians();
+    const practiceSet = new Set<string>();
+    for (const p of allPhysicians) {
+      if (p.practiceName && p.practiceName.trim()) {
+        practiceSet.add(p.practiceName.trim());
+      }
+    }
+    const sorted = Array.from(practiceSet).sort((a, b) => a.localeCompare(b));
+    res.json(sorted);
+  });
+
+  app.get("/api/physicians/by-practice", requireAuth, async (req, res) => {
+    const name = (req.query.name as string || "").trim();
+    if (!name) return res.json([]);
+    const allPhysicians = await storage.getPhysicians();
+    const matched = allPhysicians.filter(
+      (p) => p.practiceName && p.practiceName.trim().toLowerCase() === name.toLowerCase()
+    );
+    res.json(matched);
+  });
+
+  app.get("/api/physicians", requireAuth, async (req, res) => {
+    res.json(await storage.getPhysicians());
+  });
+
+  app.get("/api/physicians/tiering", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
+    const filters = {
+      period: qstr(req.query.period as any) || "year",
+      year: req.query.year ? parseInt(req.query.year as string) : undefined,
+      month: req.query.month ? parseInt(req.query.month as string) : undefined,
+    };
+    res.json(await storage.getPhysicianTiering(filters));
+  });
+
+  app.get("/api/physicians/declining", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
+    const filters = {
+      months: req.query.months ? parseInt(req.query.months as string) : 3,
+      minDrop: req.query.minDrop ? parseInt(req.query.minDrop as string) : 1,
+    };
+    res.json(await storage.getDecliningReferrals(filters));
+  });
+
+  app.post("/api/physicians/bulk-assign", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { physicianIds, marketerId } = req.body;
+      if (!Array.isArray(physicianIds) || physicianIds.length === 0) return res.status(400).json({ message: "physicianIds required" });
+      const count = await storage.bulkAssignPhysiciansToMarketer(physicianIds, marketerId || null);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_ASSIGN", entity: "Physician", entityId: "bulk", detailJson: { count, marketerId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/bulk-status", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { physicianIds, status } = req.body;
+      if (!Array.isArray(physicianIds) || physicianIds.length === 0) return res.status(400).json({ message: "physicianIds required" });
+      if (!["PROSPECT", "ACTIVE", "INACTIVE"].includes(status)) return res.status(400).json({ message: "Invalid status" });
+      const count = await storage.bulkUpdatePhysicianStatus(physicianIds, status);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_STATUS", entity: "Physician", entityId: "bulk", detailJson: { count, status }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/physicians/by-npi", requireAuth, async (req, res) => {
+    try {
+      const npi = String(req.query.npi || "").trim();
+      if (!npi) return res.json([]);
+      const results = await db.execute(sql`
+        SELECT p.*, COALESCE((SELECT COUNT(*) FROM referrals r WHERE r.physician_id = p.id AND r.deleted_at IS NULL), 0)::int as "referralCount"
+        FROM physicians p WHERE p.npi = ${npi} AND p.deleted_at IS NULL
+        ORDER BY p.last_name, p.first_name
+      `);
+      res.json(results.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/physicians/duplicates", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const dupes = await db.execute(sql`
+        WITH potential_dupes AS (
+          SELECT p1.id as id1, p2.id as id2,
+            p1.first_name as first_name_1, p1.last_name as last_name_1, p1.npi as npi_1, p1.practice_name as practice_1, p1.city as city_1, p1.status as status_1,
+            p2.first_name as first_name_2, p2.last_name as last_name_2, p2.npi as npi_2, p2.practice_name as practice_2, p2.city as city_2, p2.status as status_2,
+            CASE
+              WHEN p1.npi IS NOT NULL AND p1.npi = p2.npi THEN 'NPI Match'
+              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) AND COALESCE(LOWER(p1.city), '') = COALESCE(LOWER(p2.city), '') THEN 'Name + City Match'
+              WHEN LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name) THEN 'Name Match'
+            END as match_reason
+          FROM physicians p1
+          JOIN physicians p2 ON p1.id < p2.id
+          WHERE p1.deleted_at IS NULL AND p2.deleted_at IS NULL AND (
+            (p1.npi IS NOT NULL AND p1.npi != '' AND p1.npi = p2.npi)
+            OR (LOWER(p1.first_name) = LOWER(p2.first_name) AND LOWER(p1.last_name) = LOWER(p2.last_name))
+          )
+        )
+        SELECT * FROM potential_dupes
+        ORDER BY match_reason DESC, last_name_1, first_name_1
+        LIMIT 100
+      `);
+      res.json(dupes.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/merge", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { keepId, removeId } = req.body;
+      if (!keepId || !removeId) return res.status(400).json({ message: "keepId and removeId required" });
+      if (keepId === removeId) return res.status(400).json({ message: "Cannot merge physician with itself" });
+      
+      await db.execute(sql`UPDATE referrals SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE interactions SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE tasks SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE collections SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE physician_comments SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`DELETE FROM physician_favorites WHERE physician_id = ${removeId} AND user_id IN (SELECT user_id FROM physician_favorites WHERE physician_id = ${keepId})`);
+      await db.execute(sql`UPDATE physician_favorites SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`DELETE FROM physician_monthly_summary WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE physicians SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${removeId}`);
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/physicians/:id", requireAuth, async (req, res) => {
+    const phys = await storage.getPhysician(req.params.id);
+    if (!phys) return res.status(404).json({ message: "Not found" });
+    res.json(phys);
+  });
+
+  app.post("/api/physicians", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const validated = insertPhysicianSchema.parse(req.body);
+      const phys = await storage.createPhysician(validated);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: phys.id, detailJson: { firstName: phys.firstName, lastName: phys.lastName }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/physicians/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const validated = insertPhysicianSchema.partial().parse(req.body);
+      const phys = await storage.updatePhysician(req.params.id, validated);
+      if (!phys) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Physician", entityId: phys.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/physicians/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const deleted = await storage.softDeletePhysician(req.params.id);
+      if (!deleted) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/:id/restore", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const restored = await storage.restorePhysician(req.params.id);
+      if (!restored) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/physicians/:id/assign", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { marketerId } = req.body;
+      const phys = await storage.assignPhysicianToMarketer(req.params.id, marketerId || null);
+      if (!phys) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "ASSIGN", entity: "Physician", entityId: phys.id, detailJson: { marketerId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/physicians/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const comments = await storage.getPhysicianComments(req.params.id);
+      res.json(comments);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/physicians/:id/comments", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ message: "Content is required" });
+      }
+      const comment = await storage.createPhysicianComment({
+        physicianId: req.params.id,
+        userId: req.session.userId!,
+        content: content.trim(),
+      });
+      res.json(comment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/physicians/:id/comments/:commentId", requireAuth, async (req, res) => {
+    try {
+      const { content } = req.body;
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ message: "Content is required" });
+      }
+      const existing = await storage.getPhysicianComments(req.params.id);
+      const target = existing.find(c => c.id === req.params.commentId);
+      if (!target) return res.status(404).json({ message: "Comment not found" });
+      if (target.userId !== req.session.userId) {
+        return res.status(403).json({ message: "You can only edit your own comments" });
+      }
+      const comment = await storage.updatePhysicianComment(req.params.commentId, content.trim());
+      if (!comment) return res.status(404).json({ message: "Comment not found" });
+      res.json(comment);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/physicians/:id/comments/:commentId", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const deleted = await storage.deletePhysicianComment(req.params.commentId);
+      if (!deleted) return res.status(404).json({ message: "Comment not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+}

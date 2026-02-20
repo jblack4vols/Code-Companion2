@@ -1,120 +1,35 @@
 # Tristar 360° - Physician Relationship Management (PRM)
 
 ## Overview
-A web application for an outpatient physical therapy business with 8 clinic locations. Helps the team track and grow physician referral relationships, log outreach/visits, and measure referrals with dashboards.
-
-## Tech Stack
-- **Frontend**: React + Vite + TypeScript, Tailwind CSS, shadcn/ui
-- **Backend**: Express.js, Drizzle ORM
-- **Database**: PostgreSQL (Neon-backed)
-- **Auth**: Session-based with express-session, connect-pg-simple store
-
-## Project Structure
-```
-client/src/
-  App.tsx - Main app with routing, auth, sidebar layout
-  lib/auth.tsx - Auth context, login/logout, RBAC helpers
-  lib/queryClient.ts - TanStack Query setup
-  components/app-sidebar.tsx - Main navigation sidebar
-  components/theme-provider.tsx - Light/dark theme
-  pages/
-    login.tsx - Login page
-    dashboard.tsx - Dashboard with charts
-    physicians.tsx - Physician list with filters + pagination
-    physician-detail.tsx - Physician detail with tabs
-    interactions.tsx - Interactions log
-    referrals.tsx - Referral/cases tracking with detail dialog
-    tasks.tsx - Task work queue
-    calendar.tsx - Calendar with event management
-    admin-users.tsx - User management
-    admin-settings.tsx - Settings + HIPAA notice
-    sharepoint-sync.tsx - SharePoint Lists sync admin page
-server/
-  index.ts - Express server entry
-  db.ts - Drizzle database connection
-  storage.ts - IStorage interface + DatabaseStorage class
-  routes.ts - All API routes with RBAC middleware
-  sharepoint.ts - SharePoint Lists sync via Microsoft Graph API (batch operations)
-  seed.ts - Database seeding (users only, real data imported)
-shared/
-  schema.ts - Drizzle schema + Zod schemas + TypeScript types
-scripts/
-  import-providers.ts - Import referring providers from Excel
-  import-referrals.ts - Import cases/referrals from Excel
-```
-
-## Key Features
-- **Authentication**: Session-based, email/password login
-- **RBAC**: OWNER (full access), DIRECTOR, MARKETER, FRONT_DESK (referrals only), ANALYST (read-only)
-- **Referring Providers**: 3,765 referring providers (deduplicated) imported from Excel with credentials, NPI, practice info, paginated (50/page) with sortable columns. UI labels use "Referring Providers" (database/API still uses `physicians` internally).
-- **Referrals**: 6,041 real cases imported with full case details, 5,842 linked to providers by NPI, 199 self-referrals/walk-ins unlinked. Referral table includes referring_provider_name and referring_provider_npi columns.
-- **Interactions**: Log visits, calls, emails, events with provider timeline
-- **Tasks**: Follow-up work queue with completion tracking
-- **Dashboard**: Charts for referral trends, top referrers, at-risk providers, activity feed
-- **Revenue Intelligence Dashboards**: Three BI dashboards under /dashboards/* route:
-  - **Executive Dashboard** (/dashboards/executive): Top 20 referral sources, KPI cards (referrals, revenue, concentration risk, volatility index), growth rate chart, monthly volume chart. Month filter.
-  - **Territory Dashboard** (/dashboards/territory): Territory selector with per-territory KPIs (referrals, visits, revenue, revenue/rep, visits/rep). Empty state when no territories configured.
-  - **Location Dashboard** (/dashboards/location): Location selector with per-location KPIs (referrals, visits, revenue, dependency ratio, risk score), monthly trends chart, location-specific top referral sources table.
-- **Nightly ETL**: node-cron job at 2 AM computing physician_monthly_summary (1,737 records), location_monthly_summary (49 records), weighted physician tiering (A/B/C/D). Manual trigger: POST /api/etl/run. Server file: server/etl.ts.
-- **Weighted Tiering**: Configurable weights (revenue 0.4, trend 0.2, conversion 0.2, payer mix 0.2) with tier thresholds (A>=0.8, B>=0.5, C>=0.2, D<0.2). Config: GET/PATCH /api/tiering-weights.
-- **Activity Feed**: Dashboard widget showing recent interactions, completed tasks, and new referrals combined and sorted by timestamp. API: GET /api/activity-feed
-- **Referral Source Attribution**: Track how provider relationships originated (Website, Conference, Cold Call, Referral, Marketing, Existing, Lunch & Learn, Other). Field on provider edit form and detail view.
-- **Map View**: Leaflet map at /map showing referring providers plotted on East Tennessee map with colored markers by relationship stage. Sidebar provider list with filters. City-based geocoding for 8 clinic territories.
-- **Duplicate Detection**: Admin page at /admin/duplicates detecting potential duplicate providers via NPI match or name+city match. Side-by-side comparison with merge capability. API: GET /api/physicians/duplicates, POST /api/physicians/merge
-- **User Activity Reports**: Admin page at /admin/reports showing per-user interaction counts (visits, calls, emails, lunches), task completion metrics, and on-time rates. Date range filters and stacked bar chart. API: GET /api/reports/user-activity
-- **Calendar**: Office/practice-centric event scheduling. Events linked to Office/Practice Name (not individual physicians) via searchable dropdown. Shows all physicians at selected office. Practice filter in toolbar. Outlook sync capability. API: GET /api/physicians/practice-names, GET /api/physicians/by-practice?name=X
-- **Import**: Excel (.xlsx) import for physicians and referrals with auto column mapping, preview, deduplication/upsert, and progress tracking. Supports Referring Provider List and Created Cases Report formats. Available at /import route. OWNER/DIRECTOR role required.
-- **SharePoint Sync**: Sync all app data (physicians, referrals, interactions, tasks, locations) to SharePoint Lists via Microsoft Graph API. Uses batch operations (20 per request) with clear-and-reload approach. Async sync with status polling. Admin page at /admin/sharepoint. OWNER/DIRECTOR role required. DB tables: sharepoint_sync_status (tracks per-entity sync state), app_settings (stores site config).
-- **Provider Notes/Comments**: Internal notes system on each provider's detail page (Notes tab). Team members can add, edit, and view notes. Owners/Directors can delete any note. API: GET/POST /api/physicians/:id/comments, PATCH/DELETE /api/physicians/:id/comments/:commentId. DB: physician_comments.
-- **Bulk Actions**: Select multiple providers on the list page. Bulk set status (Active/Inactive/Prospect) and bulk assign marketer via dropdown. API: POST /api/physicians/bulk-status, POST /api/physicians/bulk-assign. OWNER/DIRECTOR role required.
-- **CSV Export**: Export buttons on physicians, referrals, interactions, tasks, and audit log pages. API: GET /api/export/physicians, /referrals, /interactions, /tasks, /audit-logs. OWNER/DIRECTOR role required.
-- **Quick-Add Interaction**: Speech bubble button on each provider row in the list page to quickly log an interaction (visit, call, email, etc.) without navigating to the detail page. Dialog with type, date, location, summary, and next step fields.
-- **Dashboard Period Comparison**: "Compare" toggle on dashboard that fetches stats for the previous equivalent period and shows percentage change arrows on each KPI stat card (green up / red down / neutral).
-- **Mobile-Friendly Layout**: Provider list shows card-based layout on small screens (below sm breakpoint) instead of table. Interactions filter bar uses responsive grid. All pages use responsive padding and font sizes.
-- **Scheduled Reports**: Configure recurring report schedules (weekly/monthly) for referral summary, interaction summary, or provider pipeline reports. "Run Now" generates and downloads CSV immediately. Admin page at /admin/scheduled-reports. OWNER/DIRECTOR role required. DB: scheduled_reports.
-- **Data Retention Policy**: Configurable audit log retention period (90 days to 7 years) in admin settings. Manual purge button to clean up logs older than retention period. HIPAA guidance noted (6-year minimum). API: GET/PATCH /api/settings/audit-retention, POST /api/audit-logs/purge. OWNER role required.
-- **API Integrations**: Admin page at /admin/integrations with three tabs:
-  - **Connections**: GoHighLevel (two-way sync: push physician contacts, pull leads) and Custom API (connect to external software via REST). Test connection, manual sync. DB: integration_configs, integration_sync_logs.
-  - **API Keys**: Create/revoke API keys with granular scopes (physicians:read, referrals:read, etc.) for external software to access Tristar data via public API. SHA-256 hashed, shown once. DB: api_keys. OWNER role required.
-  - **Microsoft**: Setup instructions for Outlook and SharePoint connections via Replit integrations panel.
-  - **Public API**: GET /api/public/physicians, /referrals, /locations, /interactions. POST /api/public/webhook. Auth via X-TRISTAR-API-KEY header.
-
-- **HIPAA Technical Safeguards**: Comprehensive security features:
-  - **Audit Logging**: All data access, login/logout, account lockout events logged with IP address, user agent, timestamp, and action details. Enhanced audit_logs table with ipAddress, userAgent columns and performance indexes. Audit log page at /admin/audit-log with entity/action filters and IP tooltip.
-  - **Session Timeout**: 15-minute auto-expiration with 2-minute warning dialog (IdleTimeout component in App.tsx). Detects mouse, keyboard, scroll, touch activity. Rolling session cookie resets on activity.
-  - **Account Lockout**: 5 failed login attempts triggers 15-minute lockout. Login shows remaining attempts, lockout duration, and lock icon. Users table tracks failedLoginAttempts, lockedUntil fields.
-  - **Password Policy**: Minimum 8 chars with uppercase, lowercase, number, and special character. Enforced on both frontend (validatePassword in admin-users.tsx) and backend (passwordSchema in schema.ts). Bcrypt hash rounds: 12.
-  - **Security Headers**: X-Frame-Options (DENY), X-Content-Type-Options (nosniff), Referrer-Policy (strict-origin-when-cross-origin), X-XSS-Protection, Permissions-Policy, Cache-Control (no-store for API). Applied in server/routes.ts middleware.
-  - **Settings Page**: Admin settings at /admin/settings shows all security safeguards with active status badges and links to audit log.
-
-## Real Data
-- **Locations**: 8 Tristar PT clinics (Johnson City, Morristown, Newport, Rogersville, Maryville, Jefferson City, New Tazewell, Bean Station)
-- **Physicians**: 3,765 referring providers (deduplicated) imported from Referring Provider List Excel
-- **Referrals**: 6,041 cases from Created Cases Report (Jan 2025 - Jan 2026), 5,842 linked to physicians, 199 unlinked (self-referrals/walk-ins/no doctor info)
-
-## Default Credentials
-- Email: admin@tristar360.com
-- Password: admin123
-
-## Database
-- Uses PostgreSQL via DATABASE_URL environment variable
-- Schema managed with Drizzle ORM
-- Real data imported via scripts in /scripts directory
-
-## Security & Infrastructure Improvements (Feb 2026)
-- **CSRF Protection**: Double-submit cookie pattern via `server/middleware/csrf.ts`. Frontend auto-includes CSRF tokens in mutation requests via queryClient.
-- **Rate Limiting**: Login endpoint (10 attempts/15min), general API (120 req/min) via `server/middleware/rateLimiter.ts`.
-- **API Key Expiration/Rotation**: API keys support `expiresAt` field, rotation endpoint (`POST /api/api-keys/:id/rotate`), expired keys rejected in auth middleware.
-- **Environment Validation**: Zod-based validation at startup via `server/middleware/envValidation.ts`. Health check at `GET /api/health`.
-- **Database Indexes**: Optimized indexes on interactions (physicianId, userId, occurredAt), referrals (physicianId, locationId, referralDate, status, patientAccountNumber), tasks (assignedToUserId, status, dueAt, physicianId).
-- **Incremental ETL**: `server/etl.ts` tracks last run in `appSettings` table, only recomputes months with changed data. Supports `fullRecompute` flag via `POST /api/etl/run`.
-- **Standardized Error Handling**: `AppError` class and `errorResponse` helper in `server/middleware/errorHandler.ts`. Global error handler middleware.
-- **Shared Auth Middleware**: Extracted `requireAuth`, `requireRole`, `getClientIp`, `createAuditLogEntry` to `server/middleware/auth.ts` for reuse.
-- **Soft Deletes**: `deletedAt` timestamp on physicians, referrals, interactions tables. All read queries filter `deletedAt IS NULL`. Delete operations set timestamp instead of removing. Restore endpoints: `POST /api/physicians/:id/restore`, `POST /api/referrals/:id/restore`.
-- **Referral Deduplication Detection**: `GET /api/referrals/duplicates` endpoint detects potential duplicates by account number match, name+date match, or name+physician match.
+Tristar 360° is a web application designed for outpatient physical therapy businesses with multiple clinic locations. Its primary purpose is to empower teams to effectively track and cultivate physician referral relationships, log outreach activities, and measure referral performance through intuitive dashboards. The project aims to enhance relationship management with referring providers, ultimately driving business growth and optimizing patient acquisition.
 
 ## User Preferences
 - Healthcare professional aesthetic
 - Data-dense, efficient UI
 - Dark mode support
 - Pagination on large datasets (50 items per page)
+
+## System Architecture
+The application is built with a modern web stack: **React + Vite + TypeScript** for the frontend, styled with **Tailwind CSS** and **shadcn/ui**. The backend uses **Express.js** with **Drizzle ORM** connecting to a **PostgreSQL database (Neon-backed)**. User authentication is handled via **session-based security** with `express-session` and `connect-pg-simple`.
+
+**Key architectural decisions and features include:**
+- **Role-Based Access Control (RBAC)**: Supports roles like OWNER, DIRECTOR, MARKETER, FRONT_DESK, and ANALYST, each with specific permissions.
+- **Data Management**: Manages referring providers (deduplicated, paginated with search and filters), patient referrals (linked to providers, with unlinked self-referrals), interactions (visits, calls, emails), and tasks.
+- **Reporting & Analytics**: Features a comprehensive dashboard with charts for referral trends, top referrers, and at-risk providers. It also includes Executive, Territory, and Location-specific BI dashboards with KPIs and monthly trends.
+- **Automated Processes**: Implements a nightly ETL (Extract, Transform, Load) job for data aggregation and weighted physician tiering. An activity feed provides real-time updates.
+- **Workflow Tools**: Includes a calendar for event scheduling, a task management system with email notifications, and quick-add interaction logging.
+- **Data Quality**: Features duplicate detection for providers and referrals with merge capabilities, and robust data import/export functionalities (Excel/CSV).
+- **Security & Compliance (HIPAA)**: Incorporates extensive HIPAA technical safeguards including audit logging (enhanced with IP/user agent), session timeout, account lockout, strong password policy, and security headers (CSRF, Rate Limiting).
+- **Scalability**: Employs database indexing for performance, incremental ETL processing, and standardized error handling.
+- **Maintainability**: Utilizes soft deletes for data recovery, shared authentication middleware, and environment validation.
+
+The UI is designed to be mobile-friendly, adapting layout for smaller screens (e.g., card-based provider lists).
+
+## External Dependencies
+- **PostgreSQL**: Primary database, backed by Neon.
+- **Microsoft Graph API**: Used for Outlook email notifications (task assignments, reports) and SharePoint Lists synchronization (batch operations for app data).
+- **GoHighLevel**: Integrated for two-way sync to push physician contacts and pull leads.
+- **Custom API**: Provides a flexible integration point for connecting to other external software via REST.
+- **Microsoft SharePoint**: Used for syncing all application data to SharePoint Lists.
+- **node-cron**: For scheduling nightly ETL jobs and other automated tasks.
+- **ExcelJS**: Utilized for Excel (.xlsx) import functionality.
