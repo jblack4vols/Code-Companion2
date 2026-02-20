@@ -1923,16 +1923,99 @@ export async function registerRoutes(
             }
             const data: any = await resp.json();
             const contacts = data.contacts || [];
-            let processed = 0;
+            let created = 0;
+            let updated = 0;
+            let skipped = 0;
+            let failed = 0;
+            const results: { name: string; action: string; id?: string }[] = [];
 
+            for (const contact of contacts) {
+              try {
+                const firstName = (contact.firstName || contact.first_name || "").trim();
+                const lastName = (contact.lastName || contact.last_name || "").trim();
+                if (!firstName && !lastName) { skipped++; continue; }
+
+                const email = (contact.email || "").trim();
+                const phone = (contact.phone || "").trim();
+                const company = (contact.companyName || contact.company_name || "").trim();
+                const address = (contact.address1 || "").trim();
+                const city = (contact.city || "").trim();
+                const state = (contact.state || "").trim();
+                const zip = (contact.postalCode || contact.postal_code || "").trim();
+                const tags = Array.isArray(contact.tags) ? contact.tags : [];
+                let customFields: Record<string, any> = {};
+                const rawCustom = contact.customField || contact.customFields || contact.customFields || {};
+                if (Array.isArray(rawCustom)) {
+                  for (const cf of rawCustom) {
+                    const key = (cf.field_key || cf.key || cf.id || "").toLowerCase();
+                    const val = cf.value || cf.field_value || "";
+                    if (key.includes("npi")) customFields.npi = val;
+                    else if (key.includes("credential")) customFields.credentials = val;
+                    else if (key.includes("special")) customFields.specialty = val;
+                  }
+                } else {
+                  customFields = rawCustom;
+                }
+                const npi = customFields.npi || "";
+
+                const existing = await storage.findPhysicianByNameAndNpi(firstName, lastName, npi || null);
+
+                if (existing) {
+                  const updates: Record<string, any> = {};
+                  if (email && !existing.email) updates.email = email;
+                  if (phone && !existing.phone) updates.phone = phone;
+                  if (company && !existing.practiceName) updates.practiceName = company;
+                  if (address && !existing.primaryOfficeAddress) updates.primaryOfficeAddress = address;
+                  if (city && !existing.city) updates.city = city;
+                  if (state && !existing.state) updates.state = state;
+                  if (zip && !existing.zip) updates.zip = zip;
+
+                  if (Object.keys(updates).length > 0) {
+                    await storage.updatePhysician(existing.id, updates);
+                    updated++;
+                    results.push({ name: `${firstName} ${lastName}`, action: "updated", id: existing.id });
+                  } else {
+                    skipped++;
+                    results.push({ name: `${firstName} ${lastName}`, action: "already up-to-date" });
+                  }
+                } else {
+                  const newPhys = await storage.createPhysician({
+                    firstName,
+                    lastName,
+                    email: email || undefined,
+                    phone: phone || undefined,
+                    practiceName: company || undefined,
+                    primaryOfficeAddress: address || undefined,
+                    city: city || undefined,
+                    state: state || undefined,
+                    zip: zip || undefined,
+                    npi: npi || undefined,
+                    credentials: customFields.credentials || undefined,
+                    specialty: customFields.specialty || undefined,
+                    status: "PROSPECT",
+                    relationshipStage: "NEW",
+                    priority: "MEDIUM",
+                    tags: tags.length > 0 ? tags : ["ghl-import"],
+                    referralSourceAttribution: "GoHighLevel",
+                  });
+                  created++;
+                  results.push({ name: `${firstName} ${lastName}`, action: "created", id: newPhys.id });
+                }
+              } catch {
+                failed++;
+              }
+            }
+
+            const summary = `Pulled ${contacts.length} contacts: ${created} new providers created, ${updated} existing updated, ${skipped} skipped, ${failed} failed`;
             await storage.updateIntegrationSyncLog(log.id, {
               status: "completed",
-              recordsProcessed: contacts.length,
-              details: { contactsReceived: contacts.length, message: "Contacts pulled from GoHighLevel. Review in sync logs." },
+              recordsProcessed: created + updated,
+              recordsFailed: failed,
+              details: { contactsReceived: contacts.length, created, updated, skipped, failed, results: results.slice(0, 50) },
               finishedAt: new Date(),
             });
-            await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: `Pulled ${contacts.length} contacts` } as any);
-            return res.json({ success: true, contactsReceived: contacts.length });
+            await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: summary } as any);
+            return res.json({ success: true, message: summary, created, updated, skipped, failed });
           } catch (syncErr: any) {
             await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { error: syncErr.message }, finishedAt: new Date() });
             return res.json({ success: false, message: syncErr.message });

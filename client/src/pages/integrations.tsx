@@ -62,6 +62,12 @@ export default function IntegrationsPage() {
   const ghlConfig = integrations.find((i) => i.type === "GOHIGHLEVEL");
   const customConfig = integrations.find((i) => i.type === "CUSTOM_API");
 
+  const { data: ghlSyncLogs = [] } = useQuery<any[]>({
+    queryKey: ["/api/integrations", ghlConfig?.id, "logs"],
+    queryFn: ghlConfig ? getQueryFn({ on401: "throw" }) : undefined,
+    enabled: !!ghlConfig,
+  });
+
   const createIntegration = useMutation({
     mutationFn: async (data: { type: string; name: string; settings: Record<string, any> }) =>
       apiRequest("POST", "/api/integrations", data),
@@ -109,6 +115,9 @@ export default function IntegrationsPage() {
         description: data.message || `Processed: ${data.processed || 0}, Failed: ${data.failed || 0}`,
         variant: data.success ? "default" : "destructive",
       });
+      if (data.success && (data.created > 0 || data.updated > 0)) {
+        queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      }
     },
   });
 
@@ -307,6 +316,48 @@ export default function IntegrationsPage() {
                   </>
                 )}
               </div>
+
+              {ghlSyncLogs.length > 0 && (
+                <div className="space-y-2 pt-2 border-t" data-testid="ghl-sync-history">
+                  <p className="text-sm font-medium">Sync History</p>
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {ghlSyncLogs.slice(0, 5).map((log: any) => (
+                      <div key={log.id} className="text-xs border rounded-md p-2.5 space-y-1 bg-muted/30">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <Badge variant={log.status === "completed" ? "default" : "destructive"} className="text-[10px] px-1.5 py-0">
+                              {log.status}
+                            </Badge>
+                            <span className="text-muted-foreground">{log.direction === "push" ? "Push to GHL" : "Pull from GHL"}</span>
+                          </div>
+                          <span className="text-muted-foreground">{new Date(log.startedAt).toLocaleString()}</span>
+                        </div>
+                        {log.recordsProcessed > 0 && (
+                          <p>Processed: {log.recordsProcessed}{log.recordsFailed > 0 && `, Failed: ${log.recordsFailed}`}</p>
+                        )}
+                        {log.details?.created !== undefined && (
+                          <p className="text-green-600 dark:text-green-400">
+                            {log.details.created} new providers created, {log.details.updated} updated, {log.details.skipped} skipped
+                          </p>
+                        )}
+                        {log.details?.results && log.details.results.length > 0 && (
+                          <details className="cursor-pointer">
+                            <summary className="text-muted-foreground hover:text-foreground">View {log.details.results.length} contacts</summary>
+                            <div className="mt-1 pl-2 border-l-2 space-y-0.5">
+                              {log.details.results.map((r: any, i: number) => (
+                                <div key={i} className="flex items-center gap-1.5">
+                                  <span>{r.name}</span>
+                                  <Badge variant="outline" className="text-[10px] px-1 py-0">{r.action}</Badge>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
 
