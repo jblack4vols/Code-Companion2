@@ -115,8 +115,13 @@ export default function IntegrationsPage() {
         description: data.message || `Processed: ${data.processed || 0}, Failed: ${data.failed || 0}`,
         variant: data.success ? "default" : "destructive",
       });
-      if (data.success && (data.created > 0 || data.updated > 0)) {
-        queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      if (data.success) {
+        if (data.providersCreated > 0 || data.providersMatched > 0) {
+          queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+        }
+        if (data.referralsCreated > 0) {
+          queryClient.invalidateQueries({ queryKey: ["/api/referrals"] });
+        }
       }
     },
   });
@@ -335,7 +340,12 @@ export default function IntegrationsPage() {
                         {log.recordsProcessed > 0 && (
                           <p>Processed: {log.recordsProcessed}{log.recordsFailed > 0 && `, Failed: ${log.recordsFailed}`}</p>
                         )}
-                        {log.details?.created !== undefined && (
+                        {log.details?.referralsCreated !== undefined && (
+                          <p className="text-green-600 dark:text-green-400">
+                            {log.details.referralsCreated} referrals created, {log.details.providersCreated || 0} new providers, {log.details.providersMatched || 0} matched, {log.details.skipped || 0} skipped
+                          </p>
+                        )}
+                        {log.details?.created !== undefined && log.details?.referralsCreated === undefined && (
                           <p className="text-green-600 dark:text-green-400">
                             {log.details.created} new providers created, {log.details.updated} updated, {log.details.skipped} skipped
                           </p>
@@ -346,7 +356,8 @@ export default function IntegrationsPage() {
                             <div className="mt-1 pl-2 border-l-2 space-y-0.5">
                               {log.details.results.map((r: any, i: number) => (
                                 <div key={i} className="flex items-center gap-1.5">
-                                  <span>{r.name}</span>
+                                  <span>{r.patient || r.name}</span>
+                                  {r.physician && r.physician !== "none" && <span className="text-muted-foreground">via {r.physician}</span>}
                                   <Badge variant="outline" className="text-[10px] px-1 py-0">{r.action}</Badge>
                                 </div>
                               ))}

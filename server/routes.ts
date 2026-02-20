@@ -6,8 +6,8 @@ import session from "express-session";
 import cookieParser from "cookie-parser";
 import { z } from "zod";
 import bcrypt from "bcryptjs";
-import { sql, eq, and, gte, lt } from "drizzle-orm";
-import { referrals } from "@shared/schema";
+import { sql, eq, and, gte, lt, isNull } from "drizzle-orm";
+import { referrals as referralsTable } from "@shared/schema";
 import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema, insertScheduledReportSchema, physicians, integrationConfigs, passwordSchema, users as usersTable, appSettings, auditLogs } from "@shared/schema";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
@@ -918,11 +918,11 @@ export async function registerRoutes(
     const monthStart = new Date(month);
     const monthEnd = new Date(monthStart);
     monthEnd.setMonth(monthEnd.getMonth() + 1);
-    const locationReferrals = await db.select().from(referrals).where(
+    const locationReferrals = await db.select().from(referralsTable).where(
       and(
-        eq(referrals.locationId, req.params.locationId),
-        gte(referrals.referralDate, monthStart.toISOString().slice(0, 10)),
-        lt(referrals.referralDate, monthEnd.toISOString().slice(0, 10))
+        eq(referralsTable.locationId, req.params.locationId),
+        gte(referralsTable.referralDate, monthStart.toISOString().slice(0, 10)),
+        lt(referralsTable.referralDate, monthEnd.toISOString().slice(0, 10))
       )
     );
 
@@ -1923,99 +1923,164 @@ export async function registerRoutes(
             }
             const data: any = await resp.json();
             const contacts = data.contacts || [];
-            let created = 0;
-            let updated = 0;
+            let referralsCreated = 0;
+            let providersCreated = 0;
+            let providersMatched = 0;
             let skipped = 0;
             let failed = 0;
-            const results: { name: string; action: string; id?: string }[] = [];
+            const results: { patient: string; physician: string; action: string; referralId?: string }[] = [];
+
+            const allLocations = await storage.getLocations();
+            const defaultLocationId = allLocations.length > 0 ? allLocations[0].id : null;
 
             for (const contact of contacts) {
               try {
-                const firstName = (contact.firstName || contact.first_name || "").trim();
-                const lastName = (contact.lastName || contact.last_name || "").trim();
-                if (!firstName && !lastName) { skipped++; continue; }
+                const patientFirst = (contact.firstName || contact.first_name || "").trim();
+                const patientLast = (contact.lastName || contact.last_name || "").trim();
+                if (!patientFirst && !patientLast) { skipped++; continue; }
 
-                const email = (contact.email || "").trim();
-                const phone = (contact.phone || "").trim();
-                const company = (contact.companyName || contact.company_name || "").trim();
-                const address = (contact.address1 || "").trim();
-                const city = (contact.city || "").trim();
-                const state = (contact.state || "").trim();
-                const zip = (contact.postalCode || contact.postal_code || "").trim();
-                const tags = Array.isArray(contact.tags) ? contact.tags : [];
+                const patientName = `${patientFirst} ${patientLast}`.trim();
+                const patientPhone = (contact.phone || "").trim();
+                const patientEmail = (contact.email || "").trim();
+
+                const ghlContactId = contact.id || contact.contactId || "";
+
                 let customFields: Record<string, any> = {};
-                const rawCustom = contact.customField || contact.customFields || contact.customFields || {};
+                const rawCustom = contact.customField || contact.customFields || {};
                 if (Array.isArray(rawCustom)) {
                   for (const cf of rawCustom) {
-                    const key = (cf.field_key || cf.key || cf.id || "").toLowerCase();
+                    const key = (cf.field_key || cf.key || cf.id || cf.name || "").toLowerCase();
                     const val = cf.value || cf.field_value || "";
                     if (key.includes("npi")) customFields.npi = val;
                     else if (key.includes("credential")) customFields.credentials = val;
                     else if (key.includes("special")) customFields.specialty = val;
+                    else if ((key.includes("referring") && key.includes("physician")) || (key.includes("referring") && key.includes("doctor")) || (key.includes("referring") && key.includes("provider")) || key === "doctor" || key === "physician" || key === "provider_name") customFields.referringPhysician = val;
+                    else if (key.includes("location") || key.includes("clinic")) customFields.location = val;
+                    else if (key.includes("insurance") || key.includes("payer")) customFields.insurance = val;
+                    else if (key.includes("diagnosis") || key.includes("condition")) customFields.diagnosis = val;
                   }
                 } else {
                   customFields = rawCustom;
                 }
-                const npi = customFields.npi || "";
 
-                const existing = await storage.findPhysicianByNameAndNpi(firstName, lastName, npi || null);
+                const contactDate = contact.dateAdded || contact.date_added || contact.createdAt || contact.created_at;
+                const referralDate = contactDate ? new Date(contactDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
 
-                if (existing) {
-                  const updates: Record<string, any> = {};
-                  if (email && !existing.email) updates.email = email;
-                  if (phone && !existing.phone) updates.phone = phone;
-                  if (company && !existing.practiceName) updates.practiceName = company;
-                  if (address && !existing.primaryOfficeAddress) updates.primaryOfficeAddress = address;
-                  if (city && !existing.city) updates.city = city;
-                  if (state && !existing.state) updates.state = state;
-                  if (zip && !existing.zip) updates.zip = zip;
+                const dedupeKey = `ghl-${ghlContactId || (patientName + "-" + referralDate)}`;
+                const existingReferrals = await db.select({ id: referralsTable.id })
+                  .from(referralsTable)
+                  .where(and(
+                    eq(referralsTable.patientFullName, patientName),
+                    eq(referralsTable.referralSource, "GoHighLevel"),
+                    eq(referralsTable.referralDate, referralDate),
+                    isNull(referralsTable.deletedAt)
+                  ))
+                  .limit(1);
 
-                  if (Object.keys(updates).length > 0) {
-                    await storage.updatePhysician(existing.id, updates);
-                    updated++;
-                    results.push({ name: `${firstName} ${lastName}`, action: "updated", id: existing.id });
-                  } else {
-                    skipped++;
-                    results.push({ name: `${firstName} ${lastName}`, action: "already up-to-date" });
-                  }
-                } else {
-                  const newPhys = await storage.createPhysician({
-                    firstName,
-                    lastName,
-                    email: email || undefined,
-                    phone: phone || undefined,
-                    practiceName: company || undefined,
-                    primaryOfficeAddress: address || undefined,
-                    city: city || undefined,
-                    state: state || undefined,
-                    zip: zip || undefined,
-                    npi: npi || undefined,
-                    credentials: customFields.credentials || undefined,
-                    specialty: customFields.specialty || undefined,
-                    status: "PROSPECT",
-                    relationshipStage: "NEW",
-                    priority: "MEDIUM",
-                    tags: tags.length > 0 ? tags : ["ghl-import"],
-                    referralSourceAttribution: "GoHighLevel",
-                  });
-                  created++;
-                  results.push({ name: `${firstName} ${lastName}`, action: "created", id: newPhys.id });
+                if (existingReferrals.length > 0) {
+                  skipped++;
+                  results.push({ patient: patientName, physician: "", action: "already imported" });
+                  continue;
                 }
+
+                const refPhysName = (customFields.referringPhysician || contact.companyName || contact.company_name || "").trim();
+                const refNpi = (customFields.npi || "").trim();
+
+                let physicianId: string | null = null;
+                let physicianLabel = "none";
+
+                if (refPhysName) {
+                  let physFirst = "";
+                  let physLast = "";
+                  if (refPhysName.includes(",")) {
+                    const parts = refPhysName.split(",").map((s: string) => s.trim());
+                    physLast = parts[0];
+                    physFirst = parts[1] || "";
+                  } else {
+                    const nameParts = refPhysName.split(/\s+/);
+                    if (nameParts.length > 1) {
+                      physFirst = nameParts.slice(0, -1).join(" ");
+                      physLast = nameParts[nameParts.length - 1];
+                    } else {
+                      physLast = nameParts[0];
+                      physFirst = nameParts[0];
+                    }
+                  }
+
+                  const existing = await storage.findPhysicianByNameAndNpi(physFirst, physLast, refNpi || null);
+
+                  if (existing) {
+                    physicianId = existing.id;
+                    physicianLabel = `${existing.firstName} ${existing.lastName} (matched)`;
+                    providersMatched++;
+                  } else {
+                    const newPhys = await storage.createPhysician({
+                      firstName: physFirst,
+                      lastName: physLast,
+                      npi: refNpi || undefined,
+                      credentials: customFields.credentials || undefined,
+                      specialty: customFields.specialty || undefined,
+                      status: "PROSPECT",
+                      relationshipStage: "NEW",
+                      priority: "MEDIUM",
+                      tags: ["ghl-import"],
+                      referralSourceAttribution: "GoHighLevel",
+                    });
+                    physicianId = newPhys.id;
+                    physicianLabel = `${physFirst} ${physLast} (new)`;
+                    providersCreated++;
+                  }
+                }
+
+                let matchedLocationId = defaultLocationId;
+                if (customFields.location) {
+                  const locMatch = allLocations.find((l: any) =>
+                    l.name.toLowerCase().includes(customFields.location.toLowerCase()) ||
+                    customFields.location.toLowerCase().includes(l.name.toLowerCase().replace("tristar pt - ", ""))
+                  );
+                  if (locMatch) matchedLocationId = locMatch.id;
+                }
+
+                if (!matchedLocationId) { skipped++; results.push({ patient: patientName, physician: physicianLabel, action: "no location" }); continue; }
+
+                const newReferral = await storage.createReferral({
+                  physicianId: physicianId || undefined,
+                  locationId: matchedLocationId,
+                  referringProviderName: refPhysName || undefined,
+                  referringProviderNpi: refNpi || undefined,
+                  referralDate,
+                  patientFullName: patientName,
+                  patientPhone: patientPhone || undefined,
+                  patientAccountNumber: ghlContactId || undefined,
+                  caseTitle: `GHL Import - ${patientName}`,
+                  referralSource: "GoHighLevel",
+                  primaryInsurance: customFields.insurance || undefined,
+                  diagnosisCategory: customFields.diagnosis || undefined,
+                  status: "RECEIVED",
+                });
+
+                referralsCreated++;
+                results.push({
+                  patient: patientName,
+                  physician: physicianLabel,
+                  action: "referral created",
+                  referralId: newReferral.id,
+                });
               } catch {
                 failed++;
               }
             }
 
-            const summary = `Pulled ${contacts.length} contacts: ${created} new providers created, ${updated} existing updated, ${skipped} skipped, ${failed} failed`;
+            const summary = `Pulled ${contacts.length} contacts: ${referralsCreated} referrals created, ${providersCreated} new providers added, ${providersMatched} matched to existing providers, ${skipped} skipped, ${failed} failed`;
             await storage.updateIntegrationSyncLog(log.id, {
               status: "completed",
-              recordsProcessed: created + updated,
+              recordsProcessed: referralsCreated,
               recordsFailed: failed,
-              details: { contactsReceived: contacts.length, created, updated, skipped, failed, results: results.slice(0, 50) },
+              details: { contactsReceived: contacts.length, referralsCreated, providersCreated, providersMatched, skipped, failed, results: results.slice(0, 50) },
               finishedAt: new Date(),
             });
             await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: summary } as any);
-            return res.json({ success: true, message: summary, created, updated, skipped, failed });
+            return res.json({ success: true, message: summary, referralsCreated, providersCreated, providersMatched, skipped, failed });
           } catch (syncErr: any) {
             await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { error: syncErr.message }, finishedAt: new Date() });
             return res.json({ success: false, message: syncErr.message });
