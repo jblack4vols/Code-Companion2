@@ -560,10 +560,13 @@ export function registerIntegrationRoutes(app: Express) {
 
             for (const contact of contacts) {
               try {
-                const patientFirst = (contact.firstName || contact.first_name || "").trim();
-                const patientLast = (contact.lastName || contact.last_name || "").trim();
-                if (!patientFirst && !patientLast) { skipped++; continue; }
+                const rawFirst = (contact.firstName || contact.first_name || "").trim();
+                const rawLast = (contact.lastName || contact.last_name || "").trim();
+                if (!rawFirst && !rawLast) { skipped++; continue; }
 
+                const toTitleCase = (s: string) => s.replace(/\w\S*/g, (w) => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+                const patientFirst = toTitleCase(rawFirst);
+                const patientLast = toTitleCase(rawLast);
                 const patientName = `${patientFirst} ${patientLast}`.trim();
                 const patientPhone = (contact.phone || "").trim();
                 const patientEmail = (contact.email || "").trim();

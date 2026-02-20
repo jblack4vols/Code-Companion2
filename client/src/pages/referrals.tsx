@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2 } from "lucide-react";
+import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2, Pencil, Save, Loader2 } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +46,8 @@ export default function ReferralsPage() {
   const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
   const [selectedReferral, setSelectedReferral] = useState<any>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editData, setEditData] = useState<Record<string, any>>({});
   const [page, setPage] = useState(1);
   const pageSize = 50;
 
@@ -167,6 +169,53 @@ export default function ReferralsPage() {
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
+
+  const updateMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+      const res = await apiRequest("PATCH", `/api/referrals/${id}`, data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/referrals/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      setIsEditing(false);
+      setSelectedReferral(null);
+      toast({ title: "Referral updated" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const startEditing = (r: any) => {
+    setEditData({
+      patientFullName: r.patientFullName || "",
+      patientPhone: r.patientPhone || "",
+      patientDob: r.patientDob || "",
+      patientAccountNumber: r.patientAccountNumber || "",
+      referralDate: r.referralDate || "",
+      status: r.status || "RECEIVED",
+      diagnosisCategory: r.diagnosisCategory || "",
+      referralSource: r.referralSource || "",
+      discipline: r.discipline || "",
+      caseTitle: r.caseTitle || "",
+      caseTherapist: r.caseTherapist || "",
+      primaryInsurance: r.primaryInsurance || "",
+      primaryPayerType: r.primaryPayerType || "",
+      locationId: r.locationId || "",
+      referringProviderName: r.referringProviderName || (r.physicianFirstName ? `${r.physicianFirstName} ${r.physicianLastName}` : ""),
+      referringProviderNpi: r.referringProviderNpi || "",
+      dateOfInitialEval: r.dateOfInitialEval || "",
+      dischargeDate: r.dischargeDate || "",
+      dischargeReason: r.dischargeReason || "",
+      scheduledVisits: r.scheduledVisits || 0,
+      arrivedVisits: r.arrivedVisits || 0,
+    });
+    setIsEditing(true);
+  };
+
+  const handleSaveEdit = () => {
+    if (!selectedReferral) return;
+    updateMutation.mutate({ id: selectedReferral.id, data: editData });
+  };
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -607,13 +656,22 @@ export default function ReferralsPage() {
         )}
       </div>
 
-      <Dialog open={!!selectedReferral} onOpenChange={(open) => { if (!open) setSelectedReferral(null); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
+      <Dialog open={!!selectedReferral} onOpenChange={(open) => { if (!open) { setSelectedReferral(null); setIsEditing(false); } }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle data-testid="text-detail-title">Case Details</DialogTitle>
-            <DialogDescription>{selectedReferral?.patientAccountNumber || "Referral"}</DialogDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <DialogTitle data-testid="text-detail-title">{isEditing ? "Edit Referral" : "Case Details"}</DialogTitle>
+                <DialogDescription>{selectedReferral?.patientAccountNumber || "Referral"}</DialogDescription>
+              </div>
+              {selectedReferral && !isEditing && (
+                <Button variant="outline" size="sm" onClick={() => startEditing(selectedReferral)} data-testid="button-edit-referral">
+                  <Pencil className="w-3.5 h-3.5 mr-1.5" />Edit
+                </Button>
+              )}
+            </div>
           </DialogHeader>
-          {selectedReferral && (() => {
+          {selectedReferral && !isEditing && (() => {
             const r = selectedReferral;
             return (
               <div className="space-y-4">
@@ -635,7 +693,6 @@ export default function ReferralsPage() {
                     <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>{r.status.replace("_", " ")}</Badge>
                   </div>
                 </div>
-
                 <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Referring Doctor</p>
@@ -654,7 +711,6 @@ export default function ReferralsPage() {
                     <p>{r.discipline || "-"}</p>
                   </div>
                 </div>
-
                 <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Case Title</p>
@@ -673,7 +729,6 @@ export default function ReferralsPage() {
                     <p>{r.dateOfInitialEval ? format(new Date(r.dateOfInitialEval + "T00:00:00"), "MM/dd/yyyy") : "-"}</p>
                   </div>
                 </div>
-
                 <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Scheduled Visits</p>
@@ -696,7 +751,6 @@ export default function ReferralsPage() {
                     <p>{r.createdToArrived != null ? `${r.createdToArrived} days` : "-"}</p>
                   </div>
                 </div>
-
                 <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                   <div>
                     <p className="text-xs text-muted-foreground">Insurance</p>
@@ -707,7 +761,6 @@ export default function ReferralsPage() {
                     <p>{r.primaryPayerType || "-"}</p>
                   </div>
                 </div>
-
                 {r.dischargeDate && (
                   <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
                     <div>
@@ -723,6 +776,144 @@ export default function ReferralsPage() {
               </div>
             );
           })()}
+          {selectedReferral && isEditing && (
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Patient Full Name</Label>
+                  <Input value={editData.patientFullName} onChange={(e) => setEditData({ ...editData, patientFullName: e.target.value })} data-testid="edit-patient-name" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Patient Phone</Label>
+                  <Input value={editData.patientPhone} onChange={(e) => setEditData({ ...editData, patientPhone: e.target.value })} data-testid="edit-patient-phone" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Patient DOB</Label>
+                  <Input type="date" value={editData.patientDob} onChange={(e) => setEditData({ ...editData, patientDob: e.target.value })} data-testid="edit-patient-dob" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Account #</Label>
+                  <Input value={editData.patientAccountNumber} onChange={(e) => setEditData({ ...editData, patientAccountNumber: e.target.value })} data-testid="edit-account-number" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Referral Date</Label>
+                  <Input type="date" value={editData.referralDate} onChange={(e) => setEditData({ ...editData, referralDate: e.target.value })} data-testid="edit-referral-date" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Status</Label>
+                  <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={editData.status} onChange={(e) => setEditData({ ...editData, status: e.target.value })} data-testid="edit-status">
+                    <option value="RECEIVED">Received</option>
+                    <option value="SCHEDULED">Scheduled</option>
+                    <option value="EVAL_COMPLETED">Eval Completed</option>
+                    <option value="DISCHARGED">Discharged</option>
+                    <option value="LOST">Lost</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Referring Provider Name</Label>
+                  <Input value={editData.referringProviderName} onChange={(e) => setEditData({ ...editData, referringProviderName: e.target.value })} data-testid="edit-referring-provider" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Referring Provider NPI</Label>
+                  <Input value={editData.referringProviderNpi} onChange={(e) => setEditData({ ...editData, referringProviderNpi: e.target.value })} data-testid="edit-referring-npi" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Facility</Label>
+                  <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={editData.locationId} onChange={(e) => setEditData({ ...editData, locationId: e.target.value })} data-testid="edit-location">
+                    <option value="">-</option>
+                    {locations?.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Discipline</Label>
+                  <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={editData.discipline} onChange={(e) => setEditData({ ...editData, discipline: e.target.value })} data-testid="edit-discipline">
+                    <option value="">-</option>
+                    <option value="PT">PT</option>
+                    <option value="OT">OT</option>
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Referral Source</Label>
+                  <select className="w-full rounded-md border bg-background px-3 py-2 text-sm" value={editData.referralSource} onChange={(e) => setEditData({ ...editData, referralSource: e.target.value })} data-testid="edit-referral-source">
+                    <option value="">-</option>
+                    <option value="Doctors Office">Doctor's Office</option>
+                    <option value="Former Patient">Former Patient</option>
+                    <option value="Direct Access">Direct Access</option>
+                    <option value="Walk-in">Walk-in</option>
+                    <option value="Google">Google</option>
+                    <option value="Insurance">Insurance</option>
+                    <option value="Friend">Friend</option>
+                    <option value="Employee">Employee</option>
+                    <option value="GoHighLevel">GoHighLevel</option>
+                    <option value="Other/Option not in list">Other</option>
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Diagnosis</Label>
+                  <Input value={editData.diagnosisCategory} onChange={(e) => setEditData({ ...editData, diagnosisCategory: e.target.value })} data-testid="edit-diagnosis" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Case Title</Label>
+                  <Input value={editData.caseTitle} onChange={(e) => setEditData({ ...editData, caseTitle: e.target.value })} data-testid="edit-case-title" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Therapist</Label>
+                  <Input value={editData.caseTherapist} onChange={(e) => setEditData({ ...editData, caseTherapist: e.target.value })} data-testid="edit-therapist" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Insurance</Label>
+                  <Input value={editData.primaryInsurance} onChange={(e) => setEditData({ ...editData, primaryInsurance: e.target.value })} data-testid="edit-insurance" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Payer Type</Label>
+                  <Input value={editData.primaryPayerType} onChange={(e) => setEditData({ ...editData, primaryPayerType: e.target.value })} data-testid="edit-payer-type" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Initial Eval Date</Label>
+                  <Input type="date" value={editData.dateOfInitialEval} onChange={(e) => setEditData({ ...editData, dateOfInitialEval: e.target.value })} data-testid="edit-initial-eval" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Scheduled Visits</Label>
+                  <Input type="number" value={editData.scheduledVisits} onChange={(e) => setEditData({ ...editData, scheduledVisits: parseInt(e.target.value) || 0 })} data-testid="edit-scheduled-visits" />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Arrived Visits</Label>
+                  <Input type="number" value={editData.arrivedVisits} onChange={(e) => setEditData({ ...editData, arrivedVisits: parseInt(e.target.value) || 0 })} data-testid="edit-arrived-visits" />
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Discharge Date</Label>
+                  <Input type="date" value={editData.dischargeDate} onChange={(e) => setEditData({ ...editData, dischargeDate: e.target.value })} data-testid="edit-discharge-date" />
+                </div>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Discharge Reason</Label>
+                <Input value={editData.dischargeReason} onChange={(e) => setEditData({ ...editData, dischargeReason: e.target.value })} data-testid="edit-discharge-reason" />
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button type="button" variant="outline" onClick={() => setIsEditing(false)} data-testid="button-cancel-edit">Cancel</Button>
+                <Button onClick={handleSaveEdit} disabled={updateMutation.isPending} data-testid="button-save-edit">
+                  {updateMutation.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Save className="w-4 h-4 mr-1.5" />}
+                  Save Changes
+                </Button>
+              </div>
+            </div>
+          )}
         </DialogContent>
       </Dialog>
     </div>

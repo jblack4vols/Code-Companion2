@@ -85,6 +85,7 @@ export interface IStorage {
   getReferrals(physicianId?: string): Promise<Referral[]>;
   getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>>;
   createReferral(ref: InsertReferral): Promise<Referral>;
+  updateReferral(id: string, data: Partial<InsertReferral>): Promise<Referral | undefined>;
 
   getTasks(physicianId?: string): Promise<Task[]>;
   createTask(task: InsertTask): Promise<Task>;
@@ -528,6 +529,14 @@ export class DatabaseStorage implements IStorage {
   async createReferral(ref: InsertReferral) {
     const [created] = await db.insert(referrals).values(ref).returning();
     return created;
+  }
+
+  async updateReferral(id: string, data: Partial<InsertReferral>) {
+    const [updated] = await db.update(referrals)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(referrals.id, id), isNull(referrals.deletedAt)))
+      .returning();
+    return updated;
   }
 
   async getTasks(physicianId?: string) {

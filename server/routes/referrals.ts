@@ -57,6 +57,51 @@ export function registerReferralRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/referrals/:id", requireRole("OWNER", "DIRECTOR", "MARKETER", "FRONT_DESK"), async (req, res) => {
+    try {
+      const updateSchema = z.object({
+        patientFullName: z.string().max(200).optional(),
+        patientPhone: z.string().max(30).nullable().optional(),
+        patientDob: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").nullable().optional(),
+        patientAccountNumber: z.string().max(50).nullable().optional(),
+        referralDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").optional(),
+        status: z.enum(["RECEIVED", "SCHEDULED", "EVAL_COMPLETED", "DISCHARGED", "LOST"]).optional(),
+        diagnosisCategory: z.string().max(200).nullable().optional(),
+        referralSource: z.string().max(100).nullable().optional(),
+        discipline: z.string().max(10).nullable().optional(),
+        caseTitle: z.string().max(200).nullable().optional(),
+        caseTherapist: z.string().max(100).nullable().optional(),
+        primaryInsurance: z.string().max(100).nullable().optional(),
+        primaryPayerType: z.string().max(50).nullable().optional(),
+        locationId: z.string().uuid().optional(),
+        physicianId: z.string().uuid().nullable().optional(),
+        referringProviderName: z.string().max(200).nullable().optional(),
+        referringProviderNpi: z.string().max(20).nullable().optional(),
+        dateOfInitialEval: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").nullable().optional(),
+        dischargeDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Invalid date format").nullable().optional(),
+        dischargeReason: z.string().max(200).nullable().optional(),
+        scheduledVisits: z.number().int().min(0).optional(),
+        arrivedVisits: z.number().int().min(0).optional(),
+      }).strict();
+
+      const cleaned: Record<string, any> = {};
+      for (const [k, v] of Object.entries(req.body)) {
+        cleaned[k] = v === "" ? null : v;
+      }
+
+      const parsed = updateSchema.safeParse(cleaned);
+      if (!parsed.success) return res.status(400).json({ message: parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ") });
+      if (Object.keys(parsed.data).length === 0) return res.status(400).json({ message: "No valid fields to update" });
+
+      const updated = await storage.updateReferral(req.params.id, parsed.data as any);
+      if (!updated) return res.status(404).json({ message: "Referral not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Referral", entityId: req.params.id, detailJson: { fields: Object.keys(parsed.data) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/referrals/bulk", requireRole("OWNER"), async (req, res) => {
     try {
       const bulkDeleteSchema = z.object({ ids: z.array(z.string().uuid()).min(1, "At least one id required") });
