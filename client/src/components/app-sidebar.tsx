@@ -5,7 +5,7 @@ import {
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel,
-  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarHeader, SidebarFooter,
+  SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarMenuSub, SidebarMenuSubButton, SidebarMenuSubItem, SidebarHeader, SidebarFooter, useSidebar,
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -69,6 +69,11 @@ const roleBadgeVariant: Record<string, string> = {
 export function AppSidebar() {
   const { user, logout } = useAuth();
   const [location] = useLocation();
+  const { isMobile, setOpenMobile } = useSidebar();
+
+  const closeMobileMenu = () => {
+    if (isMobile) setOpenMobile(false);
+  };
 
   const isAdminActive = location.startsWith("/admin/") || location === "/import";
   const isIntelActive = location.startsWith("/dashboards/");
@@ -120,7 +125,7 @@ export function AppSidebar() {
                     asChild
                     isActive={location === item.url || (item.url !== "/" && location.startsWith(item.url))}
                   >
-                    <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                    <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                       <item.icon className="w-4 h-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -156,7 +161,7 @@ export function AppSidebar() {
                             asChild
                             isActive={location === item.url || location.startsWith(item.url + "/")}
                           >
-                            <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                            <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                               <item.icon className="w-3.5 h-3.5" />
                               <span>{item.title}</span>
                             </Link>
@@ -197,7 +202,7 @@ export function AppSidebar() {
                               asChild
                               isActive={location === item.url || location.startsWith(item.url)}
                             >
-                              <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                                 <item.icon className="w-3.5 h-3.5" />
                                 <span>{item.title}</span>
                               </Link>
@@ -237,7 +242,7 @@ export function AppSidebar() {
                               asChild
                               isActive={location.startsWith(item.url)}
                             >
-                              <Link href={item.url} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <item.icon className="w-3.5 h-3.5" />
                                 <span>{item.title}</span>
                               </Link>
