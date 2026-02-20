@@ -1,5 +1,5 @@
 import { Switch, Route } from "wouter";
-import { queryClient } from "./lib/queryClient";
+import { queryClient } from "@/lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -34,7 +34,10 @@ import ExecutiveDashboardPage from "@/pages/executive-dashboard";
 import TerritoryDashboardPage from "@/pages/territory-dashboard";
 import LocationDashboardPage from "@/pages/location-dashboard";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
+import UnlinkedReferralsPage from "@/pages/unlinked-referrals";
 import { IdleTimeout } from "@/components/idle-timeout";
+import { ForcePasswordChange } from "@/components/force-password-change";
+import { GlobalSearch } from "@/components/global-search";
 import { Loader2 } from "lucide-react";
 
 function AuthenticatedRouter() {
@@ -65,6 +68,7 @@ function AuthenticatedRouter() {
       <Route path="/admin/audit-log" component={AuditLogPage} />
       <Route path="/admin/integrations" component={IntegrationsPage} />
       <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
+      <Route path="/admin/unlinked-referrals" component={UnlinkedReferralsPage} />
       <Route component={NotFound} />
     </Switch>
   );
@@ -93,6 +97,12 @@ function AppLayout() {
     "--sidebar-width-icon": "3rem",
   };
 
+  const showForcePasswordChange = !!(user as any).forcePasswordChange;
+
+  const handlePasswordChanged = () => {
+    queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+  };
+
   return (
     <SidebarProvider style={style as React.CSSProperties}>
       <div className="flex h-screen w-full">
@@ -100,6 +110,7 @@ function AppLayout() {
         <div className="flex flex-col flex-1 min-w-0">
           <header className="flex items-center justify-between gap-2 p-2 border-b h-12 shrink-0 sticky top-0 z-50 bg-background">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
+            <GlobalSearch />
             <ThemeToggle />
           </header>
           <main className="flex-1 overflow-auto">
@@ -107,6 +118,7 @@ function AppLayout() {
           </main>
         </div>
       </div>
+      <ForcePasswordChange open={showForcePasswordChange} onPasswordChanged={handlePasswordChanged} />
     </SidebarProvider>
   );
 }

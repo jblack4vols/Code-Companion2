@@ -70,6 +70,15 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     },
     enabled: !!params.id,
   });
+  const { data: healthScore } = useQuery<any>({
+    queryKey: ["/api/physicians", params.id, "health-score"],
+    queryFn: async () => {
+      const res = await fetch(`/api/physicians/${params.id}/health-score`, { credentials: "include" });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!params.id,
+  });
 
   const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
   const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
@@ -223,6 +232,16 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {healthScore && typeof healthScore.healthScore === "number" && (
+            <div className="flex items-center gap-1.5 mr-2" data-testid="health-score-badge">
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold text-white ${
+                healthScore.healthScore >= 80 ? "bg-green-500" : healthScore.healthScore >= 50 ? "bg-yellow-500" : healthScore.healthScore >= 25 ? "bg-orange-500" : "bg-red-500"
+              }`}>
+                {Math.round(healthScore.healthScore)}
+              </div>
+              <span className="text-xs text-muted-foreground">Health</span>
+            </div>
+          )}
           <Badge variant="outline" className={stageBadge[physician.relationshipStage]}>
             {physician.relationshipStage.replace("_", " ")}
           </Badge>

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -88,7 +88,26 @@ export default function PhysiciansPage() {
   const [sortOrder, setSortOrder] = useState<string>("asc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mergeNpi, setMergeNpi] = useState("");
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
   const pageSize = 50;
+
+  const { data: favoriteIds = [] } = useQuery<string[]>({
+    queryKey: ["/api/favorites"],
+  });
+
+  const toggleFavorite = useMutation({
+    mutationFn: async (physicianId: string) => {
+      const isFav = favoriteIds.includes(physicianId);
+      if (isFav) {
+        await apiRequest("DELETE", `/api/favorites/${physicianId}`);
+      } else {
+        await apiRequest("POST", `/api/favorites/${physicianId}`);
+      }
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/favorites"] });
+    },
+  });
 
   const debouncedSearch = useDebounce(search, 300);
 
@@ -226,9 +245,10 @@ export default function PhysiciansPage() {
     });
   };
 
-  const physicians = result?.data || [];
-  const total = result?.total || 0;
-  const totalPages = result?.totalPages || 1;
+  const allPhysicians = result?.data || [];
+  const physicians = showFavoritesOnly ? allPhysicians.filter((p: any) => favoriteIds.includes(p.id)) : allPhysicians;
+  const total = showFavoritesOnly ? physicians.length : (result?.total || 0);
+  const totalPages = showFavoritesOnly ? 1 : (result?.totalPages || 1);
 
   const hasActiveFilters = statusFilter !== "all" || stageFilter !== "all" || priorityFilter !== "all" || practiceFilter !== "" || search !== "";
 
@@ -464,6 +484,16 @@ export default function PhysiciansPage() {
             </button>
           </Badge>
         )}
+        <Button
+          variant={showFavoritesOnly ? "default" : "outline"}
+          size="sm"
+          onClick={() => { setShowFavoritesOnly(!showFavoritesOnly); setPage(1); }}
+          data-testid="button-toggle-favorites"
+          className="gap-1"
+        >
+          <Star className={`w-3.5 h-3.5 ${showFavoritesOnly ? "fill-current" : ""}`} />
+          My Providers
+        </Button>
         {hasActiveFilters && (
           <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
             <X className="w-3 h-3 mr-1" />Clear
@@ -545,6 +575,7 @@ export default function PhysiciansPage() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-8 px-1"><Star className="w-3.5 h-3.5 text-muted-foreground" /></TableHead>
                       {canBulkAction && (
                         <TableHead className="w-10">
                           <Checkbox
@@ -571,6 +602,18 @@ export default function PhysiciansPage() {
                       const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
                       return (
                         <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
+                          <TableCell className="w-8 px-1" onClick={(e) => e.stopPropagation()}>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              onClick={() => toggleFavorite.mutate(p.id)}
+                              disabled={toggleFavorite.isPending}
+                              data-testid={`button-favorite-${p.id}`}
+                            >
+                              <Star className={`w-4 h-4 ${favoriteIds.includes(p.id) ? "fill-chart-4 text-chart-4" : "text-muted-foreground/40"}`} />
+                            </Button>
+                          </TableCell>
                           {canBulkAction && (
                             <TableCell onClick={(e) => e.stopPropagation()}>
                               <Checkbox

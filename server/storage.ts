@@ -3,7 +3,7 @@ import { eq, and, desc, asc, gte, lte, sql, ilike, or, inArray, isNull } from "d
 import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
-  integrationConfigs, apiKeys, integrationSyncLogs, physicianComments, scheduledReports,
+  integrationConfigs, apiKeys, integrationSyncLogs, physicianComments, scheduledReports, physicianFavorites,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -23,6 +23,7 @@ import {
   type IntegrationSyncLog, type InsertIntegrationSyncLog,
   type PhysicianComment, type InsertPhysicianComment,
   type ScheduledReport, type InsertScheduledReport,
+  type PhysicianFavorite,
 } from "@shared/schema";
 
 export interface PaginatedResult<T> {
@@ -170,6 +171,19 @@ export interface IStorage {
   createScheduledReport(report: InsertScheduledReport): Promise<ScheduledReport>;
   updateScheduledReport(id: string, data: Partial<InsertScheduledReport>): Promise<ScheduledReport>;
   deleteScheduledReport(id: string): Promise<void>;
+
+  // Favorites
+  getPhysicianFavorites(userId: string): Promise<string[]>;
+  addPhysicianFavorite(userId: string, physicianId: string): Promise<void>;
+  removePhysicianFavorite(userId: string, physicianId: string): Promise<void>;
+
+  // Global search
+  globalSearch(query: string, limit?: number): Promise<{ physicians: any[]; referrals: any[]; }>;
+
+  // Unlinked referrals
+  getUnlinkedReferrals(page?: number, pageSize?: number): Promise<PaginatedResult<any>>;
+  linkReferralToPhysician(referralId: string, physicianId: string): Promise<Referral | undefined>;
+  categorizeReferralAsSelfReferral(referralId: string): Promise<Referral | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1385,6 +1399,101 @@ export class DatabaseStorage implements IStorage {
 
   async deleteScheduledReport(id: string) {
     await db.delete(scheduledReports).where(eq(scheduledReports.id, id));
+  }
+
+  async getPhysicianFavorites(userId: string): Promise<string[]> {
+    const rows = await db.select({ physicianId: physicianFavorites.physicianId })
+      .from(physicianFavorites)
+      .where(eq(physicianFavorites.userId, userId));
+    return rows.map(r => r.physicianId);
+  }
+
+  async addPhysicianFavorite(userId: string, physicianId: string): Promise<void> {
+    await db.insert(physicianFavorites).values({ userId, physicianId }).onConflictDoNothing();
+  }
+
+  async removePhysicianFavorite(userId: string, physicianId: string): Promise<void> {
+    await db.delete(physicianFavorites).where(
+      and(eq(physicianFavorites.userId, userId), eq(physicianFavorites.physicianId, physicianId))
+    );
+  }
+
+  async globalSearch(query: string, limit: number = 10): Promise<{ physicians: any[]; referrals: any[]; }> {
+    const searchPattern = `%${query}%`;
+    const physicianResults = await db.select({
+      id: physicians.id,
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      npi: physicians.npi,
+      practiceName: physicians.practiceName,
+      specialty: physicians.specialty,
+      credentials: physicians.credentials,
+    }).from(physicians)
+      .where(and(
+        isNull(physicians.deletedAt),
+        or(
+          ilike(physicians.firstName, searchPattern),
+          ilike(physicians.lastName, searchPattern),
+          ilike(physicians.npi, searchPattern),
+          ilike(physicians.practiceName, searchPattern),
+          sql`CONCAT(${physicians.firstName}, ' ', ${physicians.lastName}) ILIKE ${searchPattern}`
+        )
+      ))
+      .limit(limit);
+
+    const referralResults = await db.select({
+      id: referrals.id,
+      patientFullName: referrals.patientFullName,
+      patientAccountNumber: referrals.patientAccountNumber,
+      referralDate: referrals.referralDate,
+      referringProviderName: referrals.referringProviderName,
+      locationId: referrals.locationId,
+      status: referrals.status,
+    }).from(referrals)
+      .where(and(
+        isNull(referrals.deletedAt),
+        or(
+          ilike(referrals.patientFullName, searchPattern),
+          ilike(referrals.patientAccountNumber, searchPattern),
+          ilike(referrals.referringProviderName, searchPattern)
+        )
+      ))
+      .limit(limit);
+
+    return { physicians: physicianResults, referrals: referralResults };
+  }
+
+  async getUnlinkedReferrals(page: number = 1, pageSize: number = 50): Promise<PaginatedResult<any>> {
+    const offset = (page - 1) * pageSize;
+    const countResult = await db.select({ count: sql<number>`count(*)` }).from(referrals)
+      .where(and(isNull(referrals.physicianId), isNull(referrals.deletedAt)));
+    const total = Number(countResult[0].count);
+    const data = await db.select().from(referrals)
+      .where(and(isNull(referrals.physicianId), isNull(referrals.deletedAt)))
+      .orderBy(desc(referrals.referralDate))
+      .limit(pageSize).offset(offset);
+    return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async linkReferralToPhysician(referralId: string, physicianId: string): Promise<Referral | undefined> {
+    const physician = await this.getPhysician(physicianId);
+    if (!physician) return undefined;
+    const [updated] = await db.update(referrals).set({
+      physicianId,
+      referringProviderName: `${physician.lastName}, ${physician.firstName}`,
+      referringProviderNpi: physician.npi,
+      updatedAt: new Date(),
+    }).where(eq(referrals.id, referralId)).returning();
+    return updated;
+  }
+
+  async categorizeReferralAsSelfReferral(referralId: string): Promise<Referral | undefined> {
+    const [updated] = await db.update(referrals).set({
+      referringProviderName: "Self-Referral / Walk-In",
+      referralSource: "Self-Referral",
+      updatedAt: new Date(),
+    }).where(eq(referrals.id, referralId)).returning();
+    return updated;
   }
 }
 

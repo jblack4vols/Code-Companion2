@@ -51,6 +51,7 @@ export const users = pgTable("users", {
   lockedUntil: timestamp("locked_until"),
   lastLoginAt: timestamp("last_login_at"),
   passwordChangedAt: timestamp("password_changed_at"),
+  forcePasswordChange: boolean("force_password_change").default(true).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -330,7 +331,7 @@ export const tieringWeights = pgTable("tiering_weights", {
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
-  id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true,
+  id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true, forcePasswordChange: true,
 });
 
 export const passwordSchema = z.string()
@@ -455,11 +456,21 @@ export const physicianComments = pgTable("physician_comments", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
+export const physicianFavorites = pgTable("physician_favorites", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  physicianId: varchar("physician_id", { length: 36 }).notNull().references(() => physicians.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("physician_favorite_unique_idx").on(table.userId, table.physicianId),
+]);
+
 export const insertPhysicianCommentSchema = createInsertSchema(physicianComments).omit({
   id: true, createdAt: true, updatedAt: true,
 });
 export type PhysicianComment = typeof physicianComments.$inferSelect;
 export type InsertPhysicianComment = z.infer<typeof insertPhysicianCommentSchema>;
+export type PhysicianFavorite = typeof physicianFavorites.$inferSelect;
 
 export const insertIntegrationConfigSchema = createInsertSchema(integrationConfigs).omit({
   id: true, createdAt: true, updatedAt: true,

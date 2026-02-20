@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -40,6 +40,7 @@ const adminItems = [
   { title: "Users", url: "/admin/users", icon: Users },
   { title: "Locations", url: "/admin/locations", icon: MapPin },
   { title: "Duplicates", url: "/admin/duplicates", icon: Copy },
+  { title: "Unlinked Referrals", url: "/admin/unlinked-referrals", icon: Link2 },
   { title: "Team Reports", url: "/admin/reports", icon: BarChart3 },
   { title: "Import", url: "/import", icon: Upload },
   { title: "SharePoint Sync", url: "/admin/sharepoint", icon: Cloud },
