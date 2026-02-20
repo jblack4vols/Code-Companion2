@@ -319,6 +319,9 @@ export function registerIntegrationRoutes(app: Express) {
       const ghlHeaders = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" };
       const cfResp = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}/customFields`, { headers: ghlHeaders });
       if (!cfResp.ok) {
+        let detail = "";
+        try { const errBody = await cfResp.text(); detail = errBody.slice(0, 200); } catch {}
+        console.error(`[GHL] Custom fields fetch failed: ${cfResp.status} ${detail}`);
         return res.json({ success: false, message: `GHL returned ${cfResp.status}`, fields: [] });
       }
       const cfData: any = await cfResp.json();

@@ -173,23 +173,44 @@ export default function IntegrationsPage() {
     }
   };
 
+  const [fieldLoadError, setFieldLoadError] = useState<string | null>(null);
+
   const handleFetchCustomFields = async () => {
     if (!ghlConfig) return;
     setLoadingFields(true);
+    setFieldLoadError(null);
     try {
       const resp = await fetch(`/api/integrations/${ghlConfig.id}/custom-fields`, { credentials: "include" });
       const data = await resp.json();
       if (data.success && data.fields) {
-        setGhlCustomFields(data.fields);
-        const existing = (ghlConfig.settings as any)?.fieldMappings || {};
-        setGhlFieldMappings(existing);
-        setShowFieldMapping(true);
-        toast({ title: `Found ${data.fields.length} custom fields` });
+        if (data.fields.length === 0) {
+          setFieldLoadError("No custom fields found in your GoHighLevel location. Make sure you have custom fields configured in GHL.");
+          toast({ title: "No custom fields found", description: "Your GoHighLevel location has no custom fields configured.", variant: "destructive" });
+        } else {
+          setGhlCustomFields(data.fields);
+          const existing = (ghlConfig.settings as any)?.fieldMappings || {};
+          setGhlFieldMappings(existing);
+          setShowFieldMapping(true);
+          setFieldLoadError(null);
+          toast({ title: `Found ${data.fields.length} custom fields` });
+        }
       } else {
-        toast({ title: "Could not load fields", description: data.message, variant: "destructive" });
+        const msg = data.message || "Unknown error";
+        let userMsg = msg;
+        if (msg.includes("401")) {
+          userMsg = "Your GoHighLevel API token is invalid or expired. Please generate a new Private Integration Token in GHL and update it above, then save before trying again.";
+        } else if (msg.includes("403")) {
+          userMsg = "Your GoHighLevel API token doesn't have permission to read custom fields. Check that the token has 'locations.readonly' scope.";
+        } else if (msg.includes("404")) {
+          userMsg = "The Location ID could not be found. Please verify your Location ID is correct.";
+        }
+        setFieldLoadError(userMsg);
+        toast({ title: "Could not load custom fields", description: userMsg, variant: "destructive" });
       }
-    } catch {
-      toast({ title: "Error fetching custom fields", variant: "destructive" });
+    } catch (err: any) {
+      const errMsg = "Failed to connect. Please check your settings and try again.";
+      setFieldLoadError(errMsg);
+      toast({ title: "Error fetching custom fields", description: errMsg, variant: "destructive" });
     }
     setLoadingFields(false);
   };
@@ -319,6 +340,12 @@ export default function IntegrationsPage() {
                     {loadingFields ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-1.5" />}
                     Map Custom Fields
                   </Button>
+                  {fieldLoadError && (
+                    <div className="rounded-md border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-3 text-sm text-red-800 dark:text-red-300 flex items-start gap-2" data-testid="ghl-field-error">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0 text-red-500" />
+                      <span>{fieldLoadError}</span>
+                    </div>
+                  )}
                   {showFieldMapping && ghlCustomFields.length > 0 && (
                     <div className="rounded-md border p-3 space-y-2 bg-muted/30" data-testid="ghl-field-mapping">
                       <p className="text-sm font-medium">Map your GHL custom fields to Tristar data:</p>
