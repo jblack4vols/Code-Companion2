@@ -743,6 +743,107 @@ export function registerIntegrationRoutes(app: Express) {
         }
       }
 
+      if (config.type === "CUSTOM_API") {
+        const webhookUrl = config.settings?.webhookUrl;
+        if (!webhookUrl) {
+          await storage.updateIntegrationSyncLog(log.id, { status: "skipped", details: { message: "No webhook URL configured" }, finishedAt: new Date() });
+          return res.json({ success: false, message: "No webhook URL configured. Add one in the Custom API settings." });
+        }
+
+        try {
+          const allPhysicians = await storage.getPhysicians();
+          const allReferrals = await storage.getReferrals();
+          const allLocations = await storage.getLocations();
+
+          const locationMap: Record<string, string> = {};
+          for (const loc of allLocations) {
+            locationMap[loc.id] = loc.name;
+          }
+
+          const physicianPayload = allPhysicians.map((p: any) => ({
+            id: p.id,
+            npi: p.npi || "",
+            firstName: p.firstName,
+            lastName: p.lastName,
+            credentials: p.credentials || "",
+            specialty: p.specialty || "",
+            practiceName: p.practiceName || "",
+            email: p.email || "",
+            phone: p.phone || "",
+            fax: p.fax || "",
+            primaryOfficeAddress: p.primaryOfficeAddress || "",
+            city: p.city || "",
+            state: p.state || "",
+            zip: p.zip || "",
+            status: p.status || "",
+            tier: p.tier || "",
+            healthScore: p.healthScore || null,
+            totalReferrals: p.totalReferrals || 0,
+          }));
+
+          const referralPayload = allReferrals.map((r: any) => ({
+            id: r.id,
+            patientFullName: r.patientFullName || "",
+            referralDate: r.referralDate || "",
+            status: r.status || "",
+            caseTitle: r.caseTitle || "",
+            referralSource: r.referralSource || "",
+            primaryInsurance: r.primaryInsurance || "",
+            diagnosisCategory: r.diagnosisCategory || "",
+            referringProviderName: r.referringProviderName || "",
+            referringProviderNpi: r.referringProviderNpi || "",
+            locationName: r.locationId ? (locationMap[r.locationId] || "") : "",
+          }));
+
+          const payload = {
+            source: "Tristar360",
+            timestamp: new Date().toISOString(),
+            providers: physicianPayload,
+            referrals: referralPayload,
+            summary: {
+              totalProviders: physicianPayload.length,
+              totalReferrals: referralPayload.length,
+              locations: allLocations.map(l => ({ id: l.id, name: l.name })),
+            },
+          };
+
+          const headers: Record<string, string> = { "Content-Type": "application/json" };
+          const apiKey = config.settings?.apiKey;
+          if (apiKey) headers["Authorization"] = `Bearer ${apiKey}`;
+
+          const resp = await fetch(webhookUrl, {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          });
+
+          const respText = await resp.text().catch(() => "");
+          const success = resp.ok || resp.status === 200 || resp.status === 201 || resp.status === 202;
+
+          const summary = success
+            ? `Pushed ${physicianPayload.length} providers and ${referralPayload.length} referrals to webhook`
+            : `Webhook returned ${resp.status}: ${respText.substring(0, 200)}`;
+
+          await storage.updateIntegrationSyncLog(log.id, {
+            status: success ? "completed" : "error",
+            recordsProcessed: physicianPayload.length + referralPayload.length,
+            recordsFailed: success ? 0 : 1,
+            details: {
+              providersSent: physicianPayload.length,
+              referralsSent: referralPayload.length,
+              httpStatus: resp.status,
+              response: respText.substring(0, 500),
+            },
+            finishedAt: new Date(),
+          });
+          await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: summary } as any);
+          return res.json({ success, message: summary, providersSent: physicianPayload.length, referralsSent: referralPayload.length });
+        } catch (syncErr: any) {
+          await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { error: syncErr.message }, finishedAt: new Date() });
+          return res.json({ success: false, message: `Webhook push failed: ${syncErr.message}` });
+        }
+      }
+
       await storage.updateIntegrationSyncLog(log.id, { status: "skipped", details: { message: "Sync not configured for this integration" }, finishedAt: new Date() });
       res.json({ success: false, message: "Sync not available or not configured" });
     } catch (err: any) {

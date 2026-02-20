@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Plug, Zap, Globe, Key, RefreshCw, CheckCircle, XCircle, Loader2, Plus, Trash2, Copy, Eye, EyeOff,
-  ArrowUpDown, Clock, Shield, AlertTriangle, ExternalLink, Mail, FileSpreadsheet,
+  ArrowUpDown, Clock, Shield, AlertTriangle, ExternalLink, Mail, FileSpreadsheet, Send,
 } from "lucide-react";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -72,6 +72,12 @@ export default function IntegrationsPage() {
     enabled: !!ghlConfig,
   });
 
+  const { data: customSyncLogs = [] } = useQuery<any[]>({
+    queryKey: ["/api/integrations", customConfig?.id, "logs"],
+    queryFn: customConfig ? getQueryFn({ on401: "throw" }) : undefined,
+    enabled: !!customConfig,
+  });
+
   const createIntegration = useMutation({
     mutationFn: async (data: { type: string; name: string; settings: Record<string, any> }) =>
       apiRequest("POST", "/api/integrations", data),
@@ -114,6 +120,8 @@ export default function IntegrationsPage() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
+      if (ghlConfig) queryClient.invalidateQueries({ queryKey: ["/api/integrations", ghlConfig.id, "logs"] });
+      if (customConfig) queryClient.invalidateQueries({ queryKey: ["/api/integrations", customConfig.id, "logs"] });
       toast({
         title: data.success ? "Sync Complete" : "Sync Failed",
         description: data.message || `Processed: ${data.processed || 0}, Failed: ${data.failed || 0}`,
@@ -550,7 +558,46 @@ export default function IntegrationsPage() {
                     Test Connection
                   </Button>
                 )}
+                {customConfig && customWebhookUrlVal && (
+                  <Button
+                    variant="default"
+                    onClick={() => syncIntegration.mutate({ id: customConfig.id, direction: "push" })}
+                    disabled={syncIntegration.isPending}
+                    data-testid="button-push-custom"
+                  >
+                    {syncIntegration.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Send className="w-4 h-4 mr-1.5" />}
+                    Push Data to Webhook
+                  </Button>
+                )}
               </div>
+
+              {customConfig?.lastSyncAt && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  Last sync: {new Date(customConfig.lastSyncAt).toLocaleString()} — {customConfig.lastSyncStatus}
+                </p>
+              )}
+
+              {customSyncLogs.length > 0 && (
+                <div className="mt-4 space-y-2">
+                  <h4 className="text-sm font-medium">Recent Sync Activity</h4>
+                  <div className="space-y-1.5">
+                    {customSyncLogs.slice(0, 5).map((log: any) => (
+                      <div key={log.id} className="text-xs flex items-start gap-2 py-1 border-b last:border-0">
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${log.status === "completed" ? "text-green-600 border-green-300" : log.status === "error" ? "text-red-600 border-red-300" : "text-yellow-600 border-yellow-300"}`}>
+                          {log.status}
+                        </Badge>
+                        <span className="text-muted-foreground">{new Date(log.startedAt).toLocaleString()}</span>
+                        {log.recordsProcessed > 0 && <span>{log.recordsProcessed} records sent</span>}
+                        {log.details?.providersSent !== undefined && (
+                          <span className="text-green-600 dark:text-green-400">
+                            {log.details.providersSent} providers, {log.details.referralsSent} referrals
+                          </span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
