@@ -227,23 +227,34 @@ export default function IntegrationsPage() {
               {statusBadge(ghlConfig?.status || "DISCONNECTED")}
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 p-3 text-sm space-y-2" data-testid="ghl-setup-guide">
+                <p className="font-medium text-blue-900 dark:text-blue-200">How to get your API key:</p>
+                <ol className="list-decimal ml-4 text-blue-800 dark:text-blue-300 space-y-1">
+                  <li>Log in to your GoHighLevel account</li>
+                  <li>Go to <strong>Settings &rarr; Business Profile &rarr; Integrations</strong> (or <strong>Settings &rarr; Developer / API</strong>)</li>
+                  <li>Click <strong>Create Private Integration Token</strong></li>
+                  <li>Name it "Tristar 360" and select scopes: <strong>contacts.readonly, contacts.write, locations.readonly</strong></li>
+                  <li>Copy the generated token and paste it below</li>
+                </ol>
+                <p className="text-xs text-blue-700 dark:text-blue-400">The Location ID is found in your GHL sub-account URL or under Settings &rarr; Business Info.</p>
+              </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-1.5">
-                  <Label htmlFor="ghl-api-key">API Key</Label>
+                  <Label htmlFor="ghl-api-key">Private Integration Token</Label>
                   <Input
                     id="ghl-api-key"
                     type="password"
-                    placeholder="Enter your GHL API key"
+                    placeholder="pit-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx"
                     value={ghlApiKeyVal}
                     onChange={(e) => setGhlApiKey(e.target.value)}
                     data-testid="input-ghl-api-key"
                   />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="ghl-location">Location ID (optional)</Label>
+                  <Label htmlFor="ghl-location">Location ID (recommended)</Label>
                   <Input
                     id="ghl-location"
-                    placeholder="GHL Location ID"
+                    placeholder="e.g. abc123DEFghiJKL"
                     value={ghlLocationIdVal}
                     onChange={(e) => setGhlLocationId(e.target.value)}
                     data-testid="input-ghl-location"

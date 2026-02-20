@@ -1780,17 +1780,30 @@ export async function registerRoutes(
 
       if (config.type === "GOHIGHLEVEL") {
         const apiKey = config.settings?.apiKey;
+        const locationId = config.settings?.locationId || "";
         if (!apiKey) return res.json({ success: false, message: "No API key configured" });
+        if (!locationId) return res.json({ success: false, message: "Location ID is required for GoHighLevel v2 API. Find it in your GHL sub-account settings." });
         try {
-          const resp = await fetch("https://rest.gohighlevel.com/v1/custom-values/", {
-            headers: { Authorization: `Bearer ${apiKey}` },
-          });
+          const headers: Record<string, string> = {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            Accept: "application/json",
+            Version: "2021-07-28",
+          };
+          const resp = await fetch(`https://services.leadconnectorhq.com/contacts/?locationId=${locationId}&limit=1`, { headers });
           if (resp.ok) {
             await storage.updateIntegrationConfig(config.id, { status: "CONNECTED" } as any);
             return res.json({ success: true, message: "Connected to GoHighLevel successfully" });
           } else {
+            const errorBody = await resp.text().catch(() => "");
             await storage.updateIntegrationConfig(config.id, { status: "ERROR" } as any);
-            return res.json({ success: false, message: `GoHighLevel returned ${resp.status}: ${resp.statusText}` });
+            let hint = "";
+            if (resp.status === 401) {
+              hint = " Make sure you are using a Private Integration Token (not a v1 API key) and that it has the 'contacts.readonly' scope enabled.";
+            } else if (resp.status === 422) {
+              hint = " The Location ID may be incorrect. Check your GHL sub-account settings.";
+            }
+            return res.json({ success: false, message: `GoHighLevel returned ${resp.status}: ${resp.statusText}.${hint}` });
           }
         } catch (fetchErr: any) {
           await storage.updateIntegrationConfig(config.id, { status: "ERROR" } as any);
@@ -1865,9 +1878,9 @@ export async function registerRoutes(
                 };
                 if (locationId) contactData.locationId = locationId;
 
-                const resp = await fetch("https://rest.gohighlevel.com/v1/contacts/", {
+                const resp = await fetch("https://services.leadconnectorhq.com/contacts/", {
                   method: "POST",
-                  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+                  headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" },
                   body: JSON.stringify(contactData),
                 });
 
@@ -1901,8 +1914,8 @@ export async function registerRoutes(
 
         if (direction === "pull") {
           try {
-            const resp = await fetch(`https://rest.gohighlevel.com/v1/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`, {
-              headers: { Authorization: `Bearer ${apiKey}` },
+            const resp = await fetch(`https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`, {
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" },
             });
             if (!resp.ok) {
               await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { httpStatus: resp.status }, finishedAt: new Date() });
