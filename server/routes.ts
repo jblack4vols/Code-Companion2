@@ -1977,12 +1977,68 @@ export async function registerRoutes(
                     if (id) fieldIdToName[id] = name;
                     if (cf.fieldKey) fieldIdToName[cf.fieldKey] = name;
                   }
-                  console.log(`[GHL] Loaded ${Object.keys(fieldIdToName).length} custom field definitions from GHL`);
+                  const referringFields = Object.entries(fieldIdToName).filter(([_, n]) => n.includes("refer") || n.includes("provider") || n.includes("doctor") || n.includes("physician"));
+                  console.log(`[GHL] Loaded ${Object.keys(fieldIdToName).length} custom field definitions. Referring-related: ${JSON.stringify(referringFields)}`);
+                  console.log(`[GHL] All custom field names: ${JSON.stringify(Object.values(fieldIdToName))}`);
                 } else {
                   console.log(`[GHL] Could not fetch custom field definitions (${cfResp.status}), will try to match by field key names`);
                 }
               } catch (cfErr: any) {
                 console.log(`[GHL] Custom field fetch error: ${cfErr.message}`);
+              }
+            }
+
+            let detectedFieldMappings: Record<string, string> = {};
+            if (Object.keys(fieldIdToName).length === 0) {
+              try {
+                const sampleResp = await fetch(`https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`, { headers: ghlHeaders });
+                if (sampleResp.ok) {
+                  const sampleData: any = await sampleResp.json();
+                  const sampleContacts = sampleData.contacts || [];
+                  const fieldValueSamples: Record<string, string[]> = {};
+                  for (const sc of sampleContacts) {
+                    const scCustom = sc.customField || sc.customFields || {};
+                    if (Array.isArray(scCustom)) {
+                      for (const cf of scCustom) {
+                        const fid = cf.id || cf.key || cf.field_key || "";
+                        const fval = String(cf.value || cf.field_value || "").trim();
+                        if (fid && fval) {
+                          if (!fieldValueSamples[fid]) fieldValueSamples[fid] = [];
+                          fieldValueSamples[fid].push(fval);
+                        }
+                      }
+                    }
+                  }
+                  const allPhysicians = await db.select({ firstName: physicians.firstName, lastName: physicians.lastName })
+                    .from(physicians).where(isNull(physicians.deletedAt)).limit(500);
+                  const physNames = new Set(allPhysicians.map(p => `${p.firstName} ${p.lastName}`.toLowerCase().trim()));
+                  for (const [fid, vals] of Object.entries(fieldValueSamples)) {
+                    const nameMatches = vals.filter(v => {
+                      const parts = v.toLowerCase().split(/[\s,]+/).filter(Boolean);
+                      return parts.length >= 2 && parts.length <= 5 && parts.every(p => /^[a-z.\-']+$/i.test(p));
+                    });
+                    if (nameMatches.length >= 2) {
+                      const dbMatches = nameMatches.filter(v => physNames.has(v.toLowerCase()));
+                      if (dbMatches.length > 0) {
+                        detectedFieldMappings[fid] = "referringPhysician";
+                        console.log(`[GHL] Auto-detected field "${fid}" as referring provider (matched ${dbMatches.length} DB physicians: ${dbMatches.slice(0, 3).join(", ")})`);
+                      }
+                    }
+                  }
+                  for (const [fid, vals] of Object.entries(fieldValueSamples)) {
+                    if (detectedFieldMappings[fid]) continue;
+                    const nameMatches = vals.filter(v => {
+                      const parts = v.trim().split(/[\s,]+/).filter(Boolean);
+                      return parts.length >= 2 && parts.length <= 5 && parts.every(p => /^[a-z.\-']+$/i.test(p));
+                    });
+                    if (nameMatches.length >= Math.ceil(vals.length * 0.5) && nameMatches.length >= 3) {
+                      detectedFieldMappings[fid] = "referringPhysician";
+                      console.log(`[GHL] Auto-detected field "${fid}" as referring provider (heuristic: ${nameMatches.length}/${vals.length} values look like names: ${nameMatches.slice(0, 3).join(", ")})`);
+                    }
+                  }
+                }
+              } catch (detectErr: any) {
+                console.log(`[GHL] Field auto-detection error: ${detectErr.message}`);
               }
             }
 
@@ -2030,14 +2086,17 @@ export async function registerRoutes(
 
             const classifyField = (keyOrId: string): string | null => {
               if (savedMappings[keyOrId]) return savedMappings[keyOrId];
-              const name = (fieldIdToName[keyOrId] || keyOrId || "").toLowerCase();
+              if (detectedFieldMappings[keyOrId]) return detectedFieldMappings[keyOrId];
+              const resolved = fieldIdToName[keyOrId];
+              const name = (resolved || keyOrId || "").toLowerCase().replace(/[_.\-]/g, " ").trim();
               if (name.includes("npi")) return "npi";
               if (name.includes("credential")) return "credentials";
               if (name.includes("special")) return "specialty";
-              if ((name.includes("referring") && (name.includes("physician") || name.includes("doctor") || name.includes("provider"))) ||
-                  name === "doctor" || name === "physician" || name === "provider_name" || name === "provider" ||
-                  name.includes("ref_doctor") || name.includes("ref_provider") || name.includes("ref_physician") ||
-                  name === "referring doctor" || name === "referring provider" || name === "referring physician") return "referringPhysician";
+              if (name.includes("referring") && (name.includes("physician") || name.includes("doctor") || name.includes("provider"))) return "referringPhysician";
+              if (name === "referring provider" || name === "referring doctor" || name === "referring physician") return "referringPhysician";
+              if (name === "doctor" || name === "physician" || name === "provider name" || name === "provider") return "referringPhysician";
+              if (name.includes("ref doctor") || name.includes("ref provider") || name.includes("ref physician")) return "referringPhysician";
+              if (name === "contact referring provider") return "referringPhysician";
               if (name.includes("location") || name.includes("clinic")) return "location";
               if (name.includes("insurance") || name.includes("payer")) return "insurance";
               if (name.includes("diagnosis") || name.includes("condition")) return "diagnosis";
@@ -2060,20 +2119,48 @@ export async function registerRoutes(
                 const rawCustom = contact.customField || contact.customFields || {};
                 if (Array.isArray(rawCustom)) {
                   for (const cf of rawCustom) {
-                    const key = cf.field_key || cf.key || cf.id || cf.name || "";
-                    const val = cf.value || cf.field_value || "";
-                    const classification = classifyField(key);
-                    if (classification) customFields[classification] = val;
+                    const val = cf.value ?? cf.field_value ?? "";
+                    if (!val && val !== 0) continue;
+                    const candidates = [cf.field_key, cf.key, cf.id, cf.name, cf.label].filter(Boolean);
+                    let matched = false;
+                    for (const candidate of candidates) {
+                      const classification = classifyField(candidate);
+                      if (classification) { customFields[classification] = val; matched = true; break; }
+                    }
+                    if (!matched) {
+                      for (const candidate of candidates) {
+                        const resolvedName = fieldIdToName[candidate] || "";
+                        if (resolvedName) {
+                          const reclassified = classifyField(resolvedName);
+                          if (reclassified) { customFields[reclassified] = val; break; }
+                        }
+                      }
+                    }
                   }
                 } else if (typeof rawCustom === "object" && rawCustom !== null) {
                   for (const [key, val] of Object.entries(rawCustom)) {
+                    if (!val && val !== 0) continue;
+                    const strVal = typeof val === "object" ? JSON.stringify(val) : String(val);
                     const classification = classifyField(key);
-                    if (classification) customFields[classification] = val;
+                    if (classification) {
+                      customFields[classification] = strVal;
+                    } else {
+                      const resolvedName = fieldIdToName[key] || "";
+                      if (resolvedName) {
+                        const reclassified = classifyField(resolvedName);
+                        if (reclassified) customFields[reclassified] = strVal;
+                      }
+                    }
                   }
                 }
 
                 if (!customFields.referringPhysician) {
-                  console.log(`[GHL] Contact "${patientName}" - no referring provider found in custom fields. Raw keys: ${JSON.stringify(Object.keys(rawCustom || {}))}`);
+                  if (results.length < 3) {
+                    const sampleFields = Array.isArray(rawCustom)
+                      ? rawCustom.slice(0, 5).map((cf: any) => ({ key: cf.field_key || cf.key || cf.id, name: cf.name, val: cf.value || cf.field_value }))
+                      : Object.entries(rawCustom).slice(0, 5).map(([k, v]) => ({ key: k, val: v }));
+                    console.log(`[GHL] Contact "${patientName}" - no referring provider found. Sample fields: ${JSON.stringify(sampleFields)}`);
+                  }
                 }
 
                 const contactDate = contact.dateAdded || contact.date_added || contact.createdAt || contact.created_at;
