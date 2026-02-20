@@ -4,7 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
-import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 function getCsrfToken(): string | null {
@@ -138,6 +139,7 @@ export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<{ headers: string[]; sampleRows: any[]; totalRows: number; sheetName: string } | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
+  const [customFieldMappings, setCustomFieldMappings] = useState<{ csvHeader: string; label: string }[]>([]);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<{ inserted: number; updated: number; errors: string[] } | null>(null);
 
@@ -210,6 +212,13 @@ export default function ImportPage() {
         reverseMapping[field] = header;
       }
       formData.append("mapping", JSON.stringify(reverseMapping));
+      if (customFieldMappings.length > 0) {
+        const cfMap: Record<string, string> = {};
+        for (const cf of customFieldMappings) {
+          cfMap[cf.label] = cf.csvHeader;
+        }
+        formData.append("customFieldMapping", JSON.stringify(cfMap));
+      }
 
       const endpoint = importType === "physicians" ? "/api/import/physicians" : "/api/import/referrals";
       const csrfToken = await ensureCsrfToken();
@@ -236,12 +245,17 @@ export default function ImportPage() {
     setFile(null);
     setPreview(null);
     setMapping({});
+    setCustomFieldMappings([]);
     setResult(null);
   };
 
   const mappedCount = Object.keys(mapping).length;
   const requiredMapped = fields.filter(f => f.required && mapping[f.key]).length;
   const requiredTotal = fields.filter(f => f.required).length;
+
+  const mappedHeaders = new Set(Object.values(mapping));
+  const customMappedHeaders = new Set(customFieldMappings.map(cf => cf.csvHeader));
+  const unmappedHeaders = preview?.headers.filter(h => !mappedHeaders.has(h) && !customMappedHeaders.has(h)) || [];
 
   return (
     <div className="flex-1 overflow-auto p-6">
@@ -407,6 +421,71 @@ export default function ImportPage() {
                 </div>
               </CardContent>
             </Card>
+
+            {(unmappedHeaders.length > 0 || customFieldMappings.length > 0) && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+                  <div>
+                    <h2 className="font-semibold">Unmapped Columns</h2>
+                    <p className="text-sm text-muted-foreground">
+                      These columns from your file aren't mapped to any standard field. Add them as custom fields to keep the data.
+                    </p>
+                  </div>
+                  {customFieldMappings.length > 0 && (
+                    <Badge variant="outline" data-testid="badge-custom-count">
+                      {customFieldMappings.length} custom field{customFieldMappings.length !== 1 ? "s" : ""}
+                    </Badge>
+                  )}
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {customFieldMappings.map((cf, idx) => (
+                    <div key={cf.csvHeader} className="flex items-center gap-3">
+                      <span className="w-56 text-sm shrink-0 truncate text-muted-foreground">{cf.csvHeader}</span>
+                      <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0" />
+                      <Input
+                        value={cf.label}
+                        onChange={(e) => {
+                          setCustomFieldMappings(prev => prev.map((item, i) =>
+                            i === idx ? { ...item, label: e.target.value } : item
+                          ));
+                        }}
+                        placeholder="Custom field name..."
+                        className="flex-1"
+                        data-testid={`input-custom-label-${idx}`}
+                      />
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => setCustomFieldMappings(prev => prev.filter((_, i) => i !== idx))}
+                        data-testid={`button-remove-custom-${idx}`}
+                      >
+                        <Trash2 className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  ))}
+                  {unmappedHeaders.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <p className="text-xs text-muted-foreground font-medium">Available columns:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {unmappedHeaders.map(h => (
+                          <Button
+                            key={h}
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            onClick={() => setCustomFieldMappings(prev => [...prev, { csvHeader: h, label: h }])}
+                            data-testid={`button-add-custom-${h}`}
+                          >
+                            <Plus className="w-3 h-3 mr-1" />
+                            {h}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
 
             <Card>
               <CardHeader>

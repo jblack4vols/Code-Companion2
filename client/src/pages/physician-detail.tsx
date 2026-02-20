@@ -431,6 +431,17 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                   <p className="text-sm whitespace-pre-wrap">{physician.notes}</p>
                 </div>
               )}
+              {physician.customFields && Object.keys(physician.customFields).length > 0 && (
+                <div className="pt-2 border-t space-y-1.5">
+                  <p className="text-xs text-muted-foreground mb-1 font-medium">Custom Fields</p>
+                  {Object.entries(physician.customFields).map(([key, value]) => (
+                    <div key={key} className="flex justify-between text-xs" data-testid={`custom-field-${key}`}>
+                      <span className="text-muted-foreground">{key}</span>
+                      <span className="text-right max-w-[60%] truncate">{value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 

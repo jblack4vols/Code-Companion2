@@ -80,6 +80,8 @@ export async function registerImportRoutes(app: Express) {
       }
       const rows = worksheetToJson(workbook.worksheets[0]);
 
+      const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
+
       const mapped = rows.map(row => {
         const get = (field: string) => {
           const col = mapping[field];
@@ -87,6 +89,19 @@ export async function registerImportRoutes(app: Express) {
           const val = row[col];
           return val != null ? String(val).trim() : undefined;
         };
+
+        let customFields: Record<string, string> | undefined;
+        if (Object.keys(customFieldMapping).length > 0) {
+          customFields = {};
+          for (const [label, csvHeader] of Object.entries(customFieldMapping)) {
+            const val = row[csvHeader as string];
+            if (val != null && String(val).trim()) {
+              customFields[label] = String(val).trim();
+            }
+          }
+          if (Object.keys(customFields).length === 0) customFields = undefined;
+        }
+
         return {
           firstName: get("firstName") || "",
           lastName: get("lastName") || "",
@@ -101,6 +116,7 @@ export async function registerImportRoutes(app: Express) {
           fax: get("fax") || undefined,
           email: get("email") || undefined,
           specialty: get("specialty") || undefined,
+          customFields,
           status: "PROSPECT" as const,
           relationshipStage: "NEW" as const,
           priority: "MEDIUM" as const,
@@ -179,6 +195,8 @@ export async function registerImportRoutes(app: Express) {
         return found?.id || null;
       }
 
+      const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
+
       const mapped: any[] = [];
       const errors: string[] = [];
       for (let i = 0; i < rows.length; i++) {
@@ -228,6 +246,18 @@ export async function registerImportRoutes(app: Express) {
         else if (rawStatus.toLowerCase().includes("eval")) status = "EVAL_COMPLETED";
         else if (rawStatus.toLowerCase().includes("sched")) status = "SCHEDULED";
 
+        let customFields: Record<string, string> | undefined;
+        if (Object.keys(customFieldMapping).length > 0) {
+          customFields = {};
+          for (const [label, csvHeader] of Object.entries(customFieldMapping)) {
+            const val = row[csvHeader as string];
+            if (val != null && String(val).trim()) {
+              customFields[label] = String(val).trim();
+            }
+          }
+          if (Object.keys(customFields).length === 0) customFields = undefined;
+        }
+
         mapped.push({
           physicianId,
           locationId,
@@ -252,6 +282,7 @@ export async function registerImportRoutes(app: Express) {
           diagnosisCategory: get("diagnosisCategory"),
           referringProviderName: doctorName || undefined,
           referringProviderNpi: doctorNpi,
+          customFields,
           status: status as any,
         });
       }

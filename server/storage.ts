@@ -502,6 +502,7 @@ export class DatabaseStorage implements IStorage {
         createdToArrived: referrals.createdToArrived,
         payerType: referrals.payerType,
         diagnosisCategory: referrals.diagnosisCategory,
+        customFields: referrals.customFields,
         status: referrals.status,
         valueEstimate: referrals.valueEstimate,
         physicianFirstName: physicians.firstName,
@@ -1099,6 +1100,11 @@ export class DatabaseStorage implements IStorage {
           if (row.fax && !existing.fax) updateData.fax = row.fax;
           if (row.email && !existing.email) updateData.email = row.email;
           if (row.specialty && !existing.specialty) updateData.specialty = row.specialty;
+          if (row.customFields) {
+            updateData.customFields = existing.customFields
+              ? { ...existing.customFields, ...row.customFields }
+              : row.customFields;
+          }
           if (Object.keys(updateData).length > 0) {
             await db.update(physicians).set({ ...updateData, updatedAt: new Date() }).where(eq(physicians.id, existing.id));
             updated++;

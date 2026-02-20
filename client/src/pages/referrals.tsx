@@ -872,6 +872,19 @@ export default function ReferralsPage() {
                     </div>
                   </div>
                 )}
+                {r.customFields && Object.keys(r.customFields).length > 0 && (
+                  <div className="border-t pt-3 space-y-2">
+                    <p className="text-xs text-muted-foreground font-medium">Custom Fields</p>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm">
+                      {Object.entries(r.customFields).map(([key, value]: [string, any]) => (
+                        <div key={key} data-testid={`custom-field-${key}`}>
+                          <p className="text-xs text-muted-foreground">{key}</p>
+                          <p>{value || "-"}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             );
           })()}
