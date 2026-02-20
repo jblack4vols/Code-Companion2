@@ -48,6 +48,102 @@ export function registerPhysicianRoutes(app: Express) {
     res.json(matched);
   });
 
+  app.get("/api/provider-offices", requireAuth, async (req, res) => {
+    try {
+      const search = (req.query.search as string || "").trim();
+      const page = req.query.page ? parseInt(req.query.page as string) : 1;
+      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string) : 50;
+      const sortBy = (req.query.sortBy as string || "providerCount").trim();
+      const sortOrder = (req.query.sortOrder as string || "desc").trim();
+      const offset = (page - 1) * pageSize;
+
+      const orderMap: Record<string, string> = {
+        officeName: "office_name",
+        providerCount: "provider_count",
+        city: "city",
+        totalReferrals: "total_referrals",
+      };
+      const orderCol = orderMap[sortBy] || "provider_count";
+      const searchPattern = `%${search}%`;
+
+      const searchCondition = search
+        ? sql`AND (p.practice_name ILIKE ${searchPattern} OR p.primary_office_address ILIKE ${searchPattern} OR p.city ILIKE ${searchPattern})`
+        : sql``;
+
+      const countResult = await db.execute(sql`
+        SELECT COUNT(DISTINCT TRIM(p.practice_name)) as total 
+        FROM physicians p 
+        WHERE p.deleted_at IS NULL AND p.practice_name IS NOT NULL AND TRIM(p.practice_name) != '' ${searchCondition}
+      `);
+      const total = parseInt((countResult.rows[0] as any)?.total || "0");
+
+      const orderSql = sql.raw(`${orderCol} ${sortOrder === "asc" ? "ASC" : "DESC"}`);
+
+      const dataResult = await db.execute(sql`
+        SELECT 
+          TRIM(p.practice_name) as office_name,
+          COUNT(p.id) as provider_count,
+          MIN(p.primary_office_address) as address,
+          MIN(p.city) as city,
+          MIN(p.state) as state,
+          MIN(p.zip) as zip,
+          MIN(p.phone) as phone,
+          MIN(p.fax) as fax,
+          COALESCE(SUM(ref_counts.ref_count), 0) as total_referrals
+        FROM physicians p
+        LEFT JOIN (
+          SELECT physician_id, COUNT(*) as ref_count 
+          FROM referrals 
+          WHERE deleted_at IS NULL 
+          GROUP BY physician_id
+        ) ref_counts ON ref_counts.physician_id = p.id
+        WHERE p.deleted_at IS NULL AND p.practice_name IS NOT NULL AND TRIM(p.practice_name) != '' ${searchCondition}
+        GROUP BY TRIM(p.practice_name)
+        ORDER BY ${orderSql}
+        LIMIT ${pageSize} OFFSET ${offset}
+      `);
+
+      res.json({
+        data: dataResult.rows,
+        total,
+        page,
+        pageSize,
+        totalPages: Math.ceil(total / pageSize),
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/provider-offices/:name/providers", requireAuth, async (req, res) => {
+    try {
+      const name = decodeURIComponent(req.params.name).trim();
+      if (!name) return res.json([]);
+      const allPhysicians = await storage.getPhysicians();
+      const matched = allPhysicians.filter(
+        (p) => p.practiceName && p.practiceName.trim().toLowerCase() === name.toLowerCase()
+      );
+      if (matched.length === 0) return res.json([]);
+      const ids = matched.map(m => m.id);
+      const idFragments = ids.map(id => sql`${id}`);
+      const referralCounts = await db.execute(sql`
+        SELECT physician_id, COUNT(*) as ref_count 
+        FROM referrals 
+        WHERE deleted_at IS NULL AND physician_id IN (${sql.join(idFragments, sql`, `)})
+        GROUP BY physician_id
+      `);
+      const countMap = new Map((referralCounts.rows as any[]).map(r => [r.physician_id, parseInt(r.ref_count)]));
+      const enriched = matched.map(p => ({
+        ...p,
+        referralCount: countMap.get(p.id) || 0,
+      }));
+      enriched.sort((a, b) => b.referralCount - a.referralCount);
+      res.json(enriched);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/physicians", requireAuth, async (req, res) => {
     res.json(await storage.getPhysicians());
   });

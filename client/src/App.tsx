@@ -35,6 +35,7 @@ import TerritoryDashboardPage from "@/pages/territory-dashboard";
 import LocationDashboardPage from "@/pages/location-dashboard";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
 import UnlinkedReferralsPage from "@/pages/unlinked-referrals";
+import ProviderOfficesPage from "@/pages/provider-offices";
 import { IdleTimeout } from "@/components/idle-timeout";
 import { ForcePasswordChange } from "@/components/force-password-change";
 import { GlobalSearch } from "@/components/global-search";
@@ -49,6 +50,7 @@ function AuthenticatedRouter() {
       <Route path="/physicians/:id">{(params) => <PhysicianDetailPage params={params} />}</Route>
       <Route path="/interactions" component={InteractionsPage} />
       <Route path="/referrals" component={ReferralsPage} />
+      <Route path="/provider-offices" component={ProviderOfficesPage} />
       <Route path="/tasks" component={TasksPage} />
       <Route path="/calendar" component={CalendarPage} />
       <Route path="/tiering" component={PhysicianTieringPage} />

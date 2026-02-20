@@ -18,7 +18,8 @@ const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Referring Providers", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Referrals", url: "/referrals", icon: FileText },
+  { title: "Patients", url: "/referrals", icon: FileText },
+  { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
 ];
 
