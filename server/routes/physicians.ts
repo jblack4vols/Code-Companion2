@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import { insertPhysicianSchema } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
 
@@ -63,8 +63,17 @@ export function registerPhysicianRoutes(app: Express) {
         city: "city",
         totalReferrals: "total_referrals",
       };
-      const orderCol = orderMap[sortBy] || "provider_count";
       const searchPattern = `%${search}%`;
+
+      const orderClauses: Record<string, Record<string, SQL>> = {
+        office_name: { asc: sql`office_name ASC`, desc: sql`office_name DESC` },
+        provider_count: { asc: sql`provider_count ASC`, desc: sql`provider_count DESC` },
+        city: { asc: sql`city ASC`, desc: sql`city DESC` },
+        total_referrals: { asc: sql`total_referrals ASC`, desc: sql`total_referrals DESC` },
+      };
+      const orderCol = orderMap[sortBy] || "provider_count";
+      const direction = sortOrder === "asc" ? "asc" : "desc";
+      const orderSql = orderClauses[orderCol]?.[direction] || sql`provider_count DESC`;
 
       const searchCondition = search
         ? sql`AND (p.practice_name ILIKE ${searchPattern} OR p.primary_office_address ILIKE ${searchPattern} OR p.city ILIKE ${searchPattern})`
@@ -76,8 +85,6 @@ export function registerPhysicianRoutes(app: Express) {
         WHERE p.deleted_at IS NULL AND p.practice_name IS NOT NULL AND TRIM(p.practice_name) != '' ${searchCondition}
       `);
       const total = parseInt((countResult.rows[0] as any)?.total || "0");
-
-      const orderSql = sql.raw(`${orderCol} ${sortOrder === "asc" ? "ASC" : "DESC"}`);
 
       const dataResult = await db.execute(sql`
         SELECT 
