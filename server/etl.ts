@@ -1,11 +1,13 @@
 import cron from "node-cron";
 import { db } from "./db";
-import { eq, and, gte, lte, sql, asc, or } from "drizzle-orm";
+import { eq, and, gte, lte, lt, sql, asc, or, isNull } from "drizzle-orm";
 import {
   physicians, referrals, collections, locations, territories,
   physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary,
-  tieringWeights, appSettings,
+  tieringWeights, appSettings, tasks, users, scheduledReports,
 } from "@shared/schema";
+import { sendOverdueTaskDigest, sendScheduledReportEmail } from "./outlook";
+import { storage } from "./storage";
 
 function getMonthStart(d: Date): string {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-01`;
@@ -415,12 +417,155 @@ export async function runETL(forceFullRecompute = false) {
   }
 }
 
+async function sendOverdueDigests() {
+  console.log("[Email] Checking for overdue tasks...");
+  try {
+    const now = new Date();
+    const overdueTasks = await db.select({
+      id: tasks.id,
+      description: tasks.description,
+      dueAt: tasks.dueAt,
+      assignedToUserId: tasks.assignedToUserId,
+      physicianId: tasks.physicianId,
+    }).from(tasks).where(and(
+      eq(tasks.status, "OPEN"),
+      lt(tasks.dueAt, now)
+    ));
+
+    if (overdueTasks.length === 0) {
+      console.log("[Email] No overdue tasks found.");
+      return;
+    }
+
+    const byUser: Record<string, typeof overdueTasks> = {};
+    for (const t of overdueTasks) {
+      if (!t.assignedToUserId) continue;
+      (byUser[t.assignedToUserId] ??= []).push(t);
+    }
+
+    const physCache: Record<string, string> = {};
+    for (const [userId, userTasks] of Object.entries(byUser)) {
+      const user = await db.select().from(users).where(eq(users.id, userId)).then(r => r[0]);
+      if (!user?.email) continue;
+
+      const formatted = await Promise.all(userTasks.map(async (t) => {
+        let providerName: string | undefined;
+        if (t.physicianId) {
+          if (!physCache[t.physicianId]) {
+            const p = await db.select({ firstName: physicians.firstName, lastName: physicians.lastName }).from(physicians).where(eq(physicians.id, t.physicianId)).then(r => r[0]);
+            if (p) physCache[t.physicianId] = `${p.firstName} ${p.lastName}`;
+          }
+          providerName = physCache[t.physicianId];
+        }
+        return { title: t.description.slice(0, 100), dueDate: t.dueAt!.toISOString(), providerName };
+      }));
+
+      const appUrl = process.env.REPLIT_DEV_DOMAIN
+        ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+        : process.env.REPL_SLUG
+        ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+        : 'https://tristar360.replit.app';
+
+      await sendOverdueTaskDigest(user.email, user.name, formatted, appUrl);
+    }
+    console.log(`[Email] Overdue digests sent to ${Object.keys(byUser).length} users`);
+  } catch (err: any) {
+    console.error("[Email] Error sending overdue digests:", err.message);
+  }
+}
+
+async function processScheduledReports() {
+  console.log("[Reports] Checking for scheduled reports due to run...");
+  try {
+    const now = new Date();
+    const allReports = await db.select().from(scheduledReports).where(eq(scheduledReports.isActive, true));
+    
+    for (const report of allReports) {
+      let shouldRun = false;
+      if (!report.lastRunAt) {
+        shouldRun = true;
+      } else if (report.nextRunAt && report.nextRunAt <= now) {
+        shouldRun = true;
+      } else if (report.frequency === 'weekly') {
+        const daysSince = (now.getTime() - report.lastRunAt.getTime()) / (1000 * 60 * 60 * 24);
+        shouldRun = daysSince >= 7;
+      } else if (report.frequency === 'monthly') {
+        const daysSince = (now.getTime() - report.lastRunAt.getTime()) / (1000 * 60 * 60 * 24);
+        shouldRun = daysSince >= 28;
+      }
+
+      if (!shouldRun) continue;
+
+      console.log(`[Reports] Generating report: ${report.name} (${report.reportType})`);
+      let csv = "";
+      const dateStr = now.toISOString().slice(0, 10);
+
+      try {
+        if (report.reportType === "referral_summary") {
+          const data = await storage.exportReferralsCsv({});
+          const headers = ["Referral Date","Patient Name","Account #","Status","Provider","Location"];
+          csv = [headers.join(","), ...data.map((r: any) =>
+            [r.referralDate, r.patientFullName, r.patientAccountNumber, r.status, `${r.physicianFirstName || ''} ${r.physicianLastName || ''}`.trim(), r.locationName].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
+          )].join("\n");
+        } else if (report.reportType === "interaction_summary") {
+          const data = await storage.exportInteractionsCsv({});
+          const headers = ["Date","Type","Summary","Provider","User","Location"];
+          csv = [headers.join(","), ...data.map((r: any) =>
+            [r.occurredAt ? new Date(r.occurredAt).toISOString().slice(0,10) : '', r.type, r.summary, `${r.physicianFirstName || ''} ${r.physicianLastName || ''}`.trim(), r.userName, r.locationName].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
+          )].join("\n");
+        } else if (report.reportType === "provider_pipeline") {
+          const data = await storage.exportPhysiciansCsv({});
+          const headers = ["Name","Credentials","NPI","Practice","City","Status","Stage"];
+          csv = [headers.join(","), ...data.map((r: any) =>
+            [`${r.firstName} ${r.lastName}`, r.credentials, r.npi, r.practiceName, r.city, r.status, r.relationshipStage].map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(",")
+          )].join("\n");
+        } else {
+          continue;
+        }
+
+        const recipients = report.recipients.split(',').map((e: string) => e.trim()).filter(Boolean);
+        const appUrl = process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : 'https://tristar360.replit.app';
+
+        for (const email of recipients) {
+          await sendScheduledReportEmail(email, email.split('@')[0], report.name, report.reportType, csv, appUrl);
+        }
+
+        const nextRun = new Date(now);
+        if (report.frequency === 'weekly') nextRun.setDate(nextRun.getDate() + 7);
+        else if (report.frequency === 'monthly') nextRun.setMonth(nextRun.getMonth() + 1);
+
+        await db.update(scheduledReports).set({ lastRunAt: now, nextRunAt: nextRun }).where(eq(scheduledReports.id, report.id));
+        console.log(`[Reports] Sent "${report.name}" to ${recipients.length} recipients`);
+      } catch (reportErr: any) {
+        console.error(`[Reports] Error generating report ${report.name}: ${reportErr.message}`);
+      }
+    }
+  } catch (err: any) {
+    console.error("[Reports] Error processing scheduled reports:", err.message);
+  }
+}
+
 export function scheduleETL() {
   cron.schedule("0 2 * * *", async () => {
     console.log("[ETL] Nightly job triggered at", new Date().toISOString());
     await runETL();
   });
-  console.log("[ETL] Nightly job scheduled for 2:00 AM daily");
+
+  cron.schedule("0 7 * * 1-5", async () => {
+    console.log("[Email] Morning overdue digest triggered at", new Date().toISOString());
+    await sendOverdueDigests();
+  });
+
+  cron.schedule("30 6 * * *", async () => {
+    console.log("[Reports] Scheduled report check triggered at", new Date().toISOString());
+    await processScheduledReports();
+  });
+
+  console.log("[ETL] Nightly ETL scheduled for 2:00 AM daily");
+  console.log("[Email] Overdue task digest scheduled for 7:00 AM weekdays");
+  console.log("[Reports] Scheduled report delivery check at 6:30 AM daily");
 }
 
 export async function triggerETL() {

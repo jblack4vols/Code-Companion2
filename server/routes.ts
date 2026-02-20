@@ -11,7 +11,7 @@ import { referrals as referralsTable } from "@shared/schema";
 import { loginSchema, insertUserSchema, insertPhysicianSchema, insertInteractionSchema, insertReferralSchema, insertTaskSchema, insertLocationSchema, insertCalendarEventSchema, insertScheduledReportSchema, physicians, integrationConfigs, passwordSchema, users as usersTable, appSettings, auditLogs } from "@shared/schema";
 import crypto from "crypto";
 import connectPgSimple from "connect-pg-simple";
-import { sendWelcomeEmail } from "./outlook";
+import { sendWelcomeEmail, sendTaskAssignmentEmail, sendOverdueTaskDigest, sendScheduledReportEmail } from "./outlook";
 import { searchSites as searchSPSites, getSiteId as getSPSiteId, setSiteId as setSPSiteId, validateSite as validateSPSite, getSyncStatuses as getSPSyncStatuses, syncEntity as syncSPEntity, syncAll as syncSPAll } from "./sharepoint";
 import { Readable } from "stream";
 import { loginLimiter, apiLimiter } from "./middleware/rateLimiter";
@@ -456,6 +456,11 @@ export async function registerRoutes(
       await db.execute(sql`UPDATE interactions SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
       await db.execute(sql`UPDATE tasks SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
       await db.execute(sql`UPDATE calendar_events SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE collections SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`UPDATE physician_comments SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`DELETE FROM physician_favorites WHERE physician_id = ${removeId} AND user_id IN (SELECT user_id FROM physician_favorites WHERE physician_id = ${keepId})`);
+      await db.execute(sql`UPDATE physician_favorites SET physician_id = ${keepId} WHERE physician_id = ${removeId}`);
+      await db.execute(sql`DELETE FROM physician_monthly_summary WHERE physician_id = ${removeId}`);
       await db.execute(sql`UPDATE physicians SET deleted_at = NOW(), updated_at = NOW() WHERE id = ${removeId}`);
 
       await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
@@ -691,6 +696,30 @@ export async function registerRoutes(
       if (typeof body.dueAt === "string") body.dueAt = new Date(body.dueAt);
       const validated = insertTaskSchema.parse(body);
       const task = await storage.createTask(validated);
+
+      if (task.assignedToUserId && task.assignedToUserId !== req.session.userId) {
+        const assignedUser = await storage.getUser(task.assignedToUserId);
+        const currentUser = await storage.getUser(req.session.userId!);
+        if (assignedUser?.email && currentUser) {
+          let providerName: string | null = null;
+          if (task.physicianId) {
+            const phys = await storage.getPhysician(task.physicianId);
+            if (phys) providerName = `${phys.firstName} ${phys.lastName}`;
+          }
+          const appUrl = `${req.protocol}://${req.get('host')}`;
+          sendTaskAssignmentEmail(
+            assignedUser.email,
+            assignedUser.name,
+            task.description.slice(0, 100),
+            task.description || null,
+            task.dueAt?.toISOString() || null,
+            currentUser.name,
+            providerName,
+            appUrl
+          ).catch(() => {});
+        }
+      }
+
       res.json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
