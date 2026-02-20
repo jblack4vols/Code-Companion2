@@ -1838,6 +1838,33 @@ export async function registerRoutes(
     }
   });
 
+  app.get("/api/integrations/:id/custom-fields", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const config = await storage.getIntegrationConfig(req.params.id);
+      if (!config) return res.status(404).json({ message: "Not found" });
+      if (config.type !== "GOHIGHLEVEL") return res.status(400).json({ message: "Only supported for GoHighLevel" });
+      const apiKey = config.settings?.apiKey;
+      const locationId = config.settings?.locationId;
+      if (!apiKey || !locationId) return res.status(400).json({ message: "API key and Location ID are required" });
+      const ghlHeaders = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" };
+      const cfResp = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}/customFields`, { headers: ghlHeaders });
+      if (!cfResp.ok) {
+        return res.json({ success: false, message: `GHL returned ${cfResp.status}`, fields: [] });
+      }
+      const cfData: any = await cfResp.json();
+      const cfList = cfData.customFields || cfData.data || [];
+      const fields = (Array.isArray(cfList) ? cfList : []).map((cf: any) => ({
+        id: cf.id || cf.fieldKey || "",
+        name: cf.name || cf.fieldKey || cf.label || "",
+        fieldKey: cf.fieldKey || "",
+        dataType: cf.dataType || "TEXT",
+      }));
+      return res.json({ success: true, fields });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.post("/api/integrations/:id/sync", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const config = await storage.getIntegrationConfig(req.params.id);
@@ -1916,6 +1943,9 @@ export async function registerRoutes(
           try {
             const ghlHeaders = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" };
 
+            const savedMappings: Record<string, string> = config.settings?.fieldMappings || {};
+            console.log(`[GHL] Saved field mappings: ${JSON.stringify(savedMappings)}`);
+
             let fieldIdToName: Record<string, string> = {};
             if (locationId) {
               try {
@@ -1929,7 +1959,7 @@ export async function registerRoutes(
                     if (id) fieldIdToName[id] = name;
                     if (cf.fieldKey) fieldIdToName[cf.fieldKey] = name;
                   }
-                  console.log(`[GHL] Loaded ${Object.keys(fieldIdToName).length} custom field definitions`);
+                  console.log(`[GHL] Loaded ${Object.keys(fieldIdToName).length} custom field definitions from GHL`);
                 } else {
                   console.log(`[GHL] Could not fetch custom field definitions (${cfResp.status}), will try to match by field key names`);
                 }
@@ -1938,15 +1968,38 @@ export async function registerRoutes(
               }
             }
 
-            const resp = await fetch(`https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`, {
-              headers: ghlHeaders,
-            });
-            if (!resp.ok) {
-              await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { httpStatus: resp.status }, finishedAt: new Date() });
-              return res.json({ success: false, message: `GHL API returned ${resp.status}` });
+            let allContacts: any[] = [];
+            let nextPageUrl: string | null = `https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`;
+            let pageCount = 0;
+            const maxPages = 50;
+            while (nextPageUrl && pageCount < maxPages) {
+              const resp = await fetch(nextPageUrl, { headers: ghlHeaders });
+              if (!resp.ok) {
+                if (pageCount === 0) {
+                  await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { httpStatus: resp.status }, finishedAt: new Date() });
+                  return res.json({ success: false, message: `GHL API returned ${resp.status}` });
+                }
+                break;
+              }
+              const data: any = await resp.json();
+              const pageContacts = data.contacts || [];
+              allContacts = allContacts.concat(pageContacts);
+              pageCount++;
+              const meta = data.meta || {};
+              if (meta.nextPageUrl) {
+                nextPageUrl = meta.nextPageUrl;
+              } else if (meta.nextPage) {
+                nextPageUrl = `https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}&page=${meta.nextPage}`;
+              } else if (data.nextPage) {
+                nextPageUrl = `https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}&startAfterId=${pageContacts[pageContacts.length - 1]?.id || ""}`;
+              } else {
+                nextPageUrl = null;
+              }
+              if (pageContacts.length < 100) nextPageUrl = null;
             }
-            const data: any = await resp.json();
-            const contacts = data.contacts || [];
+            const contacts = allContacts;
+            console.log(`[GHL] Fetched ${contacts.length} contacts across ${pageCount} page(s)`);
+
             let referralsCreated = 0;
             let providersCreated = 0;
             let providersMatched = 0;
@@ -1958,6 +2011,7 @@ export async function registerRoutes(
             const defaultLocationId = allLocations.length > 0 ? allLocations[0].id : null;
 
             const classifyField = (keyOrId: string): string | null => {
+              if (savedMappings[keyOrId]) return savedMappings[keyOrId];
               const name = (fieldIdToName[keyOrId] || keyOrId || "").toLowerCase();
               if (name.includes("npi")) return "npi";
               if (name.includes("credential")) return "credentials";

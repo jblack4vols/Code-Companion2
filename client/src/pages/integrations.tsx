@@ -45,6 +45,10 @@ export default function IntegrationsPage() {
 
   const [ghlApiKey, setGhlApiKey] = useState<string | null>(null);
   const [ghlLocationId, setGhlLocationId] = useState<string | null>(null);
+  const [ghlCustomFields, setGhlCustomFields] = useState<{ id: string; name: string; fieldKey: string; dataType: string }[]>([]);
+  const [ghlFieldMappings, setGhlFieldMappings] = useState<Record<string, string>>({});
+  const [showFieldMapping, setShowFieldMapping] = useState(false);
+  const [loadingFields, setLoadingFields] = useState(false);
   const [customBaseUrl, setCustomBaseUrl] = useState<string | null>(null);
   const [customApiKey, setCustomApiKey] = useState<string | null>(null);
   const [customWebhookUrl, setCustomWebhookUrl] = useState<string | null>(null);
@@ -155,12 +159,39 @@ export default function IntegrationsPage() {
   const customWebhookUrlVal = customWebhookUrl ?? (customConfig?.settings as any)?.webhookUrl ?? "";
 
   const handleSaveGhl = () => {
-    const settings = { apiKey: ghlApiKeyVal, locationId: ghlLocationIdVal };
+    const existingMappings: Record<string, string> = (ghlConfig?.settings as any)?.fieldMappings || {};
+    const mergedMappings: Record<string, string> = { ...existingMappings, ...ghlFieldMappings };
+    const cleanMappings: Record<string, string> = {};
+    for (const [k, v] of Object.entries(mergedMappings)) {
+      if (v && v !== "none") cleanMappings[k] = v;
+    }
+    const settings = { apiKey: ghlApiKeyVal, locationId: ghlLocationIdVal, fieldMappings: cleanMappings };
     if (ghlConfig) {
       updateIntegration.mutate({ id: ghlConfig.id, data: { settings } });
     } else {
       createIntegration.mutate({ type: "GOHIGHLEVEL", name: "GoHighLevel", settings });
     }
+  };
+
+  const handleFetchCustomFields = async () => {
+    if (!ghlConfig) return;
+    setLoadingFields(true);
+    try {
+      const resp = await fetch(`/api/integrations/${ghlConfig.id}/custom-fields`, { credentials: "include" });
+      const data = await resp.json();
+      if (data.success && data.fields) {
+        setGhlCustomFields(data.fields);
+        const existing = (ghlConfig.settings as any)?.fieldMappings || {};
+        setGhlFieldMappings(existing);
+        setShowFieldMapping(true);
+        toast({ title: `Found ${data.fields.length} custom fields` });
+      } else {
+        toast({ title: "Could not load fields", description: data.message, variant: "destructive" });
+      }
+    } catch {
+      toast({ title: "Error fetching custom fields", variant: "destructive" });
+    }
+    setLoadingFields(false);
   };
 
   const handleSaveCustom = () => {
@@ -275,6 +306,60 @@ export default function IntegrationsPage() {
                   />
                 </div>
               </div>
+
+              {ghlConfig && (
+                <div className="space-y-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleFetchCustomFields}
+                    disabled={loadingFields}
+                    data-testid="button-fetch-custom-fields"
+                  >
+                    {loadingFields ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <FileSpreadsheet className="w-4 h-4 mr-1.5" />}
+                    Map Custom Fields
+                  </Button>
+                  {showFieldMapping && ghlCustomFields.length > 0 && (
+                    <div className="rounded-md border p-3 space-y-2 bg-muted/30" data-testid="ghl-field-mapping">
+                      <p className="text-sm font-medium">Map your GHL custom fields to Tristar data:</p>
+                      <p className="text-xs text-muted-foreground">Tell us which custom field holds each piece of information. The system will auto-detect what it can, but you can override here.</p>
+                      <div className="grid gap-2 max-h-60 overflow-y-auto">
+                        {ghlCustomFields.map((field) => (
+                          <div key={field.id} className="flex items-center gap-2 text-sm">
+                            <span className="min-w-[180px] truncate text-xs font-mono" title={`ID: ${field.id}`}>{field.name || field.fieldKey}</span>
+                            <Select
+                              value={ghlFieldMappings[field.id] || "none"}
+                              onValueChange={(val) => {
+                                const updates: Record<string, string> = { [field.id]: val };
+                                if (field.fieldKey && field.fieldKey !== field.id) updates[field.fieldKey] = val;
+                                setGhlFieldMappings((prev) => ({ ...prev, ...updates }));
+                              }}
+                            >
+                              <SelectTrigger className="h-7 text-xs w-[200px]" data-testid={`select-mapping-${field.id}`}>
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="none">-- Not mapped --</SelectItem>
+                                <SelectItem value="referringPhysician">Referring Provider Name</SelectItem>
+                                <SelectItem value="npi">NPI Number</SelectItem>
+                                <SelectItem value="credentials">Credentials</SelectItem>
+                                <SelectItem value="specialty">Specialty</SelectItem>
+                                <SelectItem value="location">Clinic / Location</SelectItem>
+                                <SelectItem value="insurance">Insurance / Payer</SelectItem>
+                                <SelectItem value="diagnosis">Diagnosis / Condition</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Click <strong>Save</strong> below to store your mappings.</p>
+                    </div>
+                  )}
+                  {showFieldMapping && ghlCustomFields.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No custom fields found in your GHL account. Make sure your Location ID is correct and saved.</p>
+                  )}
+                </div>
+              )}
 
               {ghlConfig?.lastSyncAt && (
                 <div className="text-xs text-muted-foreground flex items-center gap-1.5">
