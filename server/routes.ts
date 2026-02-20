@@ -1914,8 +1914,32 @@ export async function registerRoutes(
 
         if (direction === "pull") {
           try {
+            const ghlHeaders = { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" };
+
+            let fieldIdToName: Record<string, string> = {};
+            if (locationId) {
+              try {
+                const cfResp = await fetch(`https://services.leadconnectorhq.com/locations/${locationId}/customFields`, { headers: ghlHeaders });
+                if (cfResp.ok) {
+                  const cfData: any = await cfResp.json();
+                  const cfList = cfData.customFields || cfData.data || [];
+                  for (const cf of (Array.isArray(cfList) ? cfList : [])) {
+                    const id = cf.id || cf.fieldKey || "";
+                    const name = (cf.name || cf.fieldKey || cf.label || "").toLowerCase();
+                    if (id) fieldIdToName[id] = name;
+                    if (cf.fieldKey) fieldIdToName[cf.fieldKey] = name;
+                  }
+                  console.log(`[GHL] Loaded ${Object.keys(fieldIdToName).length} custom field definitions`);
+                } else {
+                  console.log(`[GHL] Could not fetch custom field definitions (${cfResp.status}), will try to match by field key names`);
+                }
+              } catch (cfErr: any) {
+                console.log(`[GHL] Custom field fetch error: ${cfErr.message}`);
+              }
+            }
+
             const resp = await fetch(`https://services.leadconnectorhq.com/contacts/?limit=100${locationId ? "&locationId=" + locationId : ""}`, {
-              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json", Accept: "application/json", Version: "2021-07-28" },
+              headers: ghlHeaders,
             });
             if (!resp.ok) {
               await storage.updateIntegrationSyncLog(log.id, { status: "error", details: { httpStatus: resp.status }, finishedAt: new Date() });
@@ -1933,6 +1957,21 @@ export async function registerRoutes(
             const allLocations = await storage.getLocations();
             const defaultLocationId = allLocations.length > 0 ? allLocations[0].id : null;
 
+            const classifyField = (keyOrId: string): string | null => {
+              const name = (fieldIdToName[keyOrId] || keyOrId || "").toLowerCase();
+              if (name.includes("npi")) return "npi";
+              if (name.includes("credential")) return "credentials";
+              if (name.includes("special")) return "specialty";
+              if ((name.includes("referring") && (name.includes("physician") || name.includes("doctor") || name.includes("provider"))) ||
+                  name === "doctor" || name === "physician" || name === "provider_name" || name === "provider" ||
+                  name.includes("ref_doctor") || name.includes("ref_provider") || name.includes("ref_physician") ||
+                  name === "referring doctor" || name === "referring provider" || name === "referring physician") return "referringPhysician";
+              if (name.includes("location") || name.includes("clinic")) return "location";
+              if (name.includes("insurance") || name.includes("payer")) return "insurance";
+              if (name.includes("diagnosis") || name.includes("condition")) return "diagnosis";
+              return null;
+            };
+
             for (const contact of contacts) {
               try {
                 const patientFirst = (contact.firstName || contact.first_name || "").trim();
@@ -1949,18 +1988,20 @@ export async function registerRoutes(
                 const rawCustom = contact.customField || contact.customFields || {};
                 if (Array.isArray(rawCustom)) {
                   for (const cf of rawCustom) {
-                    const key = (cf.field_key || cf.key || cf.id || cf.name || "").toLowerCase();
+                    const key = cf.field_key || cf.key || cf.id || cf.name || "";
                     const val = cf.value || cf.field_value || "";
-                    if (key.includes("npi")) customFields.npi = val;
-                    else if (key.includes("credential")) customFields.credentials = val;
-                    else if (key.includes("special")) customFields.specialty = val;
-                    else if ((key.includes("referring") && key.includes("physician")) || (key.includes("referring") && key.includes("doctor")) || (key.includes("referring") && key.includes("provider")) || key === "doctor" || key === "physician" || key === "provider_name") customFields.referringPhysician = val;
-                    else if (key.includes("location") || key.includes("clinic")) customFields.location = val;
-                    else if (key.includes("insurance") || key.includes("payer")) customFields.insurance = val;
-                    else if (key.includes("diagnosis") || key.includes("condition")) customFields.diagnosis = val;
+                    const classification = classifyField(key);
+                    if (classification) customFields[classification] = val;
                   }
-                } else {
-                  customFields = rawCustom;
+                } else if (typeof rawCustom === "object" && rawCustom !== null) {
+                  for (const [key, val] of Object.entries(rawCustom)) {
+                    const classification = classifyField(key);
+                    if (classification) customFields[classification] = val;
+                  }
+                }
+
+                if (!customFields.referringPhysician) {
+                  console.log(`[GHL] Contact "${patientName}" - no referring provider found in custom fields. Raw keys: ${JSON.stringify(Object.keys(rawCustom || {}))}`);
                 }
 
                 const contactDate = contact.dateAdded || contact.date_added || contact.createdAt || contact.created_at;
@@ -2076,7 +2117,7 @@ export async function registerRoutes(
               status: "completed",
               recordsProcessed: referralsCreated,
               recordsFailed: failed,
-              details: { contactsReceived: contacts.length, referralsCreated, providersCreated, providersMatched, skipped, failed, results: results.slice(0, 50) },
+              details: { contactsReceived: contacts.length, referralsCreated, providersCreated, providersMatched, skipped, failed, customFieldsMapped: Object.keys(fieldIdToName).length, results: results.slice(0, 50) },
               finishedAt: new Date(),
             });
             await storage.updateIntegrationConfig(config.id, { lastSyncAt: new Date(), lastSyncStatus: summary } as any);
