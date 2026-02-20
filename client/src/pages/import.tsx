@@ -7,6 +7,25 @@ import { Badge } from "@/components/ui/badge";
 import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
+function getCsrfToken(): string | null {
+  const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
+  return match ? decodeURIComponent(match[1]) : null;
+}
+
+async function ensureCsrfToken(): Promise<string | null> {
+  let token = getCsrfToken();
+  if (!token) {
+    try {
+      const res = await fetch("/api/csrf-token", { credentials: "include" });
+      if (res.ok) {
+        const data = await res.json();
+        token = data.token;
+      }
+    } catch {}
+  }
+  return token;
+}
+
 type ImportType = "physicians" | "referrals";
 type Step = "select" | "upload" | "map" | "importing" | "result";
 
@@ -131,7 +150,10 @@ export default function ImportPage() {
     try {
       const formData = new FormData();
       formData.append("file", selectedFile);
-      const res = await fetch("/api/import/preview", { method: "POST", body: formData, credentials: "include" });
+      const csrfToken = await ensureCsrfToken();
+      const headers: Record<string, string> = {};
+      if (csrfToken) headers["x-csrf-token"] = csrfToken;
+      const res = await fetch("/api/import/preview", { method: "POST", body: formData, credentials: "include", headers });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message);
@@ -190,7 +212,10 @@ export default function ImportPage() {
       formData.append("mapping", JSON.stringify(reverseMapping));
 
       const endpoint = importType === "physicians" ? "/api/import/physicians" : "/api/import/referrals";
-      const res = await fetch(endpoint, { method: "POST", body: formData, credentials: "include" });
+      const csrfToken = await ensureCsrfToken();
+      const importHeaders: Record<string, string> = {};
+      if (csrfToken) importHeaders["x-csrf-token"] = csrfToken;
+      const res = await fetch(endpoint, { method: "POST", body: formData, credentials: "include", headers: importHeaders });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message);
