@@ -102,6 +102,26 @@ export function registerReferralRoutes(app: Express) {
     }
   });
 
+  app.delete("/api/referrals/all", requireRole("OWNER"), async (req, res) => {
+    try {
+      const count = await storage.softDeleteAllReferrals();
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE_ALL", entity: "Referral", entityId: "all", detailJson: { count }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/referrals/restore-all", requireRole("OWNER"), async (req, res) => {
+    try {
+      const count = await storage.restoreAllReferrals();
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE_ALL", entity: "Referral", entityId: "all", detailJson: { count }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true, count });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/referrals/bulk", requireRole("OWNER"), async (req, res) => {
     try {
       const bulkDeleteSchema = z.object({ ids: z.array(z.string().uuid()).min(1, "At least one id required") });

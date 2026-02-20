@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2, Pencil, Save, Loader2 } from "lucide-react";
+import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2, Pencil, Save, Loader2, RotateCcw } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -111,6 +111,43 @@ export default function ReferralsPage() {
       }});
       setSelectedIds(new Set());
       toast({ title: `${data.count} referral${data.count === 1 ? "" : "s"} deleted` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
+  const [deleteAllConfirmText, setDeleteAllConfirmText] = useState("");
+  const [showRestoreAllConfirm, setShowRestoreAllConfirm] = useState(false);
+
+  const deleteAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("DELETE", "/api/referrals/all");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return key === "/api/referrals/paginated" || key === "/api/referrals" || key === "/api/physicians";
+      }});
+      setShowDeleteAllConfirm(false);
+      setDeleteAllConfirmText("");
+      toast({ title: `All ${data.count} referrals deleted`, description: "You can restore them using the Restore All button." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const restoreAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/referrals/restore-all");
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ predicate: (query) => {
+        const key = query.queryKey[0];
+        return key === "/api/referrals/paginated" || key === "/api/referrals" || key === "/api/physicians";
+      }});
+      setShowRestoreAllConfirm(false);
+      toast({ title: `${data.count} referrals restored` });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -324,6 +361,68 @@ export default function ReferralsPage() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          )}
+          {isOwner && (
+            <>
+              <AlertDialog open={showRestoreAllConfirm} onOpenChange={setShowRestoreAllConfirm}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="outline" size="sm" data-testid="button-restore-all-referrals">
+                    <RotateCcw className="w-3 h-3 mr-1.5" />Restore All
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Restore All Deleted Referrals?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will restore all previously deleted referrals back to their original state.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="button-cancel-restore-all">Cancel</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => restoreAllMutation.mutate()}
+                      data-testid="button-confirm-restore-all"
+                    >
+                      {restoreAllMutation.isPending ? "Restoring..." : "Restore All"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              <AlertDialog open={showDeleteAllConfirm} onOpenChange={(open) => { setShowDeleteAllConfirm(open); if (!open) setDeleteAllConfirmText(""); }}>
+                <AlertDialogTrigger asChild>
+                  <Button variant="destructive" size="sm" data-testid="button-delete-all-referrals">
+                    <Trash2 className="w-3 h-3 mr-1.5" />Delete All
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete ALL Referrals?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This will soft-delete every referral in the system. You can restore them later using the "Restore All" button. Type <span className="font-mono font-bold">DELETE ALL</span> below to confirm.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <div className="px-1">
+                    <Input
+                      placeholder="Type DELETE ALL to confirm"
+                      value={deleteAllConfirmText}
+                      onChange={(e) => setDeleteAllConfirmText(e.target.value)}
+                      data-testid="input-delete-all-confirm"
+                    />
+                  </div>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel data-testid="button-cancel-delete-all">Cancel</AlertDialogCancel>
+                    <Button
+                      variant="destructive"
+                      disabled={deleteAllConfirmText !== "DELETE ALL" || deleteAllMutation.isPending}
+                      onClick={() => deleteAllMutation.mutate()}
+                      data-testid="button-confirm-delete-all"
+                    >
+                      {deleteAllMutation.isPending ? "Deleting..." : "Delete All Referrals"}
+                    </Button>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+            </>
           )}
           <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-referrals">
             <Download className="w-3 h-3 mr-1.5" />Export CSV
