@@ -5,6 +5,7 @@ import {
   physicians, referrals, collections, locations, territories,
   physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary,
   tieringWeights, appSettings, tasks, users, scheduledReports,
+  physicianStageHistory,
 } from "@shared/schema";
 import { sendOverdueTaskDigest, sendScheduledReportEmail, sendProviderAlertEmail } from "./outlook";
 import { storage } from "./storage";
@@ -450,6 +451,12 @@ export async function runETL(forceFullRecompute = false) {
         const oldStage = physStageMap.get(phys.id) || "NEW";
         if (oldStage !== newStage) {
           stageTransitions.push({ physId: phys.id, oldStage, newStage });
+          await db.insert(physicianStageHistory).values({
+            physicianId: phys.id,
+            previousStage: oldStage,
+            newStage: newStage,
+            reason: "Automated ETL stage transition",
+          });
         }
         await db.update(physicians).set({
           relationshipStage: newStage,

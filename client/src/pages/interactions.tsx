@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -9,11 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download } from "lucide-react";
+import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download, FileStack } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import type { Interaction, Physician, User, Location } from "@shared/schema";
+import type { Interaction, Physician, User, Location, InteractionTemplate } from "@shared/schema";
 import { format, isAfter, isBefore, startOfDay, endOfDay, parseISO } from "date-fns";
 
 const typeIcons: Record<string, { icon: any; color: string }> = {
@@ -35,10 +35,24 @@ export default function InteractionsPage() {
   const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
 
+  const formRef = useRef<HTMLFormElement>(null);
   const { data: interactions, isLoading } = useQuery<Interaction[]>({ queryKey: ["/api/interactions"] });
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+  const { data: templates } = useQuery<InteractionTemplate[]>({ queryKey: ["/api/templates"] });
+
+  const applyTemplate = (templateId: string) => {
+    const tpl = templates?.find(t => t.id === templateId);
+    if (!tpl || !formRef.current) return;
+    const form = formRef.current;
+    const typeEl = form.elements.namedItem("type") as HTMLSelectElement;
+    const summaryEl = form.elements.namedItem("summary") as HTMLTextAreaElement;
+    const nextStepEl = form.elements.namedItem("nextStep") as HTMLInputElement;
+    if (typeEl && tpl.type) typeEl.value = tpl.type;
+    if (summaryEl && tpl.defaultSummary) summaryEl.value = tpl.defaultSummary;
+    if (nextStepEl && tpl.defaultNextStep) nextStepEl.value = tpl.defaultNextStep;
+  };
 
   const canCreate = user ? hasPermission(user.role, "create", "interaction") : false;
   const canExport = user ? ["OWNER", "DIRECTOR", "ANALYST"].includes(user.role) : false;
@@ -131,7 +145,23 @@ export default function InteractionsPage() {
             </DialogTrigger>
             <DialogContent>
               <DialogHeader><DialogTitle>Log New Interaction</DialogTitle></DialogHeader>
-              <form onSubmit={handleAdd} className="space-y-4">
+              <form ref={formRef} onSubmit={handleAdd} className="space-y-4">
+                {templates && templates.length > 0 && (
+                  <div className="space-y-1.5">
+                    <Label className="flex items-center gap-1.5"><FileStack className="w-3.5 h-3.5" />Use Template</Label>
+                    <select
+                      className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                      data-testid="select-interaction-template"
+                      defaultValue=""
+                      onChange={(e) => { if (e.target.value) applyTemplate(e.target.value); }}
+                    >
+                      <option value="">No template — start blank</option>
+                      {templates.filter(t => t.isActive).map(t => (
+                        <option key={t.id} value={t.id}>{t.name} ({t.type})</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
                 <div className="space-y-1.5">
                   <Label>Referring Provider *</Label>
                   <select name="physicianId" className="w-full rounded-md border bg-background px-3 py-2 text-sm" required data-testid="select-new-interaction-physician">

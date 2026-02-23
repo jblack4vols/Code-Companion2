@@ -509,6 +509,65 @@ export const insertScheduledReportSchema = createInsertSchema(scheduledReports).
 export type InsertScheduledReport = z.infer<typeof insertScheduledReportSchema>;
 export type ScheduledReport = typeof scheduledReports.$inferSelect;
 
+export const goalScopeEnum = pgEnum("goal_scope", ["TERRITORY", "LOCATION"]);
+
+export const goals = pgTable("goals", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  month: date("month").notNull(),
+  scopeType: goalScopeEnum("scope_type").notNull(),
+  scopeId: varchar("scope_id", { length: 36 }).notNull(),
+  targetReferrals: integer("target_referrals").notNull().default(0),
+  targetRevenue: numeric("target_revenue", { precision: 12, scale: 2 }),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("goal_scope_month_unique_idx").on(table.month, table.scopeType, table.scopeId),
+  index("goal_month_idx").on(table.month),
+]);
+
+export const interactionTemplates = pgTable("interaction_templates", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  type: interactionTypeEnum("type").notNull(),
+  defaultSummary: text("default_summary").notNull(),
+  defaultNextStep: text("default_next_step"),
+  isActive: boolean("is_active").default(true).notNull(),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const physicianStageHistory = pgTable("physician_stage_history", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  physicianId: varchar("physician_id", { length: 36 }).notNull().references(() => physicians.id),
+  previousStage: text("previous_stage"),
+  newStage: text("new_stage").notNull(),
+  changedAt: timestamp("changed_at").defaultNow().notNull(),
+  changedBy: varchar("changed_by", { length: 36 }).references(() => users.id),
+  reason: text("reason"),
+}, (table) => [
+  index("stage_history_physician_idx").on(table.physicianId),
+  index("stage_history_changed_at_idx").on(table.changedAt),
+]);
+
+export const insertGoalSchema = createInsertSchema(goals).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertInteractionTemplateSchema = createInsertSchema(interactionTemplates).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertPhysicianStageHistorySchema = createInsertSchema(physicianStageHistory).omit({
+  id: true, changedAt: true,
+});
+
+export type Goal = typeof goals.$inferSelect;
+export type InsertGoal = z.infer<typeof insertGoalSchema>;
+export type InteractionTemplate = typeof interactionTemplates.$inferSelect;
+export type InsertInteractionTemplate = z.infer<typeof insertInteractionTemplateSchema>;
+export type PhysicianStageHistory = typeof physicianStageHistory.$inferSelect;
+export type InsertPhysicianStageHistory = z.infer<typeof insertPhysicianStageHistorySchema>;
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),

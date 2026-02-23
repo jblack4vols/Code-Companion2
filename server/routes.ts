@@ -21,6 +21,9 @@ import { registerImportRoutes } from "./routes/import";
 import { registerIntegrationRoutes } from "./routes/integrations";
 import { registerPublicApiRoutes } from "./routes/publicApi";
 import { registerSearchRoutes } from "./routes/search";
+import { registerGoalRoutes } from "./routes/goals";
+import { registerTemplateRoutes } from "./routes/templates";
+import { registerFeatureRoutes } from "./routes/features";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -82,6 +85,9 @@ export async function registerRoutes(
   registerIntegrationRoutes(app);
   registerPublicApiRoutes(app);
   registerSearchRoutes(app);
+  registerGoalRoutes(app);
+  registerTemplateRoutes(app);
+  registerFeatureRoutes(app);
 
   return httpServer;
 }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -17,6 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 const navItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Referring Providers", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Quick Log", url: "/quick-log", icon: Zap, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Patients", url: "/referrals", icon: FileText },
   { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
@@ -24,6 +25,7 @@ const navItems = [
 ];
 
 const opsItems = [
+  { title: "Goals", url: "/goals", icon: Target, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Tasks", url: "/tasks", icon: ClipboardList, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
@@ -35,11 +37,14 @@ const dashboardItems = [
   { title: "Executive", url: "/dashboards/executive", icon: PieChart, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Territory", url: "/dashboards/territory", icon: Compass, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Location", url: "/dashboards/location", icon: Building2, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "ROI Calculator", url: "/roi-calculator", icon: DollarSign, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Leaderboard", url: "/leaderboard", icon: Trophy, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
 ];
 
 const adminItems = [
   { title: "Users", url: "/admin/users", icon: Users },
   { title: "Locations", url: "/admin/locations", icon: MapPin },
+  { title: "Templates", url: "/admin/templates", icon: FileStack },
   { title: "Duplicates", url: "/admin/duplicates", icon: Copy },
   { title: "Unlinked Referrals", url: "/admin/unlinked-referrals", icon: Link2 },
   { title: "Team Reports", url: "/admin/reports", icon: BarChart3 },
@@ -78,8 +83,8 @@ export function AppSidebar() {
   };
 
   const isAdminActive = location.startsWith("/admin/") || location === "/import";
-  const isIntelActive = location.startsWith("/dashboards/");
-  const opsUrls = ["/tiering", "/declining", "/tasks", "/map", "/territories"];
+  const isIntelActive = location.startsWith("/dashboards/") || location === "/roi-calculator" || location === "/leaderboard";
+  const opsUrls = ["/tiering", "/declining", "/tasks", "/map", "/territories", "/goals"];
   const isOpsActive = opsUrls.some((u) => location === u || location.startsWith(u + "/"));
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
   const [intelOpen, setIntelOpen] = useState(isIntelActive);

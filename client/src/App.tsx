@@ -37,6 +37,12 @@ import ScheduledReportsPage from "@/pages/scheduled-reports";
 import UnlinkedReferralsPage from "@/pages/unlinked-referrals";
 import ProviderOfficesPage from "@/pages/provider-offices";
 import DeveloperGuidePage from "@/pages/developer-guide";
+import ProviderScorecardPage from "@/pages/provider-scorecard";
+import GoalTrackingPage from "@/pages/goal-tracking";
+import InteractionTemplatesPage from "@/pages/interaction-templates";
+import QuickLogPage from "@/pages/quick-log";
+import ROICalculatorPage from "@/pages/roi-calculator";
+import TeamLeaderboardPage from "@/pages/team-leaderboard";
 import { IdleTimeout } from "@/components/idle-timeout";
 import { ForcePasswordChange } from "@/components/force-password-change";
 import { GlobalSearch } from "@/components/global-search";
@@ -49,6 +55,7 @@ function AuthenticatedRouter() {
       <Route path="/dashboard" component={DashboardPage} />
       <Route path="/physicians" component={PhysiciansPage} />
       <Route path="/physicians/:id">{(params) => <PhysicianDetailPage params={params} />}</Route>
+      <Route path="/scorecard/:id">{(params) => <ProviderScorecardPage params={params} />}</Route>
       <Route path="/interactions" component={InteractionsPage} />
       <Route path="/referrals" component={ReferralsPage} />
       <Route path="/provider-offices" component={ProviderOfficesPage} />
@@ -73,6 +80,11 @@ function AuthenticatedRouter() {
       <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
       <Route path="/admin/unlinked-referrals" component={UnlinkedReferralsPage} />
       <Route path="/admin/developer-guide" component={DeveloperGuidePage} />
+      <Route path="/goals" component={GoalTrackingPage} />
+      <Route path="/quick-log" component={QuickLogPage} />
+      <Route path="/roi-calculator" component={ROICalculatorPage} />
+      <Route path="/leaderboard" component={TeamLeaderboardPage} />
+      <Route path="/admin/templates" component={InteractionTemplatesPage} />
       <Route component={NotFound} />
     </Switch>
   );
