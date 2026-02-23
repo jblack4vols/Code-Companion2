@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star, Trash2 } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -82,6 +82,7 @@ export default function PhysiciansPage() {
   const [practiceFilter, setPracticeFilter] = useState<string>(urlParams.get("practice") || "");
   const [showAdd, setShowAdd] = useState(false);
   const [showMerge, setShowMerge] = useState(false);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
   const [selectedPractice, setSelectedPractice] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<SortField | "">("");
@@ -204,6 +205,21 @@ export default function PhysiciansPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
       setSelectedIds(new Set());
       toast({ title: `${data.count} referring provider(s) reassigned` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const bulkDeleteMutation = useMutation({
+    mutationFn: async (physicianIds: string[]) => {
+      const res = await apiRequest("POST", "/api/physicians/bulk-delete", { physicianIds });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      setSelectedIds(new Set());
+      setShowBulkDelete(false);
+      toast({ title: `${data.count} referring provider(s) deleted` });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -548,6 +564,36 @@ export default function PhysiciansPage() {
                     ))}
                   </SelectContent>
                 </Select>
+                <Dialog open={showBulkDelete} onOpenChange={setShowBulkDelete}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      data-testid="button-bulk-delete"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1.5" />Delete
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent>
+                    <DialogHeader>
+                      <DialogTitle>Delete Referring Providers</DialogTitle>
+                      <DialogDescription>
+                        Are you sure you want to delete {selectedIds.size} referring provider(s)? They will be removed from the active list. This action can be undone by an administrator.
+                      </DialogDescription>
+                    </DialogHeader>
+                    <div className="flex justify-end gap-2 mt-2">
+                      <Button variant="outline" onClick={() => setShowBulkDelete(false)} disabled={bulkDeleteMutation.isPending}>Cancel</Button>
+                      <Button
+                        variant="destructive"
+                        onClick={() => bulkDeleteMutation.mutate(Array.from(selectedIds))}
+                        disabled={bulkDeleteMutation.isPending}
+                        data-testid="button-confirm-bulk-delete"
+                      >
+                        {bulkDeleteMutation.isPending ? "Deleting..." : `Delete ${selectedIds.size} Provider(s)`}
+                      </Button>
+                    </div>
+                  </DialogContent>
+                </Dialog>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelectedIds(new Set())} data-testid="button-clear-selection">
                 <X className="w-3 h-3 mr-1" />Clear Selection

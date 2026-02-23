@@ -197,6 +197,31 @@ export function registerPhysicianRoutes(app: Express) {
     }
   });
 
+  app.post("/api/physicians/bulk-delete", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { physicianIds } = req.body;
+      if (!Array.isArray(physicianIds) || physicianIds.length === 0 || !physicianIds.every((id: any) => typeof id === "string" && id.length > 0)) {
+        return res.status(400).json({ message: "physicianIds must be a non-empty array of valid string IDs" });
+      }
+      let count = 0;
+      const failed: string[] = [];
+      for (const id of physicianIds) {
+        try {
+          const deleted = await storage.softDeletePhysician(id);
+          if (deleted) count++;
+          else failed.push(id);
+        } catch { failed.push(id); }
+      }
+      await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Physician", entityId: "bulk", detailJson: { count, failed, physicianIds }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      if (failed.length > 0 && count === 0) {
+        return res.status(400).json({ message: `Failed to delete any providers`, failed });
+      }
+      res.json({ success: true, count, failed });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.get("/api/physicians/by-npi", requireAuth, async (req, res) => {
     try {
       const npi = String(req.query.npi || "").trim();

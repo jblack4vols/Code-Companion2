@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -40,6 +40,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const [, setLoc] = useLocation();
   const [editing, setEditing] = useState(false);
   const [showInteraction, setShowInteraction] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [newComment, setNewComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
@@ -81,6 +82,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   });
 
   const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
+  const canDelete = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
   const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
 
   const updateMutation = useMutation({
@@ -148,6 +150,32 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id, "comments"] });
       toast({ title: "Comment deleted" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("DELETE", `/api/physicians/${params.id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      toast({ title: "Referring provider deleted" });
+      setLoc("/physicians");
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const setInactiveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/physicians/${params.id}`, { status: "INACTIVE" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      toast({ title: "Referring provider set to inactive" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -249,6 +277,45 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
             <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit-physician">
               <Edit2 className="w-3 h-3 mr-1.5" />Edit
             </Button>
+          )}
+          {canDelete && physician.status !== "INACTIVE" && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setInactiveMutation.mutate()}
+              disabled={setInactiveMutation.isPending}
+              data-testid="button-set-inactive-physician"
+            >
+              <ToggleLeft className="w-3 h-3 mr-1.5" />{setInactiveMutation.isPending ? "Saving..." : "Set Inactive"}
+            </Button>
+          )}
+          {canDelete && (
+            <Dialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
+              <DialogTrigger asChild>
+                <Button variant="destructive" size="sm" data-testid="button-delete-physician">
+                  <Trash2 className="w-3 h-3 mr-1.5" />Delete
+                </Button>
+              </DialogTrigger>
+              <DialogContent>
+                <DialogHeader>
+                  <DialogTitle>Delete Referring Provider</DialogTitle>
+                </DialogHeader>
+                <p className="text-sm text-muted-foreground">
+                  Are you sure you want to delete <strong>Dr. {physician.firstName} {physician.lastName}</strong>? This will remove them from the active list. This action can be undone by an administrator.
+                </p>
+                <div className="flex justify-end gap-2 mt-4">
+                  <Button variant="outline" onClick={() => setShowDeleteConfirm(false)} disabled={deleteMutation.isPending}>Cancel</Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                    data-testid="button-confirm-delete-physician"
+                  >
+                    {deleteMutation.isPending ? "Deleting..." : "Delete"}
+                  </Button>
+                </div>
+              </DialogContent>
+            </Dialog>
           )}
         </div>
       </div>
