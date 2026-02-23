@@ -36,6 +36,7 @@ import LocationDashboardPage from "@/pages/location-dashboard";
 import ScheduledReportsPage from "@/pages/scheduled-reports";
 import UnlinkedReferralsPage from "@/pages/unlinked-referrals";
 import ProviderOfficesPage from "@/pages/provider-offices";
+import DeveloperGuidePage from "@/pages/developer-guide";
 import { IdleTimeout } from "@/components/idle-timeout";
 import { ForcePasswordChange } from "@/components/force-password-change";
 import { GlobalSearch } from "@/components/global-search";
@@ -71,6 +72,7 @@ function AuthenticatedRouter() {
       <Route path="/admin/integrations" component={IntegrationsPage} />
       <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
       <Route path="/admin/unlinked-referrals" component={UnlinkedReferralsPage} />
+      <Route path="/admin/developer-guide" component={DeveloperGuidePage} />
       <Route component={NotFound} />
     </Switch>
   );
