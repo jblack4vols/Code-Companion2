@@ -6,7 +6,7 @@ import {
   physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary,
   tieringWeights, appSettings, tasks, users, scheduledReports,
 } from "@shared/schema";
-import { sendOverdueTaskDigest, sendScheduledReportEmail } from "./outlook";
+import { sendOverdueTaskDigest, sendScheduledReportEmail, sendProviderAlertEmail } from "./outlook";
 import { storage } from "./storage";
 
 function getMonthStart(d: Date): string {
@@ -408,6 +408,113 @@ export async function runETL(forceFullRecompute = false) {
       }
     }
 
+    console.log("[ETL] Auto-updating provider relationship stages...");
+    let stageUpdates = 0;
+    const ninetyDaysAgo = new Date(now);
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const ninetyDaysAgoStr = `${ninetyDaysAgo.getFullYear()}-${String(ninetyDaysAgo.getMonth() + 1).padStart(2, "0")}-${String(ninetyDaysAgo.getDate()).padStart(2, "0")}`;
+    const oneEightyDaysAgo = new Date(now);
+    oneEightyDaysAgo.setDate(oneEightyDaysAgo.getDate() - 180);
+    const oneEightyDaysAgoStr = `${oneEightyDaysAgo.getFullYear()}-${String(oneEightyDaysAgo.getMonth() + 1).padStart(2, "0")}-${String(oneEightyDaysAgo.getDate()).padStart(2, "0")}`;
+
+    const currentPhysData = await db.select({
+      id: physicians.id,
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      relationshipStage: physicians.relationshipStage,
+    }).from(physicians).where(sql`${physicians.deletedAt} IS NULL`);
+    const physStageMap = new Map(currentPhysData.map(p => [p.id, p.relationshipStage]));
+    const physNameMap = new Map(currentPhysData.map(p => [p.id, `Dr. ${p.firstName} ${p.lastName}`]));
+
+    const stageTransitions: Array<{ physId: string; oldStage: string; newStage: string }> = [];
+
+    for (const phys of allPhysicians) {
+      const physRefs = allReferrals.filter(r => r.physicianId === phys.id);
+      const recentRefs = physRefs.filter(r => r.referralDate >= ninetyDaysAgoStr);
+      const midRefs = physRefs.filter(r => r.referralDate >= oneEightyDaysAgoStr && r.referralDate < ninetyDaysAgoStr);
+      const hasAnyRefs = physRefs.length > 0;
+      const hasRecentRefs = recentRefs.length > 0;
+      const hasMidRefs = midRefs.length > 0;
+
+      let newStage: "NEW" | "ACTIVE" | "AT_RISK" | "INACTIVE" | null = null;
+
+      if (hasRecentRefs) {
+        newStage = "ACTIVE";
+      } else if (hasMidRefs && !hasRecentRefs) {
+        newStage = "AT_RISK";
+      } else if (hasAnyRefs && !hasRecentRefs && !hasMidRefs) {
+        newStage = "INACTIVE";
+      }
+
+      if (newStage) {
+        const oldStage = physStageMap.get(phys.id) || "NEW";
+        if (oldStage !== newStage) {
+          stageTransitions.push({ physId: phys.id, oldStage, newStage });
+        }
+        await db.update(physicians).set({
+          relationshipStage: newStage,
+          status: newStage === "ACTIVE" ? "ACTIVE" : (newStage === "INACTIVE" ? "INACTIVE" : "PROSPECT"),
+          updatedAt: new Date(),
+        }).where(eq(physicians.id, phys.id));
+        stageUpdates++;
+      }
+    }
+    console.log(`[ETL] Updated ${stageUpdates} provider stages (${stageTransitions.length} actual transitions)`);
+
+    try {
+      const providerAlerts: Array<{ providerName: string; alertType: "declining" | "reactivated"; detail: string }> = [];
+
+      for (const t of stageTransitions) {
+        if ((t.oldStage === "INACTIVE" || t.oldStage === "AT_RISK") && t.newStage === "ACTIVE") {
+          const latestRef = allReferrals.filter(r => r.physicianId === t.physId).sort((a, b) => b.referralDate.localeCompare(a.referralDate))[0];
+          providerAlerts.push({
+            providerName: physNameMap.get(t.physId) || "Unknown",
+            alertType: "reactivated",
+            detail: `Moved from ${t.oldStage} to ACTIVE${latestRef ? ` — latest referral: ${latestRef.referralDate}` : ""}`,
+          });
+        }
+      }
+
+      const prevMonthForAlerts = new Date(now);
+      prevMonthForAlerts.setMonth(prevMonthForAlerts.getMonth() - 1);
+      const prevMonthAlertStr = getMonthStart(prevMonthForAlerts);
+      const twoMonthsAgoForAlerts = new Date(now);
+      twoMonthsAgoForAlerts.setMonth(twoMonthsAgoForAlerts.getMonth() - 2);
+      const twoMonthsAgoAlertStr = getMonthStart(twoMonthsAgoForAlerts);
+
+      const topProviderSummaries = summaryRows.filter(r => r.month === prevMonthAlertStr && (r.tierLabel === "A" || r.tierLabel === "B"));
+      for (const curr of topProviderSummaries) {
+        const prev = summaryRows.find(r => r.physicianId === curr.physicianId && r.month === twoMonthsAgoAlertStr);
+        if (prev && prev.referralsCount > 0) {
+          const decline = (prev.referralsCount - curr.referralsCount) / prev.referralsCount;
+          if (decline >= 0.3 && curr.referralsCount < prev.referralsCount) {
+            providerAlerts.push({
+              providerName: physNameMap.get(curr.physicianId) || "Unknown",
+              alertType: "declining",
+              detail: `Referrals dropped from ${prev.referralsCount} to ${curr.referralsCount} (${Math.round(decline * 100)}% decline)`,
+            });
+          }
+        }
+      }
+
+      if (providerAlerts.length > 0) {
+        const ownerUsers = await db.select().from(users).where(eq(users.role, "OWNER"));
+        const directorUsers = await db.select().from(users).where(eq(users.role, "DIRECTOR"));
+        const recipients = [...ownerUsers, ...directorUsers].filter(u => u.email);
+        const appUrl = process.env.REPLIT_DEV_DOMAIN
+          ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+          : 'https://tristar360.replit.app';
+        for (const user of recipients) {
+          if (user.email) {
+            await sendProviderAlertEmail(user.email, user.name, providerAlerts, appUrl);
+          }
+        }
+        console.log(`[ETL] Sent ${providerAlerts.length} provider alerts to ${recipients.length} recipients`);
+      }
+    } catch (alertErr: any) {
+      console.error("[ETL] Error sending provider alerts:", alertErr.message);
+    }
+
     await setLastETLRun(runTimestamp);
 
     const elapsed = ((Date.now() - startTime) / 1000).toFixed(1);
@@ -563,7 +670,7 @@ export function scheduleETL() {
     await processScheduledReports();
   });
 
-  console.log("[ETL] Nightly ETL scheduled for 2:00 AM daily");
+  console.log("[ETL] Nightly ETL scheduled for 2:00 AM daily (includes provider stage updates and alerts)");
   console.log("[Email] Overdue task digest scheduled for 7:00 AM weekdays");
   console.log("[Reports] Scheduled report delivery check at 6:30 AM daily");
 }

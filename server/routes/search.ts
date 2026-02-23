@@ -75,6 +75,15 @@ export function registerSearchRoutes(app: Express) {
     }
   });
 
+  app.get("/api/referrals/:id/suggested-matches", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const matches = await storage.getSuggestedPhysicianMatches(req.params.id);
+      res.json(matches);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/physicians/:id/health-score", requireAuth, async (req, res) => {
     try {
       const physId = req.params.id;

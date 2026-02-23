@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare } from "lucide-react";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3 } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from "recharts";
 import type { Physician, Location } from "@shared/schema";
 import { format, subMonths, differenceInDays, subDays } from "date-fns";
@@ -132,8 +132,8 @@ export default function DashboardPage() {
   if (loadingStats) {
     return (
       <div className="p-4 sm:p-6 space-y-6">
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
-          {[1,2,3,4,5].map(i => (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+          {[1,2,3,4,5,6,7,8].map(i => (
             <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
           ))}
         </div>
@@ -245,14 +245,14 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           icon={Stethoscope}
-          label="Active Referring Providers"
+          label="Active Providers (90d)"
           value={stats?.activePhysicians || 0}
-          sub={`${physicians?.length || 0} total`}
+          sub={`${physicians?.length || 0} total in system`}
           color="bg-chart-1/15 text-chart-1"
-          onClick={() => navigate("/physicians?status=ACTIVE")}
+          onClick={() => navigate("/physicians")}
           prevValue={comparePeriod && prevStats ? prevStats.activePhysicians : null}
         />
         <StatCard
@@ -278,6 +278,29 @@ export default function DashboardPage() {
           color="bg-chart-5/15 text-chart-5"
           onClick={() => navigate("/physicians?stage=AT_RISK")}
           prevValue={comparePeriod && prevStats ? prevStats.atRiskPhysicians : null}
+        />
+        <StatCard
+          icon={Percent}
+          label="Conversion Rate"
+          value={`${stats?.conversionRate || 0}%`}
+          sub="Referrals with arrived visits"
+          color="bg-green-500/15 text-green-600 dark:text-green-400"
+          prevValue={comparePeriod && prevStats ? prevStats.conversionRate : null}
+        />
+        <StatCard
+          icon={Clock}
+          label="Avg Days to Visit"
+          value={stats?.avgTimeToFirstVisit != null ? stats.avgTimeToFirstVisit : "—"}
+          sub="Referral to first arrived visit"
+          color="bg-blue-500/15 text-blue-600 dark:text-blue-400"
+          prevValue={comparePeriod && prevStats ? prevStats.avgTimeToFirstVisit : null}
+        />
+        <StatCard
+          icon={BarChart3}
+          label="MoM Growth"
+          value={`${stats?.momGrowth > 0 ? '+' : ''}${stats?.momGrowth || 0}%`}
+          sub="Referrals vs prior month"
+          color={`${(stats?.momGrowth || 0) >= 0 ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}
         />
         <StatCard
           icon={ClipboardList}

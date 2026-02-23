@@ -1021,10 +1021,21 @@ export class DatabaseStorage implements IStorage {
     const [interCountResult] = await db.select({ count: sql<number>`count(*)` }).from(interactions)
       .where(and(...interConditions));
 
-    const activePhysicians = await db.select({ count: sql<number>`count(*)` }).from(physicians)
-      .where(physConditions.length > 0
-        ? and(isNull(physicians.deletedAt), eq(physicians.status, "ACTIVE"), ...physConditions)
-        : and(isNull(physicians.deletedAt), eq(physicians.status, "ACTIVE")));
+    const ninetyDaysAgo = new Date();
+    ninetyDaysAgo.setDate(ninetyDaysAgo.getDate() - 90);
+    const ninetyDaysAgoStr = ninetyDaysAgo.toISOString().slice(0, 10);
+
+    const activePhysConditions = [
+      isNull(referrals.deletedAt),
+      isNotNull(referrals.physicianId),
+      gte(referrals.referralDate, ninetyDaysAgoStr),
+    ];
+    if (filters?.locationId) activePhysConditions.push(eq(referrals.locationId, filters.locationId));
+    if (filters?.physicianId) activePhysConditions.push(eq(referrals.physicianId, filters.physicianId));
+
+    const [activePhysicians] = await db.select({
+      count: sql<number>`count(DISTINCT ${referrals.physicianId})`,
+    }).from(referrals).where(and(...activePhysConditions));
 
     const atRiskPhysicians = await db.select({ count: sql<number>`count(*)` }).from(physicians)
       .where(physConditions.length > 0
@@ -1051,14 +1062,46 @@ export class DatabaseStorage implements IStorage {
     const openTasks = await db.select({ count: sql<number>`count(*)` }).from(tasks)
       .where(eq(tasks.status, "OPEN"));
 
+    const [conversionResult] = await db.select({
+      totalReceived: sql<number>`count(*)`,
+      totalArrived: sql<number>`count(*) FILTER (WHERE ${referrals.arrivedVisits} > 0)`,
+    }).from(referrals).where(and(...refConditions));
+
+    const [avgTimeResult] = await db.select({
+      avgDays: sql<number>`avg(
+        CASE WHEN ${referrals.dateOfFirstArrivedVisit} IS NOT NULL AND ${referrals.referralDate} IS NOT NULL
+        THEN (${referrals.dateOfFirstArrivedVisit}::date - ${referrals.referralDate}::date)
+        ELSE NULL END
+      )`,
+    }).from(referrals).where(and(...refConditions));
+
+    const now = new Date();
+    const currentMonthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+    const prevMonthDate = new Date(now);
+    prevMonthDate.setMonth(prevMonthDate.getMonth() - 1);
+    const prevMonthStr = `${prevMonthDate.getFullYear()}-${String(prevMonthDate.getMonth() + 1).padStart(2, "0")}`;
+
+    const momData = refByMonth.map(r => ({ month: r.month, count: Number(r.count) }));
+    const curMonthCount = momData.find(d => d.month === currentMonthStr)?.count || 0;
+    const prevMonthCount = momData.find(d => d.month === prevMonthStr)?.count || 0;
+    const momGrowth = prevMonthCount > 0 ? ((curMonthCount - prevMonthCount) / prevMonthCount * 100) : (curMonthCount > 0 ? 100 : 0);
+
+    const totalReceived = Number(conversionResult?.totalReceived || 0);
+    const totalArrived = Number(conversionResult?.totalArrived || 0);
+    const conversionRate = totalReceived > 0 ? Math.round((totalArrived / totalReceived) * 100) : 0;
+    const avgTimeToFirstVisit = avgTimeResult?.avgDays != null ? Math.round(Number(avgTimeResult.avgDays)) : null;
+
     return {
       totalReferrals: Number(refCountResult?.count || 0),
       totalInteractions: Number(interCountResult?.count || 0),
-      activePhysicians: Number(activePhysicians[0]?.count || 0),
+      activePhysicians: Number(activePhysicians?.count || 0),
       atRiskPhysicians: Number(atRiskPhysicians[0]?.count || 0),
       openTasks: Number(openTasks[0]?.count || 0),
-      referralsByMonth: refByMonth.map(r => ({ month: r.month, count: Number(r.count) })),
+      referralsByMonth: momData,
       topReferrers,
+      conversionRate,
+      avgTimeToFirstVisit,
+      momGrowth: Math.round(momGrowth),
     };
   }
 
@@ -1073,6 +1116,32 @@ export class DatabaseStorage implements IStorage {
     }
     const [found] = await db.select().from(physicians).where(and(...conditions)).limit(1);
     return found;
+  }
+
+  async fuzzyFindPhysicians(lastName: string, firstName?: string): Promise<Physician[]> {
+    const conditions: any[] = [
+      isNull(physicians.deletedAt),
+      ilike(physicians.lastName, `%${lastName.trim()}%`),
+    ];
+    if (firstName && firstName.trim().length > 1) {
+      conditions.push(ilike(physicians.firstName, `${firstName.trim().charAt(0)}%`));
+    }
+    return db.select().from(physicians).where(and(...conditions)).limit(5);
+  }
+
+  async getSuggestedPhysicianMatches(referralId: string): Promise<Physician[]> {
+    const [ref] = await db.select().from(referrals).where(eq(referrals.id, referralId));
+    if (!ref?.referringProviderName) return [];
+    const name = ref.referringProviderName.replace(/^(Dr\.?\s*)/i, "").trim();
+    const parts = name.split(/\s+/);
+    if (parts.length < 2) {
+      return db.select().from(physicians)
+        .where(and(isNull(physicians.deletedAt), ilike(physicians.lastName, `%${parts[0]}%`)))
+        .limit(5);
+    }
+    const lastName = parts.slice(1).join(" ").replace(/,?\s*(MD|DO|PT|DPT|OT|DC|DDS|DMD|PhD|NP|PA|PA-C)\.?$/i, "").trim();
+    const firstName = parts[0];
+    return this.fuzzyFindPhysicians(lastName, firstName);
   }
 
   async findLocationByName(name: string): Promise<Location | undefined> {

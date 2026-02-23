@@ -187,18 +187,27 @@ export async function registerImportRoutes(app: Express) {
 
       async function resolvePhysician(doctorName: string, npi?: string): Promise<string | null> {
         if (!doctorName) return null;
-        const parts = doctorName.trim().split(/\s+/);
+        const cleaned = doctorName.replace(/^(Dr\.?\s*|MD\.?\s*)/i, "").trim();
+        const parts = cleaned.split(/\s+/);
         if (parts.length < 2) return null;
         const firstName = parts[0];
-        const lastName = parts.slice(1).join(" ");
+        const lastName = parts.slice(1).join(" ").replace(/,?\s*(MD|DO|PT|DPT|OT|DC|DDS|DMD|PhD|NP|PA|PA-C)\.?$/i, "").trim();
         const found = await storage.findPhysicianByNameAndNpi(firstName, lastName, npi);
-        return found?.id || null;
+        if (found) return found.id;
+        const fuzzyResults = await storage.fuzzyFindPhysicians(lastName, firstName);
+        if (fuzzyResults.length === 1) return fuzzyResults[0].id;
+        return null;
       }
 
       const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
 
       const mapped: any[] = [];
       const errors: string[] = [];
+      let unmatchedFacilityCount = 0;
+      let unmatchedDoctorCount = 0;
+      let invalidDateCount = 0;
+      const unmatchedFacilities = new Set<string>();
+      const unmatchedDoctors = new Set<string>();
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         const get = (field: string) => {
@@ -222,17 +231,26 @@ export async function registerImportRoutes(app: Express) {
         const facilityName = get("facility") || "";
         const locationId = await resolveLocation(facilityName);
         if (!locationId) {
-          if (facilityName) errors.push(`Row ${i + 1}: Could not match facility "${facilityName}"`);
+          if (facilityName) {
+            unmatchedFacilityCount++;
+            unmatchedFacilities.add(facilityName);
+            errors.push(`Row ${i + 2}: Could not match facility "${facilityName}"`);
+          }
           continue;
         }
 
         const doctorName = get("referringDoctor") || "";
         const doctorNpi = get("referringDoctorNpi");
         const physicianId = await resolvePhysician(doctorName, doctorNpi);
+        if (!physicianId && doctorName) {
+          unmatchedDoctorCount++;
+          unmatchedDoctors.add(doctorName);
+        }
 
         const referralDate = parseDate(getRawDate("createdDate"));
         if (!referralDate) {
-          errors.push(`Row ${i + 1}: Missing or invalid created date`);
+          invalidDateCount++;
+          errors.push(`Row ${i + 2}: Missing or invalid created date`);
           continue;
         }
 
@@ -289,6 +307,16 @@ export async function registerImportRoutes(app: Express) {
 
       const result = await storage.bulkUpsertReferrals(mapped);
       result.errors = [...errors, ...result.errors];
+      const summary = {
+        ...result,
+        totalRows: rows.length,
+        unmatchedFacilityCount,
+        unmatchedDoctorCount,
+        invalidDateCount,
+        unmatchedFacilities: Array.from(unmatchedFacilities),
+        unmatchedDoctors: Array.from(unmatchedDoctors),
+        unlinkedCount: mapped.filter(m => !m.physicianId).length,
+      };
       await storage.createAuditLog({
         userId: req.session.userId!,
         action: "IMPORT",
@@ -298,7 +326,7 @@ export async function registerImportRoutes(app: Express) {
         ipAddress: getClientIp(req),
         userAgent: req.headers["user-agent"] || null,
       });
-      res.json(result);
+      res.json(summary);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -266,3 +266,68 @@ export async function sendScheduledReportEmail(
     console.error(`[Outlook] Failed to send scheduled report email: ${err.message}`);
   }
 }
+
+export async function sendProviderAlertEmail(
+  recipientEmail: string,
+  recipientName: string,
+  alerts: Array<{ providerName: string; alertType: "declining" | "reactivated"; detail: string }>,
+  appUrl: string
+) {
+  try {
+    const client = await getOutlookClient();
+    const decliningAlerts = alerts.filter(a => a.alertType === "declining");
+    const reactivatedAlerts = alerts.filter(a => a.alertType === "reactivated");
+
+    let alertRows = "";
+    if (decliningAlerts.length > 0) {
+      alertRows += `<tr><td colspan="3" style="padding: 12px 10px 6px; font-weight: 700; color: #dc2626; font-size: 14px; border-bottom: 2px solid #fecaca;">&#x26A0; Declining High-Value Providers</td></tr>`;
+      alertRows += decliningAlerts.map(a => `<tr>
+        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #1e293b; font-weight: 500;">${a.providerName}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #dc2626;">Declining</td>
+        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${a.detail}</td>
+      </tr>`).join('');
+    }
+    if (reactivatedAlerts.length > 0) {
+      alertRows += `<tr><td colspan="3" style="padding: 12px 10px 6px; font-weight: 700; color: #16a34a; font-size: 14px; border-bottom: 2px solid #bbf7d0;">&#x2728; Reactivated Providers</td></tr>`;
+      alertRows += reactivatedAlerts.map(a => `<tr>
+        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #1e293b; font-weight: 500;">${a.providerName}</td>
+        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #16a34a;">New Referral</td>
+        <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${a.detail}</td>
+      </tr>`).join('');
+    }
+
+    const message = {
+      subject: `Tristar 360° - ${alerts.length} Provider Alert${alerts.length !== 1 ? 's' : ''} Require Attention`,
+      body: {
+        contentType: "HTML",
+        content: `
+          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+            <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+              <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+              <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Provider Activity Alerts</p>
+            </div>
+            <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+              <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
+              <p style="color: #475569; line-height: 1.6;">We detected <strong>${alerts.length}</strong> provider activity alert${alerts.length !== 1 ? 's' : ''} that may need your attention.</p>
+              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+                <thead><tr style="background-color: #f1f5f9;">
+                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Provider</th>
+                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Alert</th>
+                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Detail</th>
+                </tr></thead>
+                <tbody>${alertRows}</tbody>
+              </table>
+              <div style="text-align: center; margin: 25px 0;">
+                <a href="${appUrl}/physicians" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View Providers</a>
+              </div>
+            </div>
+          </div>`
+      },
+      toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }]
+    };
+    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
+    console.log(`[Outlook] Provider alert email sent to ${recipientEmail} (${alerts.length} alerts)`);
+  } catch (err: any) {
+    console.error(`[Outlook] Failed to send provider alert email: ${err.message}`);
+  }
+}

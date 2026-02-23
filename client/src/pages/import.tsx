@@ -141,7 +141,12 @@ export default function ImportPage() {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [customFieldMappings, setCustomFieldMappings] = useState<{ csvHeader: string; label: string }[]>([]);
   const [loading, setLoading] = useState(false);
-  const [result, setResult] = useState<{ inserted: number; updated: number; errors: string[] } | null>(null);
+  const [result, setResult] = useState<{
+    inserted: number; updated: number; errors: string[];
+    totalRows?: number; unmatchedFacilityCount?: number; unmatchedDoctorCount?: number;
+    invalidDateCount?: number; unmatchedFacilities?: string[]; unmatchedDoctors?: string[];
+    unlinkedCount?: number;
+  } | null>(null);
 
   const fields = importType === "physicians" ? PHYSICIAN_FIELDS : REFERRAL_FIELDS;
   const autoMap = importType === "physicians" ? PHYSICIAN_AUTO_MAP : REFERRAL_AUTO_MAP;
@@ -542,9 +547,10 @@ export default function ImportPage() {
               <div className="text-center">
                 <CheckCircle2 className="w-12 h-12 mx-auto mb-4 text-chart-2" />
                 <h2 className="text-lg font-semibold">Import Complete</h2>
+                {result.totalRows && <p className="text-sm text-muted-foreground mt-1">{result.totalRows} total rows processed</p>}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
                 <Card>
                   <CardContent className="p-4 text-center">
                     <div className="text-2xl font-bold text-chart-2" data-testid="text-inserted-count">{result.inserted}</div>
@@ -554,25 +560,67 @@ export default function ImportPage() {
                 <Card>
                   <CardContent className="p-4 text-center">
                     <div className="text-2xl font-bold text-chart-3" data-testid="text-updated-count">{result.updated}</div>
-                    <div className="text-sm text-muted-foreground">Updated Records</div>
+                    <div className="text-sm text-muted-foreground">Updated</div>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardContent className="p-4 text-center">
                     <div className="text-2xl font-bold text-chart-5" data-testid="text-error-count">{result.errors.length}</div>
-                    <div className="text-sm text-muted-foreground">Errors / Skipped</div>
+                    <div className="text-sm text-muted-foreground">Skipped</div>
                   </CardContent>
                 </Card>
+                {result.unlinkedCount != null && (
+                  <Card>
+                    <CardContent className="p-4 text-center">
+                      <div className="text-2xl font-bold text-amber-500" data-testid="text-unlinked-count">{result.unlinkedCount}</div>
+                      <div className="text-sm text-muted-foreground">Unlinked</div>
+                    </CardContent>
+                  </Card>
+                )}
               </div>
+
+              {((result.unmatchedFacilities && result.unmatchedFacilities.length > 0) || (result.unmatchedDoctors && result.unmatchedDoctors.length > 0)) && (
+                <div className="space-y-3">
+                  {result.unmatchedFacilities && result.unmatchedFacilities.length > 0 && (
+                    <div className="rounded-md border border-red-200 dark:border-red-900 bg-red-50 dark:bg-red-950/30 p-3">
+                      <h4 className="text-sm font-semibold text-red-700 dark:text-red-400 mb-1">
+                        Unmatched Facilities ({result.unmatchedFacilityCount || 0} rows skipped)
+                      </h4>
+                      <p className="text-xs text-muted-foreground mb-2">These facility names didn't match any location in the system. Add the locations first, then re-import.</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.unmatchedFacilities.map((f: string, i: number) => (
+                          <Badge key={i} variant="outline" className="text-xs bg-red-100 dark:bg-red-900/30">{f}</Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {result.unmatchedDoctors && result.unmatchedDoctors.length > 0 && (
+                    <div className="rounded-md border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/30 p-3">
+                      <h4 className="text-sm font-semibold text-amber-700 dark:text-amber-400 mb-1">
+                        Unmatched Doctors ({result.unmatchedDoctorCount || 0} referrals imported unlinked)
+                      </h4>
+                      <p className="text-xs text-muted-foreground mb-2">These referrals were imported but couldn't be linked to a provider. You can link them on the Unlinked Referrals page.</p>
+                      <div className="flex flex-wrap gap-1.5">
+                        {result.unmatchedDoctors.slice(0, 20).map((d: string, i: number) => (
+                          <Badge key={i} variant="outline" className="text-xs bg-amber-100 dark:bg-amber-900/30">{d}</Badge>
+                        ))}
+                        {result.unmatchedDoctors.length > 20 && (
+                          <Badge variant="outline" className="text-xs">+{result.unmatchedDoctors.length - 20} more</Badge>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {result.errors.length > 0 && (
                 <div className="space-y-2">
                   <h3 className="font-semibold flex items-center gap-2">
                     <AlertTriangle className="w-4 h-4 text-chart-5" />
-                    Import Warnings ({result.errors.length})
+                    Row-Level Details ({result.errors.length})
                   </h3>
                   <div className="max-h-48 overflow-auto rounded-md bg-muted/50 p-3 text-sm space-y-1">
-                    {result.errors.slice(0, 50).map((err, i) => (
+                    {result.errors.slice(0, 50).map((err: string, i: number) => (
                       <div key={i} className="text-muted-foreground">{err}</div>
                     ))}
                     {result.errors.length > 50 && (
@@ -586,6 +634,11 @@ export default function ImportPage() {
                 <Button variant="outline" onClick={reset} data-testid="button-import-another">
                   Import Another File
                 </Button>
+                {(result.unlinkedCount ?? 0) > 0 && (
+                  <Button variant="default" onClick={() => window.location.href = "/unlinked-referrals"} data-testid="button-view-unlinked">
+                    View Unlinked Referrals
+                  </Button>
+                )}
               </div>
             </CardContent>
           </Card>
