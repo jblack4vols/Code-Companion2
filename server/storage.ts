@@ -1163,10 +1163,48 @@ export class DatabaseStorage implements IStorage {
   async bulkUpsertPhysicians(rows: InsertPhysician[]): Promise<{ inserted: number; updated: number; errors: string[] }> {
     let inserted = 0, updated = 0;
     const errors: string[] = [];
+
+    const allExisting = await db.select().from(physicians).where(isNull(physicians.deletedAt));
+
+    const npiMap = new Map<string, Physician>();
+    const nameMap = new Map<string, Physician[]>();
+    for (const p of allExisting) {
+      if (p.npi) {
+        npiMap.set(p.npi.trim().toLowerCase(), p);
+      }
+      const nameKey = `${p.firstName.trim().toLowerCase()}|${p.lastName.trim().toLowerCase()}`;
+      const list = nameMap.get(nameKey) || [];
+      list.push(p);
+      nameMap.set(nameKey, list);
+    }
+
+    const findMatch = (firstName: string, lastName: string, npi?: string | null): Physician | undefined => {
+      const fnLower = firstName.trim().toLowerCase();
+      const lnLower = lastName.trim().toLowerCase();
+      if (npi) {
+        const npiKey = npi.trim().toLowerCase();
+        const byNpi = npiMap.get(npiKey);
+        if (byNpi && byNpi.firstName.trim().toLowerCase() === fnLower && byNpi.lastName.trim().toLowerCase() === lnLower) {
+          return byNpi;
+        }
+      }
+      const nameKey = `${fnLower}|${lnLower}`;
+      const candidates = nameMap.get(nameKey);
+      if (candidates) {
+        if (npi) {
+          const withNpi = candidates.find(c => c.npi && c.npi.trim().toLowerCase() === npi.trim().toLowerCase());
+          if (withNpi) return withNpi;
+        }
+        const withoutNpiFilter = candidates.find(c => !npi || !c.npi);
+        return withoutNpiFilter || candidates[0];
+      }
+      return undefined;
+    };
+
     for (let i = 0; i < rows.length; i++) {
       try {
         const row = rows[i];
-        const existing = await this.findPhysicianByNameAndNpi(row.firstName, row.lastName, row.npi);
+        const existing = findMatch(row.firstName, row.lastName, row.npi);
         if (existing) {
           const updateData: any = {};
           if (row.credentials && !existing.credentials) updateData.credentials = row.credentials;
@@ -1203,23 +1241,52 @@ export class DatabaseStorage implements IStorage {
   async bulkUpsertReferrals(rows: InsertReferral[]): Promise<{ inserted: number; updated: number; errors: string[] }> {
     let inserted = 0, updated = 0;
     const errors: string[] = [];
+
+    const accountNumbers = rows
+      .map(r => r.patientAccountNumber)
+      .filter((v): v is string => !!v);
+
+    let existingReferrals: Referral[] = [];
+    if (accountNumbers.length > 0) {
+      const uniqueAccounts = Array.from(new Set(accountNumbers));
+      const batchSize = 500;
+      for (let b = 0; b < uniqueAccounts.length; b += batchSize) {
+        const batch = uniqueAccounts.slice(b, b + batchSize);
+        const results = await db.select().from(referrals)
+          .where(inArray(referrals.patientAccountNumber, batch));
+        existingReferrals.push(...results);
+      }
+    }
+
+    const referralMap = new Map<string, Referral[]>();
+    for (const ref of existingReferrals) {
+      if (ref.patientAccountNumber) {
+        const key = ref.patientAccountNumber;
+        const list = referralMap.get(key) || [];
+        list.push(ref);
+        referralMap.set(key, list);
+      }
+    }
+
     for (let i = 0; i < rows.length; i++) {
       try {
         const row = rows[i];
         if (row.patientAccountNumber) {
-          const conditions = [eq(referrals.patientAccountNumber, row.patientAccountNumber)];
-          if (row.caseTitle) {
-            conditions.push(eq(referrals.caseTitle, row.caseTitle));
-          }
-          const [existing] = await db.select().from(referrals)
-            .where(and(...conditions))
-            .limit(1);
-          if (existing) {
-            const updateData: any = { ...row };
-            delete updateData.id;
-            await db.update(referrals).set({ ...updateData, updatedAt: new Date() }).where(eq(referrals.id, existing.id));
-            updated++;
-            continue;
+          const candidates = referralMap.get(row.patientAccountNumber);
+          if (candidates) {
+            let existing: Referral | undefined;
+            if (row.caseTitle) {
+              existing = candidates.find(c => c.caseTitle === row.caseTitle);
+            } else {
+              existing = candidates[0];
+            }
+            if (existing) {
+              const updateData: any = { ...row };
+              delete updateData.id;
+              await db.update(referrals).set({ ...updateData, updatedAt: new Date() }).where(eq(referrals.id, existing.id));
+              updated++;
+              continue;
+            }
           }
         }
         await db.insert(referrals).values(row);

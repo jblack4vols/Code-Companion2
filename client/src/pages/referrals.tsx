@@ -15,6 +15,7 @@ import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlu
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/use-debounce";
 import type { Physician, Location } from "@shared/schema";
 import { format } from "date-fns";
 
@@ -25,15 +26,6 @@ const statusBadge: Record<string, string> = {
   DISCHARGED: "bg-chart-4/15 text-chart-4",
   LOST: "bg-chart-5/15 text-chart-5",
 };
-
-function useDebounce(value: string, delay: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
 
 export default function ReferralsPage() {
   const { user } = useAuth();

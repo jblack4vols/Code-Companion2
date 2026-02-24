@@ -9,6 +9,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Search, Building2, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Users, FileText, Phone, MapPin, X, Clock } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { useDebounce } from "@/hooks/use-debounce";
 import { Link } from "wouter";
 
 const RECENT_SEARCHES_KEY = "tristar360_provider_offices_recent";
@@ -45,15 +46,6 @@ function useRecentSearches(userId: string | undefined) {
   }, [storageKey]);
 
   return { recent, addRecent, clearRecent };
-}
-
-function useDebounce(value: string, delay: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
 }
 
 function OfficeProviders({ officeName }: { officeName: string }) {

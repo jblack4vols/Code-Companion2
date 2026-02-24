@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -15,6 +15,7 @@ import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, A
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useDebounce } from "@/hooks/use-debounce";
 import type { Physician, User, Location } from "@shared/schema";
 import { Link } from "wouter";
 
@@ -36,15 +37,6 @@ const statusBadge: Record<string, string> = {
   ACTIVE: "bg-chart-4/15 text-chart-4",
   INACTIVE: "bg-muted text-muted-foreground",
 };
-
-function useDebounce(value: string, delay: number) {
-  const [debounced, setDebounced] = useState(value);
-  useEffect(() => {
-    const timer = setTimeout(() => setDebounced(value), delay);
-    return () => clearTimeout(timer);
-  }, [value, delay]);
-  return debounced;
-}
 
 type SortField = "name" | "location" | "status" | "stage" | "priority" | "referrals";
 

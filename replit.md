@@ -22,8 +22,9 @@ The application is built with a modern web stack: **React + Vite + TypeScript** 
 - **User Registration & Approval**: Self-registration flow where employees sign up and remain in PENDING status until a super admin (OWNER) approves them. Admins can assign roles during approval or reject registrations. Managed via Admin > Users page.
 - **Forgot Password**: Token-based password reset flow. Users request a reset link via email (sent through Outlook integration). Tokens expire in 1 hour. Reset page at `/reset-password?token=...`.
 - **Security & Compliance (HIPAA)**: Incorporates extensive HIPAA technical safeguards including audit logging (enhanced with IP/user agent), session timeout, account lockout, strong password policy, and security headers (CSRF, Rate Limiting).
-- **Scalability**: Employs database indexing for performance, incremental ETL processing, and standardized error handling.
-- **Maintainability**: Utilizes soft deletes for data recovery, shared authentication middleware, and environment validation.
+- **Scalability**: Employs database indexing for performance (GIN/pg_trgm indexes on search columns, B-tree indexes on sort columns, partial indexes for token lookups), incremental ETL processing, and standardized error handling. Bulk imports use batch pre-fetch pattern to avoid N+1 queries.
+- **Maintainability**: Utilizes soft deletes for data recovery, shared authentication middleware, environment validation, shared hooks (useDebounce), and React.lazy code splitting for route-based loading.
+- **Performance**: Frontend uses useMemo for chart data transformations, React.lazy/Suspense for code splitting (~30 routes lazy-loaded), and shared utility hooks to reduce duplication.
 
 The UI is designed to be mobile-friendly, adapting layout for smaller screens (e.g., card-based provider lists).
 

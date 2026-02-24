@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -98,27 +98,33 @@ export default function DashboardPage() {
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
-  const stageCounts = physicians?.reduce((acc, p) => {
-    if (physicianId && p.id !== physicianId) return acc;
-    acc[p.relationshipStage] = (acc[p.relationshipStage] || 0) + 1;
-    return acc;
-  }, {} as Record<string, number>) || {};
+  const stageData = useMemo(() => {
+    const stageCounts = physicians?.reduce((acc, p) => {
+      if (physicianId && p.id !== physicianId) return acc;
+      acc[p.relationshipStage] = (acc[p.relationshipStage] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>) || {};
 
-  const stageData = Object.entries(stageCounts).map(([name, value]) => ({
-    name: name.replace(/_/g, " "),
-    value,
-    fill: stageColors[name] || "hsl(var(--chart-1))",
-  }));
+    return Object.entries(stageCounts).map(([name, value]) => ({
+      name: name.replace(/_/g, " "),
+      value,
+      fill: stageColors[name] || "hsl(var(--chart-1))",
+    }));
+  }, [physicians, physicianId]);
 
-  const topReferrers = stats?.topReferrers?.map((r: any) => {
-    const phys = physicians?.find(p => p.id === r.physicianId);
-    return { name: phys ? `Dr. ${phys.lastName}` : "Unknown", count: Number(r.count) };
-  }) || [];
+  const topReferrers = useMemo(() => {
+    return stats?.topReferrers?.map((r: any) => {
+      const phys = physicians?.find(p => p.id === r.physicianId);
+      return { name: phys ? `Dr. ${phys.lastName}` : "Unknown", count: Number(r.count) };
+    }) || [];
+  }, [stats?.topReferrers, physicians]);
 
-  const referralTrendData = stats?.referralsByMonth?.map((r: any) => ({
-    month: r.month,
-    count: r.count,
-  })) || [];
+  const referralTrendData = useMemo(() => {
+    return stats?.referralsByMonth?.map((r: any) => ({
+      month: r.month,
+      count: r.count,
+    })) || [];
+  }, [stats?.referralsByMonth]);
 
   const clearFilters = () => {
     setStartDate(format(subMonths(new Date(), 6), "yyyy-MM-dd"));

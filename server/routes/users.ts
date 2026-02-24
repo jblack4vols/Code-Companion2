@@ -23,7 +23,7 @@ export function registerUserRoutes(app: Express) {
       const plainPassword = validated.password;
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
       const user = await storage.createUser({ ...validated, password: hashedPassword });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
 
       const host = req.headers.host || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
       const protocol = req.headers["x-forwarded-proto"] || "https";
@@ -55,7 +55,7 @@ export function registerUserRoutes(app: Express) {
         delete body.password;
       }
       const validated = insertUserSchema.partial().parse(body);
-      const user = await storage.updateUser(req.params.id, validated);
+      const user = await storage.updateUser(req.params.id as string, validated);
       if (!user) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "User", entityId: user.id, detailJson: { name: user.name, role: user.role }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       const { password: _, ...safe } = user;
@@ -70,8 +70,8 @@ export function registerUserRoutes(app: Express) {
       if (req.params.id === req.session.userId) {
         return res.status(400).json({ message: "You cannot delete your own account" });
       }
-      await storage.deleteUser(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
+      await storage.deleteUser(req.params.id as string);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id as string, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(409).json({ message: err.message });

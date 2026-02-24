@@ -115,7 +115,7 @@ export function registerIntegrationRoutes(app: Express) {
 
       const data = await result.json();
       await storage.updateCalendarEvent(eventId, { outlookEventId: data.id });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SYNC_OUTLOOK", entity: "CalendarEvent", entityId: eventId, detailJson: { outlookId: data.id }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
 
       res.json({ success: true, outlookEventId: data.id });
     } catch (err: any) {
@@ -125,7 +125,7 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.get("/api/sharepoint/sites", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const sites = await searchSPSites(qstr(req.query.q) || "*");
+      const sites = await searchSPSites(qstr(req.query.q as string | string[] | undefined) || "*");
       res.json(sites);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -164,7 +164,7 @@ export function registerIntegrationRoutes(app: Express) {
   });
 
   app.post("/api/sharepoint/sync/:entity", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
-    const entity = req.params.entity;
+    const entity = req.params.entity as string;
     const validEntities = ['physicians', 'referrals', 'interactions', 'tasks', 'locations'];
     if (!validEntities.includes(entity)) return res.status(400).json({ message: `Invalid entity: ${entity}` });
 
@@ -207,7 +207,7 @@ export function registerIntegrationRoutes(app: Express) {
       const existing = await storage.getIntegrationConfigByType(parsed.type);
       if (existing) return res.status(400).json({ message: `Integration of type ${parsed.type} already exists` });
       const config = await storage.createIntegrationConfig(parsed);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_INTEGRATION", entity: "Integration", entityId: config.id, detailJson: { type: parsed.type, name: parsed.name }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE_INTEGRATION", entity: "Integration", entityId: config.id, detailJson: { type: parsed.type, name: parsed.name }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json(config);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -223,9 +223,9 @@ export function registerIntegrationRoutes(app: Express) {
   app.patch("/api/integrations/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const parsed = updateIntegrationSchema.parse(req.body);
-      const updated = await storage.updateIntegrationConfig(req.params.id, parsed);
+      const updated = await storage.updateIntegrationConfig(req.params.id as string, parsed);
       if (!updated) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE_INTEGRATION", entity: "Integration", entityId: updated.id, detailJson: { changes: Object.keys(req.body) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE_INTEGRATION", entity: "Integration", entityId: updated.id, detailJson: { changes: Object.keys(req.body) }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -234,9 +234,9 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.delete("/api/integrations/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const deleted = await storage.deleteIntegrationConfig(req.params.id);
+      const deleted = await storage.deleteIntegrationConfig(req.params.id as string);
       if (!deleted) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE_INTEGRATION", entity: "Integration", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE_INTEGRATION", entity: "Integration", entityId: req.params.id as string, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
@@ -245,7 +245,7 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.post("/api/integrations/:id/test", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const config = await storage.getIntegrationConfig(req.params.id);
+      const config = await storage.getIntegrationConfig(req.params.id as string);
       if (!config) return res.status(404).json({ message: "Not found" });
 
       if (config.type === "GOHIGHLEVEL") {
@@ -310,7 +310,7 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.get("/api/integrations/:id/custom-fields", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const config = await storage.getIntegrationConfig(req.params.id);
+      const config = await storage.getIntegrationConfig(req.params.id as string);
       if (!config) return res.status(404).json({ message: "Not found" });
       if (config.type !== "GOHIGHLEVEL") return res.status(400).json({ message: "Only supported for GoHighLevel" });
       const apiKey = config.settings?.apiKey;
@@ -340,7 +340,7 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.post("/api/integrations/:id/sync", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const config = await storage.getIntegrationConfig(req.params.id);
+      const config = await storage.getIntegrationConfig(req.params.id as string);
       if (!config) return res.status(404).json({ message: "Not found" });
       const direction = req.body.direction || "push";
 
@@ -348,7 +348,7 @@ export function registerIntegrationRoutes(app: Express) {
         integrationId: config.id,
         direction,
         status: "running",
-        details: { triggeredBy: req.session.userId },
+        details: { triggeredBy: req.session.userId } as Record<string, any>,
       });
 
       if (config.type === "GOHIGHLEVEL" && config.settings?.apiKey) {
@@ -856,7 +856,7 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.get("/api/integrations/:id/logs", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const logs = await storage.getIntegrationSyncLogs(req.params.id, 20);
+      const logs = await storage.getIntegrationSyncLogs(req.params.id as string, 20);
       res.json(logs);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

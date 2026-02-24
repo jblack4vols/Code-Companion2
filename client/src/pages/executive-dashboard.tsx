@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -55,23 +55,32 @@ export default function ExecutiveDashboardPage() {
     queryKey: ["/api/physicians"],
   });
 
-  const physicianMap = new Map<string, Physician>();
-  physicians?.forEach((p) => physicianMap.set(p.id, p));
+  const physicianMap = useMemo(() => {
+    const map = new Map<string, Physician>();
+    physicians?.forEach((p) => map.set(p.id, p));
+    return map;
+  }, [physicians]);
 
-  const topReferrers = (execData?.topReferrersByRevenue || []).slice(0, 20);
+  const topReferrers = useMemo(() => {
+    return (execData?.topReferrersByRevenue || []).slice(0, 20);
+  }, [execData?.topReferrersByRevenue]);
 
-  const growthRateData = (execData?.growthRates || []).map((g: any) => ({
-    month: format(new Date(g.month), "MMM yy"),
-    rate: Number(g.rate),
-  }));
-
-  const monthlyTotals = execData?.monthlyTotals || {};
-  const volumeData = Object.entries(monthlyTotals)
-    .sort(([a], [b]) => a.localeCompare(b))
-    .map(([month, count]) => ({
-      month: format(new Date(month), "MMM yy"),
-      count: Number(count),
+  const growthRateData = useMemo(() => {
+    return (execData?.growthRates || []).map((g: any) => ({
+      month: format(new Date(g.month), "MMM yy"),
+      rate: Number(g.rate),
     }));
+  }, [execData?.growthRates]);
+
+  const volumeData = useMemo(() => {
+    const monthlyTotals = execData?.monthlyTotals || {};
+    return Object.entries(monthlyTotals)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([month, count]) => ({
+        month: format(new Date(month), "MMM yy"),
+        count: Number(count),
+      }));
+  }, [execData?.monthlyTotals]);
 
   if (loadingExec) {
     return (

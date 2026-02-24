@@ -120,7 +120,7 @@ export function registerAuthRoutes(app: Express) {
       } catch (emailErr: any) {
         console.error("Failed to send password reset email:", emailErr.message);
       }
-      await storage.createAuditLog({ userId: user.id, action: "PASSWORD_RESET_REQUEST", entity: "Auth", entityId: user.id, detailJson: { email }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: user.id, action: "PASSWORD_RESET_REQUEST", entity: "Auth", entityId: user.id, detailJson: { email }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true, message: "If an account exists with that email, a password reset link has been sent." });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -147,7 +147,7 @@ export function registerAuthRoutes(app: Express) {
         failedLoginAttempts: 0,
         lockedUntil: null,
       } as any);
-      await storage.createAuditLog({ userId: user.id, action: "PASSWORD_RESET_COMPLETE", entity: "Auth", entityId: user.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: user.id, action: "PASSWORD_RESET_COMPLETE", entity: "Auth", entityId: user.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true, message: "Password has been reset. You can now log in." });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -165,7 +165,7 @@ export function registerAuthRoutes(app: Express) {
       if (!pwResult.success) return res.status(400).json({ message: pwResult.error.errors[0].message });
       const hashedPassword = await bcrypt.hash(newPassword, 12);
       await storage.updateUser(user.id, { password: hashedPassword, passwordChangedAt: new Date(), forcePasswordChange: false } as any);
-      await storage.createAuditLog({ userId: user.id, action: "PASSWORD_CHANGED", entity: "Auth", entityId: user.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: user.id, action: "PASSWORD_CHANGED", entity: "Auth", entityId: user.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -189,7 +189,7 @@ export function registerAuthRoutes(app: Express) {
       const role = req.body.role as string | undefined;
       const validRoles = ["OWNER", "DIRECTOR", "MARKETER", "FRONT_DESK", "ANALYST"];
       const assignRole = role && validRoles.includes(role) ? role : "MARKETER";
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(req.params.id as string);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.approvalStatus !== "PENDING") return res.status(400).json({ message: "User is not in pending status" });
       await storage.updateUser(user.id, { approvalStatus: "APPROVED", role: assignRole } as any);
@@ -202,7 +202,7 @@ export function registerAuthRoutes(app: Express) {
 
   app.post("/api/admin/reject-user/:id", requireRole("OWNER"), async (req, res) => {
     try {
-      const user = await storage.getUser(req.params.id);
+      const user = await storage.getUser(req.params.id as string);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.approvalStatus !== "PENDING") return res.status(400).json({ message: "User is not in pending status" });
       await storage.updateUser(user.id, { approvalStatus: "REJECTED" } as any);

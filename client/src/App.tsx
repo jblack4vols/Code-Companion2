@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route } from "wouter";
 import { queryClient } from "@/lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -11,83 +12,97 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
 import ResetPasswordPage from "@/pages/reset-password";
-import DashboardPage from "@/pages/dashboard";
-import PhysiciansPage from "@/pages/physicians";
-import PhysicianDetailPage from "@/pages/physician-detail";
-import InteractionsPage from "@/pages/interactions";
-import ReferralsPage from "@/pages/referrals";
-import TasksPage from "@/pages/tasks";
-import AdminUsersPage from "@/pages/admin-users";
-import AdminSettingsPage from "@/pages/admin-settings";
-import CalendarPage from "@/pages/calendar";
-import AdminLocationsPage from "@/pages/admin-locations";
-import AuditLogPage from "@/pages/audit-log";
-import PhysicianTieringPage from "@/pages/physician-tiering";
-import DecliningReferralsPage from "@/pages/declining-referrals";
-import TerritoriesPage from "@/pages/territories";
-import ImportPage from "@/pages/import";
-import SharePointSyncPage from "@/pages/sharepoint-sync";
-import MapViewPage from "@/pages/map-view";
-import DuplicateDetectionPage from "@/pages/duplicate-detection";
-import UserActivityReportsPage from "@/pages/user-activity-reports";
-import IntegrationsPage from "@/pages/integrations";
-import ExecutiveDashboardPage from "@/pages/executive-dashboard";
-import TerritoryDashboardPage from "@/pages/territory-dashboard";
-import LocationDashboardPage from "@/pages/location-dashboard";
-import ScheduledReportsPage from "@/pages/scheduled-reports";
-import UnlinkedReferralsPage from "@/pages/unlinked-referrals";
-import ProviderOfficesPage from "@/pages/provider-offices";
-import DeveloperGuidePage from "@/pages/developer-guide";
-import ProviderScorecardPage from "@/pages/provider-scorecard";
-import GoalTrackingPage from "@/pages/goal-tracking";
-import InteractionTemplatesPage from "@/pages/interaction-templates";
-import QuickLogPage from "@/pages/quick-log";
-import ROICalculatorPage from "@/pages/roi-calculator";
-import TeamLeaderboardPage from "@/pages/team-leaderboard";
 import { IdleTimeout } from "@/components/idle-timeout";
 import { ForcePasswordChange } from "@/components/force-password-change";
 import { GlobalSearch } from "@/components/global-search";
 import { Loader2 } from "lucide-react";
 
+const DashboardPage = lazy(() => import("@/pages/dashboard"));
+const PhysiciansPage = lazy(() => import("@/pages/physicians"));
+const PhysicianDetailPage = lazy(() => import("@/pages/physician-detail"));
+const InteractionsPage = lazy(() => import("@/pages/interactions"));
+const ReferralsPage = lazy(() => import("@/pages/referrals"));
+const TasksPage = lazy(() => import("@/pages/tasks"));
+const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
+const AdminSettingsPage = lazy(() => import("@/pages/admin-settings"));
+const CalendarPage = lazy(() => import("@/pages/calendar"));
+const AdminLocationsPage = lazy(() => import("@/pages/admin-locations"));
+const AuditLogPage = lazy(() => import("@/pages/audit-log"));
+const PhysicianTieringPage = lazy(() => import("@/pages/physician-tiering"));
+const DecliningReferralsPage = lazy(() => import("@/pages/declining-referrals"));
+const TerritoriesPage = lazy(() => import("@/pages/territories"));
+const ImportPage = lazy(() => import("@/pages/import"));
+const SharePointSyncPage = lazy(() => import("@/pages/sharepoint-sync"));
+const MapViewPage = lazy(() => import("@/pages/map-view"));
+const DuplicateDetectionPage = lazy(() => import("@/pages/duplicate-detection"));
+const UserActivityReportsPage = lazy(() => import("@/pages/user-activity-reports"));
+const IntegrationsPage = lazy(() => import("@/pages/integrations"));
+const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard"));
+const TerritoryDashboardPage = lazy(() => import("@/pages/territory-dashboard"));
+const LocationDashboardPage = lazy(() => import("@/pages/location-dashboard"));
+const ScheduledReportsPage = lazy(() => import("@/pages/scheduled-reports"));
+const UnlinkedReferralsPage = lazy(() => import("@/pages/unlinked-referrals"));
+const ProviderOfficesPage = lazy(() => import("@/pages/provider-offices"));
+const DeveloperGuidePage = lazy(() => import("@/pages/developer-guide"));
+const ProviderScorecardPage = lazy(() => import("@/pages/provider-scorecard"));
+const GoalTrackingPage = lazy(() => import("@/pages/goal-tracking"));
+const InteractionTemplatesPage = lazy(() => import("@/pages/interaction-templates"));
+const QuickLogPage = lazy(() => import("@/pages/quick-log"));
+const ROICalculatorPage = lazy(() => import("@/pages/roi-calculator"));
+const TeamLeaderboardPage = lazy(() => import("@/pages/team-leaderboard"));
+
+function LazyFallback() {
+  return (
+    <div className="flex-1 flex items-center justify-center p-8">
+      <div className="flex flex-col items-center gap-3">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground">Loading...</p>
+      </div>
+    </div>
+  );
+}
+
 function AuthenticatedRouter() {
   return (
-    <Switch>
-      <Route path="/" component={DashboardPage} />
-      <Route path="/dashboard" component={DashboardPage} />
-      <Route path="/physicians" component={PhysiciansPage} />
-      <Route path="/physicians/:id">{(params) => <PhysicianDetailPage params={params} />}</Route>
-      <Route path="/scorecard/:id">{(params) => <ProviderScorecardPage params={params} />}</Route>
-      <Route path="/interactions" component={InteractionsPage} />
-      <Route path="/referrals" component={ReferralsPage} />
-      <Route path="/provider-offices" component={ProviderOfficesPage} />
-      <Route path="/tasks" component={TasksPage} />
-      <Route path="/calendar" component={CalendarPage} />
-      <Route path="/tiering" component={PhysicianTieringPage} />
-      <Route path="/declining" component={DecliningReferralsPage} />
-      <Route path="/territories" component={TerritoriesPage} />
-      <Route path="/map" component={MapViewPage} />
-      <Route path="/dashboards/executive" component={ExecutiveDashboardPage} />
-      <Route path="/dashboards/territory" component={TerritoryDashboardPage} />
-      <Route path="/dashboards/location" component={LocationDashboardPage} />
-      <Route path="/import" component={ImportPage} />
-      <Route path="/admin/sharepoint" component={SharePointSyncPage} />
-      <Route path="/admin/duplicates" component={DuplicateDetectionPage} />
-      <Route path="/admin/reports" component={UserActivityReportsPage} />
-      <Route path="/admin/users" component={AdminUsersPage} />
-      <Route path="/admin/locations" component={AdminLocationsPage} />
-      <Route path="/admin/settings" component={AdminSettingsPage} />
-      <Route path="/admin/audit-log" component={AuditLogPage} />
-      <Route path="/admin/integrations" component={IntegrationsPage} />
-      <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
-      <Route path="/admin/unlinked-referrals" component={UnlinkedReferralsPage} />
-      <Route path="/admin/developer-guide" component={DeveloperGuidePage} />
-      <Route path="/goals" component={GoalTrackingPage} />
-      <Route path="/quick-log" component={QuickLogPage} />
-      <Route path="/roi-calculator" component={ROICalculatorPage} />
-      <Route path="/leaderboard" component={TeamLeaderboardPage} />
-      <Route path="/admin/templates" component={InteractionTemplatesPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <Suspense fallback={<LazyFallback />}>
+      <Switch>
+        <Route path="/" component={DashboardPage} />
+        <Route path="/dashboard" component={DashboardPage} />
+        <Route path="/physicians" component={PhysiciansPage} />
+        <Route path="/physicians/:id">{(params) => <PhysicianDetailPage params={params} />}</Route>
+        <Route path="/scorecard/:id">{(params) => <ProviderScorecardPage params={params} />}</Route>
+        <Route path="/interactions" component={InteractionsPage} />
+        <Route path="/referrals" component={ReferralsPage} />
+        <Route path="/provider-offices" component={ProviderOfficesPage} />
+        <Route path="/tasks" component={TasksPage} />
+        <Route path="/calendar" component={CalendarPage} />
+        <Route path="/tiering" component={PhysicianTieringPage} />
+        <Route path="/declining" component={DecliningReferralsPage} />
+        <Route path="/territories" component={TerritoriesPage} />
+        <Route path="/map" component={MapViewPage} />
+        <Route path="/dashboards/executive" component={ExecutiveDashboardPage} />
+        <Route path="/dashboards/territory" component={TerritoryDashboardPage} />
+        <Route path="/dashboards/location" component={LocationDashboardPage} />
+        <Route path="/import" component={ImportPage} />
+        <Route path="/admin/sharepoint" component={SharePointSyncPage} />
+        <Route path="/admin/duplicates" component={DuplicateDetectionPage} />
+        <Route path="/admin/reports" component={UserActivityReportsPage} />
+        <Route path="/admin/users" component={AdminUsersPage} />
+        <Route path="/admin/locations" component={AdminLocationsPage} />
+        <Route path="/admin/settings" component={AdminSettingsPage} />
+        <Route path="/admin/audit-log" component={AuditLogPage} />
+        <Route path="/admin/integrations" component={IntegrationsPage} />
+        <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
+        <Route path="/admin/unlinked-referrals" component={UnlinkedReferralsPage} />
+        <Route path="/admin/developer-guide" component={DeveloperGuidePage} />
+        <Route path="/goals" component={GoalTrackingPage} />
+        <Route path="/quick-log" component={QuickLogPage} />
+        <Route path="/roi-calculator" component={ROICalculatorPage} />
+        <Route path="/leaderboard" component={TeamLeaderboardPage} />
+        <Route path="/admin/templates" component={InteractionTemplatesPage} />
+        <Route component={NotFound} />
+      </Switch>
+    </Suspense>
   );
 }
 
