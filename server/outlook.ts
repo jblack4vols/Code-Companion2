@@ -16,7 +16,7 @@ async function getAccessToken() {
     : null;
 
   if (!xReplitToken) {
-    throw new Error('X_REPLIT_TOKEN not found for repl/depl');
+    throw new Error('X-Replit-Token not found for repl/depl');
   }
 
   connectionSettings = await fetch(
@@ -24,7 +24,7 @@ async function getAccessToken() {
     {
       headers: {
         'Accept': 'application/json',
-        'X_REPLIT_TOKEN': xReplitToken
+        'X-Replit-Token': xReplitToken
       }
     }
   ).then(res => res.json()).then(data => data.items?.[0]);
@@ -37,7 +37,7 @@ async function getAccessToken() {
   return accessToken;
 }
 
-async function getOutlookClient() {
+export async function getUncachableOutlookClient() {
   const accessToken = await getAccessToken();
   return Client.initWithMiddleware({
     authProvider: {
@@ -52,7 +52,7 @@ export async function sendWelcomeEmail(
   password: string,
   loginUrl: string
 ) {
-  const client = await getOutlookClient();
+  const client = await getUncachableOutlookClient();
 
   const message = {
     subject: "Welcome to Tristar 360° - Your Account Has Been Created",
@@ -113,7 +113,7 @@ export async function sendPasswordResetEmail(
   recipientName: string,
   resetUrl: string
 ) {
-  const client = await getOutlookClient();
+  const client = await getUncachableOutlookClient();
 
   const message = {
     subject: "Tristar 360° - Password Reset Request",
@@ -160,7 +160,7 @@ export async function sendTaskAssignmentEmail(
   appUrl: string
 ) {
   try {
-    const client = await getOutlookClient();
+    const client = await getUncachableOutlookClient();
     const dueLine = dueDate ? `<tr><td style="padding: 8px 0; color: #64748b; font-weight: 600; width: 120px;">Due Date:</td><td style="padding: 8px 0; color: #1e293b;">${new Date(dueDate).toLocaleDateString()}</td></tr>` : '';
     const providerLine = providerName ? `<tr><td style="padding: 8px 0; color: #64748b; font-weight: 600;">Provider:</td><td style="padding: 8px 0; color: #1e293b;">${providerName}</td></tr>` : '';
     const descLine = taskDescription ? `<p style="color: #475569; line-height: 1.6; margin-top: 15px;">${taskDescription}</p>` : '';
@@ -209,7 +209,7 @@ export async function sendOverdueTaskDigest(
   appUrl: string
 ) {
   try {
-    const client = await getOutlookClient();
+    const client = await getUncachableOutlookClient();
     const taskRows = overdueTasks.map(t => {
       const daysOverdue = Math.floor((Date.now() - new Date(t.dueDate).getTime()) / (1000 * 60 * 60 * 24));
       return `<tr>
@@ -264,7 +264,7 @@ export async function sendScheduledReportEmail(
   appUrl: string
 ) {
   try {
-    const client = await getOutlookClient();
+    const client = await getUncachableOutlookClient();
     const csvBase64 = Buffer.from(csvContent).toString('base64');
     const dateStr = new Date().toLocaleDateString();
 
@@ -315,7 +315,7 @@ export async function sendProviderAlertEmail(
   appUrl: string
 ) {
   try {
-    const client = await getOutlookClient();
+    const client = await getUncachableOutlookClient();
     const decliningAlerts = alerts.filter(a => a.alertType === "declining");
     const reactivatedAlerts = alerts.filter(a => a.alertType === "reactivated");
 
