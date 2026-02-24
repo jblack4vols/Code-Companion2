@@ -1,11 +1,12 @@
 // Outlook integration via Microsoft Graph API (Replit connector)
 import { Client } from '@microsoft/microsoft-graph-client';
 
-let connectionSettings: any;
+let cachedAccessToken: string | null = null;
+let cachedTokenExpiry: number = 0;
 
 async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
+  if (cachedAccessToken && cachedTokenExpiry > Date.now() + 60000) {
+    return cachedAccessToken;
   }
 
   const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
@@ -19,7 +20,7 @@ async function getAccessToken() {
     throw new Error('X-Replit-Token not found for repl/depl');
   }
 
-  connectionSettings = await fetch(
+  const connectionSettings = await fetch(
     'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=outlook',
     {
       headers: {
@@ -29,12 +30,50 @@ async function getAccessToken() {
     }
   ).then(res => res.json()).then(data => data.items?.[0]);
 
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings.settings?.oauth?.credentials?.access_token;
-
-  if (!connectionSettings || !accessToken) {
+  if (!connectionSettings) {
     throw new Error('Outlook not connected');
   }
-  return accessToken;
+
+  const oauthCreds = connectionSettings.settings?.oauth?.credentials;
+  const expiresAt = oauthCreds?.expires_at ? new Date(oauthCreds.expires_at).getTime() : 0;
+
+  if (expiresAt > Date.now() + 60000) {
+    const token = connectionSettings.settings?.access_token || oauthCreds?.access_token;
+    if (token) {
+      cachedAccessToken = token;
+      cachedTokenExpiry = expiresAt;
+      return token;
+    }
+  }
+
+  if (oauthCreds?.refresh_token && oauthCreds?.client_id) {
+    const tokenResp = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        client_id: oauthCreds.client_id,
+        grant_type: 'refresh_token',
+        refresh_token: oauthCreds.refresh_token,
+        scope: oauthCreds.scope || 'https://graph.microsoft.com/.default offline_access',
+      }).toString()
+    });
+
+    if (!tokenResp.ok) {
+      const errText = await tokenResp.text();
+      throw new Error(`Token refresh failed: ${errText}`);
+    }
+
+    const tokenData = await tokenResp.json();
+    cachedAccessToken = tokenData.access_token;
+    cachedTokenExpiry = Date.now() + (tokenData.expires_in * 1000);
+    return cachedAccessToken;
+  }
+
+  const fallbackToken = connectionSettings.settings?.access_token || oauthCreds?.access_token;
+  if (!fallbackToken) {
+    throw new Error('Outlook not connected - no access token available');
+  }
+  return fallbackToken;
 }
 
 export async function getUncachableOutlookClient() {
