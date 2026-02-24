@@ -33,8 +33,8 @@ export function requireRole(...roles: string[]) {
   };
 }
 
-export const MAX_LOGIN_ATTEMPTS = 5;
-export const LOCKOUT_DURATION_MS = 15 * 60 * 1000;
+export const MAX_LOGIN_ATTEMPTS = 10;
+export const LOCKOUT_DURATION_MS = 5 * 60 * 1000;
 export const SESSION_TIMEOUT_MS = 15 * 60 * 1000;
 
 export function getClientIp(req: Request): string {

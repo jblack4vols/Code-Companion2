@@ -88,7 +88,7 @@ export function registerAuthRoutes(app: Express) {
         if (remaining > 0) {
           return res.status(401).json({ message: `Invalid email or password. ${remaining} attempt${remaining !== 1 ? "s" : ""} remaining.` });
         }
-        return res.status(423).json({ message: `Account locked after ${MAX_LOGIN_ATTEMPTS} failed attempts. Try again in 15 minutes.`, locked: true, remainingMs: LOCKOUT_DURATION_MS });
+        return res.status(423).json({ message: `Account locked after ${MAX_LOGIN_ATTEMPTS} failed attempts. Try again in 5 minutes.`, locked: true, remainingMs: LOCKOUT_DURATION_MS });
       }
       await storage.updateUser(user.id, { failedLoginAttempts: 0, lockedUntil: null, lastLoginAt: new Date() });
       req.session.userId = user.id;
