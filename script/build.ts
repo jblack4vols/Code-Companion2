@@ -1,9 +1,33 @@
 import { build as esbuild } from "esbuild";
 import { build as viteBuild } from "vite";
 import { rm, readFile } from "fs/promises";
+import pg from "pg";
 
-// server deps to bundle to reduce openat(2) syscalls
-// which helps cold start times
+async function dropTrgmIndexes() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return;
+  const client = new pg.Client({ connectionString: url });
+  try {
+    await client.connect();
+    const indexes = [
+      "idx_physicians_firstname_trgm",
+      "idx_physicians_lastname_trgm",
+      "idx_physicians_practicename_trgm",
+      "idx_physicians_city_trgm",
+      "idx_referrals_provider_trgm",
+      "idx_referrals_patient_trgm",
+    ];
+    for (const idx of indexes) {
+      await client.query(`DROP INDEX IF EXISTS "${idx}"`);
+    }
+    console.log("dropped trgm indexes before db:push");
+  } catch (e) {
+    console.warn("could not drop trgm indexes:", e);
+  } finally {
+    await client.end();
+  }
+}
+
 const allowlist = [
   "@google/generative-ai",
   "axios",
@@ -33,6 +57,7 @@ const allowlist = [
 ];
 
 async function buildAll() {
+  await dropTrgmIndexes();
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");
