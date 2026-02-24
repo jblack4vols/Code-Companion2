@@ -108,6 +108,47 @@ export async function sendWelcomeEmail(
   await client.api('/me/sendMail').post({ message, saveToSentItems: true });
 }
 
+export async function sendPasswordResetEmail(
+  recipientEmail: string,
+  recipientName: string,
+  resetUrl: string
+) {
+  const client = await getOutlookClient();
+
+  const message = {
+    subject: "Tristar 360° - Password Reset Request",
+    body: {
+      contentType: "HTML",
+      content: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+            <h1 style="color: white; margin: 0; font-size: 24px;">Password Reset</h1>
+            <p style="color: #bfdbfe; margin: 5px 0 0;">Tristar 360°</p>
+          </div>
+          <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+            <p style="color: #1e293b; font-size: 16px;">Hi ${recipientName},</p>
+            <p style="color: #475569; line-height: 1.6;">We received a request to reset your password. Click the button below to set a new password:</p>
+            <div style="text-align: center; margin: 30px 0;">
+              <a href="${resetUrl}" style="background-color: #2563eb; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Reset Password</a>
+            </div>
+            <p style="color: #64748b; font-size: 13px;">This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
+          </div>
+        </div>
+      `,
+    },
+    toRecipients: [
+      {
+        emailAddress: {
+          address: recipientEmail,
+          name: recipientName
+        }
+      }
+    ]
+  };
+
+  await client.api('/me/sendMail').post({ message, saveToSentItems: true });
+}
+
 export async function sendTaskAssignmentEmail(
   recipientEmail: string,
   recipientName: string,

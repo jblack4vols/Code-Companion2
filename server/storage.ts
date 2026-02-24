@@ -61,9 +61,11 @@ export interface ReferralFilters {
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByResetToken(token: string): Promise<User | undefined>;
+  getUsersByApprovalStatus(status: string): Promise<User[]>;
   getUsers(): Promise<User[]>;
   createUser(user: InsertUser): Promise<User>;
-  updateUser(id: string, data: Partial<InsertUser> & { failedLoginAttempts?: number; lockedUntil?: Date | null; lastLoginAt?: Date; passwordChangedAt?: Date }): Promise<User | undefined>;
+  updateUser(id: string, data: Partial<InsertUser> & { failedLoginAttempts?: number; lockedUntil?: Date | null; lastLoginAt?: Date; passwordChangedAt?: Date; approvalStatus?: string; passwordResetToken?: string | null; passwordResetExpires?: Date | null }): Promise<User | undefined>;
   deleteUser(id: string): Promise<boolean>;
 
   getLocations(): Promise<Location[]>;
@@ -198,6 +200,15 @@ export class DatabaseStorage implements IStorage {
   async getUserByEmail(email: string) {
     const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
+  }
+
+  async getUserByResetToken(token: string) {
+    const [user] = await db.select().from(users).where(eq(users.passwordResetToken, token));
+    return user;
+  }
+
+  async getUsersByApprovalStatus(status: string) {
+    return db.select().from(users).where(eq(users.approvalStatus, status as any)).orderBy(desc(users.createdAt));
   }
 
   async getUsers() {

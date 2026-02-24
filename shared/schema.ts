@@ -41,17 +41,24 @@ export const eventTypeEnum = pgEnum("event_type", [
   "MEETING", "LUNCH", "OFFICE_VISIT", "CALL", "CONFERENCE", "OTHER",
 ]);
 
+export const approvalStatusEnum = pgEnum("approval_status", [
+  "PENDING", "APPROVED", "REJECTED",
+]);
+
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
   password: text("password").notNull(),
   role: userRoleEnum("role").notNull().default("MARKETER"),
+  approvalStatus: approvalStatusEnum("approval_status").notNull().default("APPROVED"),
   failedLoginAttempts: integer("failed_login_attempts").default(0).notNull(),
   lockedUntil: timestamp("locked_until"),
   lastLoginAt: timestamp("last_login_at"),
   passwordChangedAt: timestamp("password_changed_at"),
   forcePasswordChange: boolean("force_password_change").default(true).notNull(),
+  passwordResetToken: text("password_reset_token"),
+  passwordResetExpires: timestamp("password_reset_expires"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -333,7 +340,18 @@ export const tieringWeights = pgTable("tiering_weights", {
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({
-  id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true, forcePasswordChange: true,
+  id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true, forcePasswordChange: true, approvalStatus: true, passwordResetToken: true, passwordResetExpires: true,
+});
+
+export const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: z.string()
+    .min(8, "Password must be at least 8 characters")
+    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
+    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
+    .regex(/[0-9]/, "Password must contain at least one number")
+    .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character"),
 });
 
 export const passwordSchema = z.string()

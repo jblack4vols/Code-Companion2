@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
-import { Users, Plus, Pencil, Trash2 } from "lucide-react";
+import { Users, Plus, Pencil, Trash2, UserCheck, UserX, Clock } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { User } from "@shared/schema";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const roleLabels: Record<string, string> = {
   OWNER: "Owner",
@@ -37,9 +38,11 @@ export default function AdminUsersPage() {
   const { user: currentUser } = useAuth();
   const { toast } = useToast();
   const { data: users, isLoading } = useQuery<User[]>({ queryKey: ["/api/users"] });
+  const { data: pendingUsers, isLoading: pendingLoading } = useQuery<User[]>({ queryKey: ["/api/admin/pending-users"] });
   const [showAdd, setShowAdd] = useState(false);
   const [editUser, setEditUser] = useState<User | null>(null);
   const [deleteUser, setDeleteUser] = useState<User | null>(null);
+  const [approveRoles, setApproveRoles] = useState<Record<string, string>>({});
 
   const isOwner = currentUser?.role === "OWNER";
 
@@ -91,6 +94,31 @@ export default function AdminUsersPage() {
       setDeleteUser(null);
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
+  });
+
+  const approveMutation = useMutation({
+    mutationFn: async ({ id, role }: { id: string; role: string }) => {
+      const res = await apiRequest("POST", `/api/admin/approve-user/${id}`, { role });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/users"] });
+      toast({ title: "User approved" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const rejectMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("POST", `/api/admin/reject-user/${id}`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
+      toast({ title: "User rejected" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const validatePassword = (pw: string): string | null => {
@@ -189,6 +217,74 @@ export default function AdminUsersPage() {
           </Dialog>
         )}
       </div>
+
+      {pendingUsers && pendingUsers.length > 0 && (
+        <div className="space-y-3">
+          <div className="flex items-center gap-2">
+            <Clock className="w-4 h-4 text-chart-5" />
+            <h2 className="text-base font-semibold">Pending Registrations</h2>
+            <Badge variant="outline" className="bg-chart-5/15 text-chart-5 text-[10px]">{pendingUsers.length}</Badge>
+          </div>
+          <div className="grid grid-cols-1 gap-3">
+            {pendingUsers.map(u => {
+              const initials = u.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+              return (
+                <Card key={u.id} className="border-chart-5/30" data-testid={`card-pending-user-${u.id}`}>
+                  <CardContent className="p-4 flex items-center gap-3 flex-wrap">
+                    <Avatar className="h-10 w-10 shrink-0">
+                      <AvatarFallback className="bg-chart-5/10 text-chart-5 text-sm font-medium">{initials}</AvatarFallback>
+                    </Avatar>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium truncate">{u.name}</p>
+                      <p className="text-xs text-muted-foreground truncate">{u.email}</p>
+                      <p className="text-[10px] text-muted-foreground">
+                        Registered {new Date(u.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <Select
+                        value={approveRoles[u.id] || "MARKETER"}
+                        onValueChange={(val) => setApproveRoles(prev => ({ ...prev, [u.id]: val }))}
+                      >
+                        <SelectTrigger className="w-32 h-8 text-xs" data-testid={`select-approve-role-${u.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {roles.map(r => (
+                            <SelectItem key={r} value={r}>{roleLabels[r]}</SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-chart-2 border-chart-2/30 hover:bg-chart-2/10"
+                        onClick={() => approveMutation.mutate({ id: u.id, role: approveRoles[u.id] || "MARKETER" })}
+                        disabled={approveMutation.isPending}
+                        data-testid={`button-approve-user-${u.id}`}
+                      >
+                        <UserCheck className="w-4 h-4 mr-1" />
+                        Approve
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                        onClick={() => rejectMutation.mutate(u.id)}
+                        disabled={rejectMutation.isPending}
+                        data-testid={`button-reject-user-${u.id}`}
+                      >
+                        <UserX className="w-4 h-4 mr-1" />
+                        Reject
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">

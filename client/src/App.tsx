@@ -10,6 +10,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
+import ResetPasswordPage from "@/pages/reset-password";
 import DashboardPage from "@/pages/dashboard";
 import PhysiciansPage from "@/pages/physicians";
 import PhysicianDetailPage from "@/pages/physician-detail";
@@ -105,6 +106,10 @@ function AppLayout() {
   }
 
   if (!user) {
+    const path = window.location.pathname;
+    if (path === "/reset-password") {
+      return <ResetPasswordPage />;
+    }
     return <LoginPage />;
   }
 
