@@ -1423,7 +1423,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createApiKey(key: InsertApiKey) {
-    const [created] = await db.insert(apiKeys).values(key).returning();
+    const [created] = await db.insert(apiKeys).values({
+      ...key,
+      scopes: key.scopes ? [...key.scopes] : null,
+    } as any).returning();
     return created;
   }
 

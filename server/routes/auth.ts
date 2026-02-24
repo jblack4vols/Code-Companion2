@@ -186,14 +186,14 @@ export function registerAuthRoutes(app: Express) {
 
   app.post("/api/admin/approve-user/:id", requireRole("OWNER"), async (req, res) => {
     try {
-      const { role } = req.body;
+      const role = req.body.role as string | undefined;
       const validRoles = ["OWNER", "DIRECTOR", "MARKETER", "FRONT_DESK", "ANALYST"];
-      const assignRole = validRoles.includes(role) ? role : "MARKETER";
+      const assignRole = role && validRoles.includes(role) ? role : "MARKETER";
       const user = await storage.getUser(req.params.id);
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.approvalStatus !== "PENDING") return res.status(400).json({ message: "User is not in pending status" });
       await storage.updateUser(user.id, { approvalStatus: "APPROVED", role: assignRole } as any);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "APPROVE_USER", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: assignRole }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "APPROVE_USER", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: assignRole }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -206,7 +206,7 @@ export function registerAuthRoutes(app: Express) {
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.approvalStatus !== "PENDING") return res.status(400).json({ message: "User is not in pending status" });
       await storage.updateUser(user.id, { approvalStatus: "REJECTED" } as any);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "REJECT_USER", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "REJECT_USER", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });

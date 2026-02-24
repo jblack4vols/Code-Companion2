@@ -57,7 +57,7 @@ export function registerUserRoutes(app: Express) {
       const validated = insertUserSchema.partial().parse(body);
       const user = await storage.updateUser(req.params.id, validated);
       if (!user) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "User", entityId: user.id, detailJson: { name: user.name, role: user.role }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "User", entityId: user.id, detailJson: { name: user.name, role: user.role }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       const { password: _, ...safe } = user;
       res.json(safe);
     } catch (err: any) {
@@ -71,7 +71,7 @@ export function registerUserRoutes(app: Express) {
         return res.status(400).json({ message: "You cannot delete your own account" });
       }
       await storage.deleteUser(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "User", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(409).json({ message: err.message });
