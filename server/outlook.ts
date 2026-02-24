@@ -1,5 +1,52 @@
-// Outlook integration via Microsoft Graph API (Replit connector)
+// Email sending via SMTP (Microsoft 365) with Outlook connector fallback
+import nodemailer from 'nodemailer';
 import { Client } from '@microsoft/microsoft-graph-client';
+
+const SMTP_USER = 'jblack@tristarpt.com';
+const SMTP_HOST = 'smtp.office365.com';
+const SMTP_PORT = 587;
+
+function getSmtpTransporter() {
+  const password = process.env.SMTP_PASSWORD;
+  if (!password) return null;
+  return nodemailer.createTransport({
+    host: SMTP_HOST,
+    port: SMTP_PORT,
+    secure: false,
+    auth: { user: SMTP_USER, pass: password },
+    tls: { ciphers: 'SSLv3', rejectUnauthorized: false }
+  });
+}
+
+async function sendViaSMTP(options: {
+  to: string;
+  toName?: string;
+  subject: string;
+  html: string;
+  attachments?: Array<{ filename: string; content: string; encoding: string; contentType: string }>;
+}): Promise<boolean> {
+  const transporter = getSmtpTransporter();
+  if (!transporter) return false;
+  try {
+    await transporter.sendMail({
+      from: `"Tristar 360°" <${SMTP_USER}>`,
+      to: options.toName ? `"${options.toName}" <${options.to}>` : options.to,
+      subject: options.subject,
+      html: options.html,
+      attachments: options.attachments?.map(a => ({
+        filename: a.filename,
+        content: a.content,
+        encoding: a.encoding as BufferEncoding,
+        contentType: a.contentType,
+      })),
+    });
+    console.log(`[SMTP] Email sent to ${options.to}: ${options.subject}`);
+    return true;
+  } catch (err: any) {
+    console.error(`[SMTP] Failed: ${err.message}`);
+    return false;
+  }
+}
 
 let cachedAccessToken: string | null = null;
 let cachedTokenExpiry: number = 0;
@@ -46,29 +93,6 @@ async function getAccessToken() {
     }
   }
 
-  if (oauthCreds?.refresh_token && oauthCreds?.client_id) {
-    const tokenResp = await fetch('https://login.microsoftonline.com/common/oauth2/v2.0/token', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: new URLSearchParams({
-        client_id: oauthCreds.client_id,
-        grant_type: 'refresh_token',
-        refresh_token: oauthCreds.refresh_token,
-        scope: oauthCreds.scope || 'https://graph.microsoft.com/.default offline_access',
-      }).toString()
-    });
-
-    if (!tokenResp.ok) {
-      const errText = await tokenResp.text();
-      throw new Error(`Token refresh failed: ${errText}`);
-    }
-
-    const tokenData = await tokenResp.json();
-    cachedAccessToken = tokenData.access_token;
-    cachedTokenExpiry = Date.now() + (tokenData.expires_in * 1000);
-    return cachedAccessToken;
-  }
-
   const fallbackToken = connectionSettings.settings?.access_token || oauthCreds?.access_token;
   if (!fallbackToken) {
     throw new Error('Outlook not connected - no access token available');
@@ -85,66 +109,99 @@ export async function getUncachableOutlookClient() {
   });
 }
 
+async function sendViaGraph(options: {
+  to: string;
+  toName?: string;
+  subject: string;
+  html: string;
+  attachments?: Array<{ filename: string; content: string; encoding: string; contentType: string }>;
+}): Promise<boolean> {
+  try {
+    const client = await getUncachableOutlookClient();
+    const message: any = {
+      subject: options.subject,
+      body: { contentType: "HTML", content: options.html },
+      toRecipients: [{ emailAddress: { address: options.to, name: options.toName || options.to } }],
+    };
+    if (options.attachments?.length) {
+      message.attachments = options.attachments.map(a => ({
+        "@odata.type": "#microsoft.graph.fileAttachment",
+        name: a.filename,
+        contentType: a.contentType,
+        contentBytes: a.content,
+      }));
+    }
+    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
+    console.log(`[Graph] Email sent to ${options.to}: ${options.subject}`);
+    return true;
+  } catch (err: any) {
+    console.error(`[Graph] Failed: ${err.message}`);
+    return false;
+  }
+}
+
+async function sendEmail(options: {
+  to: string;
+  toName?: string;
+  subject: string;
+  html: string;
+  attachments?: Array<{ filename: string; content: string; encoding: string; contentType: string }>;
+}): Promise<void> {
+  const smtpOk = await sendViaSMTP(options);
+  if (smtpOk) return;
+
+  const graphOk = await sendViaGraph(options);
+  if (graphOk) return;
+
+  throw new Error(`Failed to send email to ${options.to} via both SMTP and Graph API`);
+}
+
 export async function sendWelcomeEmail(
   recipientEmail: string,
   recipientName: string,
   password: string,
   loginUrl: string
 ) {
-  const client = await getUncachableOutlookClient();
-
-  const message = {
+  await sendEmail({
+    to: recipientEmail,
+    toName: recipientName,
     subject: "Welcome to Tristar 360° - Your Account Has Been Created",
-    body: {
-      contentType: "HTML",
-      content: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
-            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
-            <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Physician Relationship Management</p>
-          </div>
-          <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-            <h2 style="color: #1e293b; margin-top: 0;">Welcome, ${recipientName}!</h2>
-            <p style="color: #475569; line-height: 1.6;">
-              Your Tristar 360° account has been created. You can now log in to access the physician relationship management platform.
-            </p>
-            <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 20px 0;">
-              <h3 style="color: #1e293b; margin-top: 0; font-size: 16px;">Your Login Credentials</h3>
-              <table style="width: 100%; border-collapse: collapse;">
-                <tr>
-                  <td style="padding: 8px 0; color: #64748b; font-weight: 600; width: 100px;">Email:</td>
-                  <td style="padding: 8px 0; color: #1e293b;">${recipientEmail}</td>
-                </tr>
-                <tr>
-                  <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Password:</td>
-                  <td style="padding: 8px 0; color: #1e293b;">${password}</td>
-                </tr>
-              </table>
-            </div>
-            <div style="text-align: center; margin: 25px 0;">
-              <a href="${loginUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Log In to Tristar 360°</a>
-            </div>
-            <p style="color: #94a3b8; font-size: 13px; margin-bottom: 0; text-align: center;">
-              For security, we recommend changing your password after your first login.
-            </p>
-          </div>
-          <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">
-            <p style="margin: 0;">Tristar Physical Therapy</p>
-          </div>
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+          <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Physician Relationship Management</p>
         </div>
-      `
-    },
-    toRecipients: [
-      {
-        emailAddress: {
-          address: recipientEmail,
-          name: recipientName
-        }
-      }
-    ]
-  };
-
-  await client.api('/me/sendMail').post({ message, saveToSentItems: true });
+        <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+          <h2 style="color: #1e293b; margin-top: 0;">Welcome, ${recipientName}!</h2>
+          <p style="color: #475569; line-height: 1.6;">
+            Your Tristar 360° account has been created. You can now log in to access the physician relationship management platform.
+          </p>
+          <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 20px 0;">
+            <h3 style="color: #1e293b; margin-top: 0; font-size: 16px;">Your Login Credentials</h3>
+            <table style="width: 100%; border-collapse: collapse;">
+              <tr>
+                <td style="padding: 8px 0; color: #64748b; font-weight: 600; width: 100px;">Email:</td>
+                <td style="padding: 8px 0; color: #1e293b;">${recipientEmail}</td>
+              </tr>
+              <tr>
+                <td style="padding: 8px 0; color: #64748b; font-weight: 600;">Password:</td>
+                <td style="padding: 8px 0; color: #1e293b;">${password}</td>
+              </tr>
+            </table>
+          </div>
+          <div style="text-align: center; margin: 25px 0;">
+            <a href="${loginUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Log In to Tristar 360°</a>
+          </div>
+          <p style="color: #94a3b8; font-size: 13px; margin-bottom: 0; text-align: center;">
+            For security, we recommend changing your password after your first login.
+          </p>
+        </div>
+        <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">
+          <p style="margin: 0;">Tristar Physical Therapy</p>
+        </div>
+      </div>`,
+  });
 }
 
 export async function sendPasswordResetEmail(
@@ -152,40 +209,26 @@ export async function sendPasswordResetEmail(
   recipientName: string,
   resetUrl: string
 ) {
-  const client = await getUncachableOutlookClient();
-
-  const message = {
+  await sendEmail({
+    to: recipientEmail,
+    toName: recipientName,
     subject: "Tristar 360° - Password Reset Request",
-    body: {
-      contentType: "HTML",
-      content: `
-        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-            <h1 style="color: white; margin: 0; font-size: 24px;">Password Reset</h1>
-            <p style="color: #bfdbfe; margin: 5px 0 0;">Tristar 360°</p>
-          </div>
-          <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
-            <p style="color: #1e293b; font-size: 16px;">Hi ${recipientName},</p>
-            <p style="color: #475569; line-height: 1.6;">We received a request to reset your password. Click the button below to set a new password:</p>
-            <div style="text-align: center; margin: 30px 0;">
-              <a href="${resetUrl}" style="background-color: #2563eb; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Reset Password</a>
-            </div>
-            <p style="color: #64748b; font-size: 13px;">This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
-          </div>
+    html: `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <div style="background: linear-gradient(135deg, #1e40af, #3b82f6); padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
+          <h1 style="color: white; margin: 0; font-size: 24px;">Password Reset</h1>
+          <p style="color: #bfdbfe; margin: 5px 0 0;">Tristar 360°</p>
         </div>
-      `,
-    },
-    toRecipients: [
-      {
-        emailAddress: {
-          address: recipientEmail,
-          name: recipientName
-        }
-      }
-    ]
-  };
-
-  await client.api('/me/sendMail').post({ message, saveToSentItems: true });
+        <div style="background: #ffffff; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 12px 12px;">
+          <p style="color: #1e293b; font-size: 16px;">Hi ${recipientName},</p>
+          <p style="color: #475569; line-height: 1.6;">We received a request to reset your password. Click the button below to set a new password:</p>
+          <div style="text-align: center; margin: 30px 0;">
+            <a href="${resetUrl}" style="background-color: #2563eb; color: white; padding: 14px 32px; border-radius: 8px; text-decoration: none; font-weight: 600; display: inline-block;">Reset Password</a>
+          </div>
+          <p style="color: #64748b; font-size: 13px;">This link expires in 1 hour. If you didn't request a password reset, you can safely ignore this email.</p>
+        </div>
+      </div>`,
+  });
 }
 
 export async function sendTaskAssignmentEmail(
@@ -199,45 +242,40 @@ export async function sendTaskAssignmentEmail(
   appUrl: string
 ) {
   try {
-    const client = await getUncachableOutlookClient();
     const dueLine = dueDate ? `<tr><td style="padding: 8px 0; color: #64748b; font-weight: 600; width: 120px;">Due Date:</td><td style="padding: 8px 0; color: #1e293b;">${new Date(dueDate).toLocaleDateString()}</td></tr>` : '';
     const providerLine = providerName ? `<tr><td style="padding: 8px 0; color: #64748b; font-weight: 600;">Provider:</td><td style="padding: 8px 0; color: #1e293b;">${providerName}</td></tr>` : '';
     const descLine = taskDescription ? `<p style="color: #475569; line-height: 1.6; margin-top: 15px;">${taskDescription}</p>` : '';
 
-    const message = {
+    await sendEmail({
+      to: recipientEmail,
+      toName: recipientName,
       subject: `Tristar 360° - New Task Assigned: ${taskTitle}`,
-      body: {
-        contentType: "HTML",
-        content: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
-              <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Task Assignment</p>
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+            <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Task Assignment</p>
+          </div>
+          <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6;">${assignedByName} has assigned you a new task.</p>
+            <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 20px 0;">
+              <h3 style="color: #1e293b; margin-top: 0; font-size: 16px;">${taskTitle}</h3>
+              <table style="width: 100%; border-collapse: collapse;">
+                ${providerLine}
+                ${dueLine}
+                <tr><td style="padding: 8px 0; color: #64748b; font-weight: 600;">Assigned By:</td><td style="padding: 8px 0; color: #1e293b;">${assignedByName}</td></tr>
+              </table>
+              ${descLine}
             </div>
-            <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-              <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
-              <p style="color: #475569; line-height: 1.6;">${assignedByName} has assigned you a new task.</p>
-              <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 20px 0;">
-                <h3 style="color: #1e293b; margin-top: 0; font-size: 16px;">${taskTitle}</h3>
-                <table style="width: 100%; border-collapse: collapse;">
-                  ${providerLine}
-                  ${dueLine}
-                  <tr><td style="padding: 8px 0; color: #64748b; font-weight: 600;">Assigned By:</td><td style="padding: 8px 0; color: #1e293b;">${assignedByName}</td></tr>
-                </table>
-                ${descLine}
-              </div>
-              <div style="text-align: center; margin: 25px 0;">
-                <a href="${appUrl}/tasks" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View Task</a>
-              </div>
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="${appUrl}/tasks" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View Task</a>
             </div>
-          </div>`
-      },
-      toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }]
-    };
-    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
-    console.log(`[Outlook] Task assignment email sent to ${recipientEmail}`);
+          </div>
+        </div>`,
+    });
   } catch (err: any) {
-    console.error(`[Outlook] Failed to send task assignment email: ${err.message}`);
+    console.error(`[Email] Failed to send task assignment email: ${err.message}`);
   }
 }
 
@@ -248,7 +286,6 @@ export async function sendOverdueTaskDigest(
   appUrl: string
 ) {
   try {
-    const client = await getUncachableOutlookClient();
     const taskRows = overdueTasks.map(t => {
       const daysOverdue = Math.floor((Date.now() - new Date(t.dueDate).getTime()) / (1000 * 60 * 60 * 24));
       return `<tr>
@@ -258,39 +295,35 @@ export async function sendOverdueTaskDigest(
       </tr>`;
     }).join('');
 
-    const message = {
+    await sendEmail({
+      to: recipientEmail,
+      toName: recipientName,
       subject: `Tristar 360° - ${overdueTasks.length} Overdue Task${overdueTasks.length !== 1 ? 's' : ''} Require Attention`,
-      body: {
-        contentType: "HTML",
-        content: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
-              <p style="color: #fbbf24; margin: 5px 0 0 0; font-size: 14px;">Overdue Tasks Digest</p>
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+            <p style="color: #fbbf24; margin: 5px 0 0 0; font-size: 14px;">Overdue Tasks Digest</p>
+          </div>
+          <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6;">You have <strong>${overdueTasks.length}</strong> overdue task${overdueTasks.length !== 1 ? 's' : ''} that need${overdueTasks.length === 1 ? 's' : ''} attention.</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <thead><tr style="background-color: #f1f5f9;">
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Task</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Provider</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Status</th>
+              </tr></thead>
+              <tbody>${taskRows}</tbody>
+            </table>
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="${appUrl}/tasks" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View All Tasks</a>
             </div>
-            <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-              <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
-              <p style="color: #475569; line-height: 1.6;">You have <strong>${overdueTasks.length}</strong> overdue task${overdueTasks.length !== 1 ? 's' : ''} that need${overdueTasks.length === 1 ? 's' : ''} attention.</p>
-              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                <thead><tr style="background-color: #f1f5f9;">
-                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Task</th>
-                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Provider</th>
-                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Status</th>
-                </tr></thead>
-                <tbody>${taskRows}</tbody>
-              </table>
-              <div style="text-align: center; margin: 25px 0;">
-                <a href="${appUrl}/tasks" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View All Tasks</a>
-              </div>
-            </div>
-          </div>`
-      },
-      toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }]
-    };
-    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
-    console.log(`[Outlook] Overdue digest sent to ${recipientEmail} (${overdueTasks.length} tasks)`);
+          </div>
+        </div>`,
+    });
   } catch (err: any) {
-    console.error(`[Outlook] Failed to send overdue digest: ${err.message}`);
+    console.error(`[Email] Failed to send overdue digest: ${err.message}`);
   }
 }
 
@@ -303,47 +336,36 @@ export async function sendScheduledReportEmail(
   appUrl: string
 ) {
   try {
-    const client = await getUncachableOutlookClient();
     const csvBase64 = Buffer.from(csvContent).toString('base64');
     const dateStr = new Date().toLocaleDateString();
+    const filename = `${reportName.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr.replace(/\//g, '-')}.csv`;
 
-    const message = {
+    await sendEmail({
+      to: recipientEmail,
+      toName: recipientName,
       subject: `Tristar 360° - ${reportName} (${dateStr})`,
-      body: {
-        contentType: "HTML",
-        content: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
-              <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Scheduled Report</p>
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+            <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Scheduled Report</p>
+          </div>
+          <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6;">Your scheduled <strong>${reportType}</strong> report is attached as a CSV file.</p>
+            <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 20px 0; text-align: center;">
+              <p style="color: #1e293b; font-weight: 600; margin: 0;">${reportName}</p>
+              <p style="color: #64748b; font-size: 13px; margin: 5px 0 0 0;">Generated on ${dateStr}</p>
             </div>
-            <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-              <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
-              <p style="color: #475569; line-height: 1.6;">Your scheduled <strong>${reportType}</strong> report is attached as a CSV file.</p>
-              <div style="background-color: #ffffff; border: 1px solid #e2e8f0; border-radius: 6px; padding: 20px; margin: 20px 0; text-align: center;">
-                <p style="color: #1e293b; font-weight: 600; margin: 0;">${reportName}</p>
-                <p style="color: #64748b; font-size: 13px; margin: 5px 0 0 0;">Generated on ${dateStr}</p>
-              </div>
-              <div style="text-align: center; margin: 25px 0;">
-                <a href="${appUrl}/admin/scheduled-reports" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Manage Reports</a>
-              </div>
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="${appUrl}/admin/scheduled-reports" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Manage Reports</a>
             </div>
-          </div>`
-      },
-      toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }],
-      attachments: [
-        {
-          "@odata.type": "#microsoft.graph.fileAttachment",
-          name: `${reportName.replace(/[^a-zA-Z0-9]/g, '_')}_${dateStr.replace(/\//g, '-')}.csv`,
-          contentType: "text/csv",
-          contentBytes: csvBase64
-        }
-      ]
-    };
-    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
-    console.log(`[Outlook] Scheduled report email sent to ${recipientEmail}: ${reportName}`);
+          </div>
+        </div>`,
+      attachments: [{ filename, content: csvBase64, encoding: 'base64', contentType: 'text/csv' }],
+    });
   } catch (err: any) {
-    console.error(`[Outlook] Failed to send scheduled report email: ${err.message}`);
+    console.error(`[Email] Failed to send scheduled report email: ${err.message}`);
   }
 }
 
@@ -354,7 +376,6 @@ export async function sendProviderAlertEmail(
   appUrl: string
 ) {
   try {
-    const client = await getUncachableOutlookClient();
     const decliningAlerts = alerts.filter(a => a.alertType === "declining");
     const reactivatedAlerts = alerts.filter(a => a.alertType === "reactivated");
 
@@ -376,38 +397,34 @@ export async function sendProviderAlertEmail(
       </tr>`).join('');
     }
 
-    const message = {
+    await sendEmail({
+      to: recipientEmail,
+      toName: recipientName,
       subject: `Tristar 360° - ${alerts.length} Provider Alert${alerts.length !== 1 ? 's' : ''} Require Attention`,
-      body: {
-        contentType: "HTML",
-        content: `
-          <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-            <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
-              <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
-              <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Provider Activity Alerts</p>
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+            <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">Provider Activity Alerts</p>
+          </div>
+          <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6;">We detected <strong>${alerts.length}</strong> provider activity alert${alerts.length !== 1 ? 's' : ''} that may need your attention.</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <thead><tr style="background-color: #f1f5f9;">
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Provider</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Alert</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Detail</th>
+              </tr></thead>
+              <tbody>${alertRows}</tbody>
+            </table>
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="${appUrl}/physicians" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View Providers</a>
             </div>
-            <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
-              <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
-              <p style="color: #475569; line-height: 1.6;">We detected <strong>${alerts.length}</strong> provider activity alert${alerts.length !== 1 ? 's' : ''} that may need your attention.</p>
-              <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
-                <thead><tr style="background-color: #f1f5f9;">
-                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Provider</th>
-                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Alert</th>
-                  <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Detail</th>
-                </tr></thead>
-                <tbody>${alertRows}</tbody>
-              </table>
-              <div style="text-align: center; margin: 25px 0;">
-                <a href="${appUrl}/physicians" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">View Providers</a>
-              </div>
-            </div>
-          </div>`
-      },
-      toRecipients: [{ emailAddress: { address: recipientEmail, name: recipientName } }]
-    };
-    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
-    console.log(`[Outlook] Provider alert email sent to ${recipientEmail} (${alerts.length} alerts)`);
+          </div>
+        </div>`,
+    });
   } catch (err: any) {
-    console.error(`[Outlook] Failed to send provider alert email: ${err.message}`);
+    console.error(`[Email] Failed to send provider alert email: ${err.message}`);
   }
 }
