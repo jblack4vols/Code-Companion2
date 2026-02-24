@@ -65,6 +65,9 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  const { ensureSearchIndexes } = await import("./db");
+  await ensureSearchIndexes().catch(err => console.error("Index error:", err));
+
   const { seed } = await import("./seed");
   await seed().catch(err => console.error("Seed error:", err));
 
