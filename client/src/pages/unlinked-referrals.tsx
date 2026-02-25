@@ -6,7 +6,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Loader2, Link2, UserX, Search, ArrowRight, Sparkles } from "lucide-react";
 import { getQueryFn } from "@/lib/queryClient";
 
@@ -130,6 +130,7 @@ export default function UnlinkedReferralsPage() {
         <DialogContent className="sm:max-w-lg">
           <DialogHeader>
             <DialogTitle>Link to Referring Provider</DialogTitle>
+            <DialogDescription>Search for and select the referring provider to link this referral to</DialogDescription>
             {currentRef?.referringProviderName && (
               <p className="text-sm text-muted-foreground mt-1">Matching: <span className="font-medium">{currentRef.referringProviderName}</span></p>
             )}

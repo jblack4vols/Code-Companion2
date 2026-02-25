@@ -68,9 +68,11 @@ export function registerDashboardRoutes(app: Express) {
       : totalRefs > 0 ? top10Refs / totalRefs : 0;
 
     const monthlyTotals: Record<string, number> = {};
+    const monthlyRevenue: Record<string, number> = {};
     for (const s of historicalSummaries) {
       const m = String(s.month);
       monthlyTotals[m] = (monthlyTotals[m] || 0) + s.referralsCount;
+      monthlyRevenue[m] = (monthlyRevenue[m] || 0) + parseFloat(String(s.revenueGenerated || 0));
     }
     const monthKeys = Object.keys(monthlyTotals).sort();
     const growthRates = monthKeys.slice(1).map((m, i) => {
@@ -92,6 +94,7 @@ export function registerDashboardRoutes(app: Express) {
       volatilityIndex,
       totalReferrals: summaries.reduce((sum, s) => sum + s.referralsCount, 0),
       monthlyTotals,
+      monthlyRevenue,
     });
   });
 
@@ -150,6 +153,7 @@ export function registerDashboardRoutes(app: Express) {
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
       locationId: req.query.locationId as string | undefined,
+      territoryId: req.query.territoryId as string | undefined,
       physicianId: req.query.physicianId as string | undefined,
     };
     res.json(await storage.getDashboardStats(filters));

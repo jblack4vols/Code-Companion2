@@ -131,7 +131,7 @@ export default function PhysiciansPage() {
   }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter, practiceFilter, sortBy, sortOrder]);
 
   const queryParams = buildQueryParams();
-  const { data: result, isLoading } = useQuery<any>({
+  const { data: result, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ["/api/physicians/paginated", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/paginated?${queryParams}`, { credentials: "include" });
@@ -600,6 +600,14 @@ export default function PhysiciansPage() {
           {isLoading ? (
             <div className="p-4 space-y-3">
               {[1,2,3,4,5].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center">
+              <Stethoscope className="w-12 h-12 text-muted-foreground/30 mb-4" />
+              <p className="text-sm text-muted-foreground mb-3" data-testid="text-physicians-error">Failed to load referring providers</p>
+              <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-retry-physicians">
+                Retry
+              </Button>
             </div>
           ) : physicians.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">

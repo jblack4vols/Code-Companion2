@@ -59,7 +59,7 @@ export default function ReferralsPage() {
   }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo]);
 
   const queryParams = buildQueryParams();
-  const { data: result, isLoading } = useQuery<any>({
+  const { data: result, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ["/api/referrals/paginated", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/referrals/paginated?${queryParams}`, { credentials: "include" });
@@ -656,6 +656,14 @@ export default function ReferralsPage() {
           {isLoading ? (
             <div className="p-4 space-y-3">
               {[1,2,3,4].map(i => <Skeleton key={i} className="h-12 w-full" />)}
+            </div>
+          ) : isError ? (
+            <div className="flex flex-col items-center justify-center py-16">
+              <FileText className="w-12 h-12 text-muted-foreground/30 mb-4" />
+              <p className="text-sm text-muted-foreground mb-3" data-testid="text-referrals-error">Failed to load referrals</p>
+              <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-retry-referrals">
+                Retry
+              </Button>
             </div>
           ) : referrals.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16">

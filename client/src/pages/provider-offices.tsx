@@ -8,7 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Search, Building2, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Users, FileText, Phone, MapPin, X, Clock, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -178,7 +178,7 @@ export default function ProviderOfficesPage() {
     sortOrder: "desc",
   }).toString();
 
-  const { data: result, isLoading } = useQuery<any>({
+  const { data: result, isLoading, isError, refetch } = useQuery<any>({
     queryKey: ["/api/provider-offices", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/provider-offices?${queryParams}`, { credentials: "include" });
@@ -276,6 +276,16 @@ export default function ProviderOfficesPage() {
         <div className="space-y-3">
           {[1, 2, 3, 4, 5].map((i) => <Skeleton key={i} className="h-16 w-full" />)}
         </div>
+      ) : isError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <Building2 className="h-10 w-10 text-muted-foreground/30 mb-4" />
+            <p className="text-sm text-muted-foreground mb-3" data-testid="text-offices-error">Failed to load provider offices</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-retry-offices">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : offices.length === 0 ? (
         <Card>
           <CardContent className="p-8 text-center">
@@ -364,6 +374,7 @@ export default function ProviderOfficesPage() {
               <Building2 className="w-5 h-5" />
               Add New Office
             </DialogTitle>
+            <DialogDescription>Add a new provider office to the directory</DialogDescription>
           </DialogHeader>
           <form onSubmit={handleAddOffice} className="space-y-4">
             <div className="space-y-1.5">

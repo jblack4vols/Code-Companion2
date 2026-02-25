@@ -102,7 +102,7 @@ export interface IStorage {
   getAuditLogs(filters?: { userId?: string; entity?: string; action?: string; limit?: number }): Promise<AuditLog[]>;
   createAuditLog(log: Omit<AuditLog, "id" | "timestamp" | "ipAddress" | "userAgent"> & { ipAddress?: string | null; userAgent?: string | null }): Promise<void>;
 
-  getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }): Promise<any>;
+  getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; territoryId?: string; physicianId?: string }): Promise<any>;
 
   getPhysicianTiering(filters?: { period?: string; year?: number; month?: number }): Promise<any>;
   getDecliningReferrals(filters?: { months?: number; minDrop?: number }): Promise<any>;
@@ -1000,7 +1000,7 @@ export class DatabaseStorage implements IStorage {
     return physicianIds.length;
   }
 
-  async getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string }) {
+  async getDashboardStats(filters?: { startDate?: string; endDate?: string; locationId?: string; territoryId?: string; physicianId?: string }) {
     const refConditions = [];
     const interConditions = [];
     const physConditions = [];
@@ -1016,6 +1016,13 @@ export class DatabaseStorage implements IStorage {
     if (filters?.locationId) {
       refConditions.push(eq(referrals.locationId, filters.locationId));
       interConditions.push(eq(interactions.locationId, filters.locationId));
+    }
+    if (filters?.territoryId) {
+      physConditions.push(eq(physicians.territoryId, filters.territoryId));
+      const territoryPhysSubquery = sql`${referrals.physicianId} IN (SELECT id FROM physicians WHERE territory_id = ${filters.territoryId} AND deleted_at IS NULL)`;
+      const territoryInterSubquery = sql`${interactions.physicianId} IN (SELECT id FROM physicians WHERE territory_id = ${filters.territoryId} AND deleted_at IS NULL)`;
+      refConditions.push(territoryPhysSubquery);
+      interConditions.push(territoryInterSubquery);
     }
     if (filters?.physicianId) {
       refConditions.push(eq(referrals.physicianId, filters.physicianId));
@@ -1042,6 +1049,7 @@ export class DatabaseStorage implements IStorage {
       gte(referrals.referralDate, ninetyDaysAgoStr),
     ];
     if (filters?.locationId) activePhysConditions.push(eq(referrals.locationId, filters.locationId));
+    if (filters?.territoryId) activePhysConditions.push(sql`${referrals.physicianId} IN (SELECT id FROM physicians WHERE territory_id = ${filters.territoryId} AND deleted_at IS NULL)`);
     if (filters?.physicianId) activePhysConditions.push(eq(referrals.physicianId, filters.physicianId));
 
     const [activePhysicians] = await db.select({

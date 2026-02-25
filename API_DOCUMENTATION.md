@@ -149,6 +149,94 @@ API keys are created by OWNER users and scoped to specific permissions:
 - `interactions:read`
 - `webhook:write`
 
+### Getting Started with API Credentials
+
+Follow these steps to set up API access for your external application:
+
+#### Step 1: Create an API Key
+
+Only OWNER-role users can create API keys. Log in to the Tristar 360 web app, then navigate to **Admin > Integrations > Developer Guide** or use the API directly:
+
+```bash
+curl -X POST https://your-domain.com/api/api-keys \
+  -H "Content-Type: application/json" \
+  -H "Cookie: connect.sid=<your-session-cookie>" \
+  -d '{
+    "name": "My Integration",
+    "scopes": ["physicians:read", "referrals:read"],
+    "expiresAt": "2027-12-31T00:00:00Z"
+  }'
+```
+
+**Response:**
+```json
+{
+  "id": "uuid-here",
+  "name": "My Integration",
+  "key": "tsk_abc123def456...",
+  "scopes": ["physicians:read", "referrals:read"],
+  "expiresAt": "2027-12-31T00:00:00Z",
+  "createdAt": "2026-02-25T14:00:00Z"
+}
+```
+
+> **Important:** The full API key (`tsk_...`) is only shown once at creation. Store it securely. If lost, rotate the key.
+
+#### Step 2: Use the API Key
+
+Include the key in the `x-api-key` header for all public API requests:
+
+```bash
+curl -H "x-api-key: tsk_abc123def456..." \
+  https://your-domain.com/api/public/physicians?limit=10&offset=0
+```
+
+#### Step 3: Manage Keys
+
+| Action | Method | Endpoint |
+|--------|--------|----------|
+| List all keys | GET | `/api/api-keys` |
+| Rotate a key | POST | `/api/api-keys/:id/rotate` |
+| Delete a key | DELETE | `/api/api-keys/:id` |
+
+**Rotating a key** generates a new secret while keeping the same ID and scopes. The old key is immediately invalidated.
+
+#### Scopes Reference
+
+| Scope | Grants Access To |
+|-------|-----------------|
+| `physicians:read` | `GET /api/public/physicians`, `GET /api/public/physicians/:id` |
+| `referrals:read` | `GET /api/public/referrals` |
+| `locations:read` | `GET /api/public/locations` |
+| `interactions:read` | `GET /api/public/interactions` |
+| `webhook:write` | `POST /api/public/webhook` (inbound data) |
+
+#### Security Best Practices
+
+1. **Least privilege:** Only grant the scopes your integration actually needs.
+2. **Set expiration dates:** Always set an `expiresAt` value. Rotate keys before they expire.
+3. **Environment variables:** Store keys in environment variables, never in source code.
+4. **Monitor usage:** Check the audit log for API key activity.
+5. **Rotate on compromise:** If a key is exposed, immediately rotate or delete it.
+
+#### Rate Limits
+
+Public API endpoints are subject to rate limiting. If you exceed the limit, you'll receive a `429 Too Many Requests` response. Back off and retry after the `Retry-After` header duration.
+
+#### Error Responses
+
+```json
+{
+  "message": "Invalid or expired API key"
+}
+```
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Missing or invalid API key |
+| 403 | Key doesn't have the required scope |
+| 429 | Rate limited |
+
 ---
 
 ## Endpoints

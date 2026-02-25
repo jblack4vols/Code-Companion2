@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
@@ -299,6 +299,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
               <DialogContent>
                 <DialogHeader>
                   <DialogTitle>Delete Referring Provider</DialogTitle>
+                  <DialogDescription>This action will remove the referring provider from the active list</DialogDescription>
                 </DialogHeader>
                 <p className="text-sm text-muted-foreground">
                   Are you sure you want to delete <strong>Dr. {physician.firstName} {physician.lastName}</strong>? This will remove them from the active list. This action can be undone by an administrator.
@@ -539,7 +540,10 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                         <Button size="sm" data-testid="button-log-interaction"><Plus className="w-3 h-3 mr-1" />Log Interaction</Button>
                       </DialogTrigger>
                       <DialogContent>
-                        <DialogHeader><DialogTitle>Log Interaction</DialogTitle></DialogHeader>
+                        <DialogHeader>
+                          <DialogTitle>Log Interaction</DialogTitle>
+                          <DialogDescription>Record a new interaction with this referring provider</DialogDescription>
+                        </DialogHeader>
                         <form onSubmit={handleAddInteraction} className="space-y-4">
                           <div className="space-y-1.5">
                             <Label>Type</Label>

@@ -7,10 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3 } from "lucide-react";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from "recharts";
-import type { Physician, Location } from "@shared/schema";
-import { format, subMonths, differenceInDays, subDays } from "date-fns";
+import type { Physician, Location, Territory } from "@shared/schema";
+import { format, subMonths, differenceInDays, subDays, startOfQuarter, startOfYear } from "date-fns";
 import { getQueryFn } from "@/lib/queryClient";
 import { useLocation } from "wouter";
 
@@ -58,11 +58,19 @@ const stageColors: Record<string, string> = {
   AT_RISK: "hsl(var(--chart-5))",
 };
 
+const DATE_PRESETS = [
+  { label: "30 Days", getRange: () => ({ start: format(subDays(new Date(), 30), "yyyy-MM-dd"), end: format(new Date(), "yyyy-MM-dd") }) },
+  { label: "Quarter", getRange: () => ({ start: format(startOfQuarter(new Date()), "yyyy-MM-dd"), end: format(new Date(), "yyyy-MM-dd") }) },
+  { label: "YTD", getRange: () => ({ start: format(startOfYear(new Date()), "yyyy-MM-dd"), end: format(new Date(), "yyyy-MM-dd") }) },
+  { label: "12 Months", getRange: () => ({ start: format(subMonths(new Date(), 12), "yyyy-MM-dd"), end: format(new Date(), "yyyy-MM-dd") }) },
+];
+
 export default function DashboardPage() {
   const [, navigate] = useLocation();
   const [startDate, setStartDate] = useState(format(subMonths(new Date(), 6), "yyyy-MM-dd"));
   const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
   const [locationId, setLocationId] = useState("");
+  const [territoryId, setTerritoryId] = useState("");
   const [physicianId, setPhysicianId] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [comparePeriod, setComparePeriod] = useState(false);
@@ -71,11 +79,12 @@ export default function DashboardPage() {
   if (startDate) params.set("startDate", startDate);
   if (endDate) params.set("endDate", endDate);
   if (locationId) params.set("locationId", locationId);
+  if (territoryId) params.set("territoryId", territoryId);
   if (physicianId) params.set("physicianId", physicianId);
   const queryString = params.toString();
 
   const statsUrl = queryString ? `/api/dashboard/stats?${queryString}` : "/api/dashboard/stats";
-  const { data: stats, isLoading: loadingStats } = useQuery<any>({
+  const { data: stats, isLoading: loadingStats, isError: statsError, refetch: refetchStats, dataUpdatedAt } = useQuery<any>({
     queryKey: [statsUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -87,6 +96,7 @@ export default function DashboardPage() {
   prevParams.set("startDate", prevStart);
   prevParams.set("endDate", prevEnd);
   if (locationId) prevParams.set("locationId", locationId);
+  if (territoryId) prevParams.set("territoryId", territoryId);
   if (physicianId) prevParams.set("physicianId", physicianId);
 
   const { data: prevStats } = useQuery<any>({
@@ -97,6 +107,7 @@ export default function DashboardPage() {
 
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+  const { data: territories } = useQuery<Territory[]>({ queryKey: ["/api/territories"] });
 
   const stageData = useMemo(() => {
     const stageCounts = physicians?.reduce((acc, p) => {
@@ -130,10 +141,17 @@ export default function DashboardPage() {
     setStartDate(format(subMonths(new Date(), 6), "yyyy-MM-dd"));
     setEndDate(format(new Date(), "yyyy-MM-dd"));
     setLocationId("");
+    setTerritoryId("");
     setPhysicianId("");
   };
 
-  const hasActiveFilters = locationId || physicianId;
+  const applyPreset = (preset: typeof DATE_PRESETS[number]) => {
+    const range = preset.getRange();
+    setStartDate(range.start);
+    setEndDate(range.end);
+  };
+
+  const hasActiveFilters = locationId || territoryId || physicianId;
 
   if (loadingStats) {
     return (
@@ -151,14 +169,45 @@ export default function DashboardPage() {
     );
   }
 
+  if (statsError) {
+    return (
+      <div className="p-4 sm:p-6">
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <AlertTriangle className="w-12 h-12 text-muted-foreground/30 mb-4" />
+            <p className="text-sm text-muted-foreground mb-3" data-testid="text-dashboard-error">Failed to load dashboard data</p>
+            <Button variant="outline" size="sm" onClick={() => refetchStats()} data-testid="button-retry-dashboard">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+    );
+  }
+
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Overview of your referring provider pipeline</p>
+          <div className="flex items-center gap-2 mt-1">
+            <p className="text-xs sm:text-sm text-muted-foreground">Overview of your referring provider pipeline</p>
+            {dataUpdatedAt > 0 && (
+              <span className="text-[10px] text-muted-foreground flex items-center gap-1" data-testid="text-last-updated">
+                <Clock className="w-3 h-3" />
+                Updated {format(new Date(dataUpdatedAt), "h:mm a")}
+              </span>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1 border rounded-md p-0.5" data-testid="group-date-presets">
+            {DATE_PRESETS.map((p) => (
+              <Button key={p.label} variant="ghost" size="sm" className="h-7 text-xs px-2" onClick={() => applyPreset(p)} data-testid={`button-preset-${p.label.toLowerCase().replace(/\s/g, '-')}`}>
+                {p.label}
+              </Button>
+            ))}
+          </div>
           <Button
             variant={comparePeriod ? "secondary" : "outline"}
             size="sm"
@@ -193,7 +242,7 @@ export default function DashboardPage() {
       {showFilters && (
         <Card>
           <CardContent className="p-4">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">Start Date</Label>
                 <Input
@@ -222,6 +271,20 @@ export default function DashboardPage() {
                     <SelectItem value="all">All Locations</SelectItem>
                     {locations?.filter(l => l.isActive).map(l => (
                       <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Territory</Label>
+                <Select value={territoryId} onValueChange={(v) => setTerritoryId(v === "all" ? "" : v)}>
+                  <SelectTrigger data-testid="select-filter-territory">
+                    <SelectValue placeholder="All Territories" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Territories</SelectItem>
+                    {territories?.map(t => (
+                      <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
@@ -463,7 +526,8 @@ export default function DashboardPage() {
 }
 
 function ActivityFeed() {
-  const { data: activities, isLoading } = useQuery<any[]>({
+  const [, navigate] = useLocation();
+  const { data: activities, isLoading, isError, refetch } = useQuery<any[]>({
     queryKey: ["/api/activity-feed?limit=15"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -484,6 +548,17 @@ function ActivityFeed() {
     );
   }
 
+  if (isError) {
+    return (
+      <div className="h-40 flex flex-col items-center justify-center">
+        <p className="text-sm text-muted-foreground mb-3" data-testid="text-activity-error">Failed to load activity feed</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-retry-activity">
+          Retry
+        </Button>
+      </div>
+    );
+  }
+
   if (!activities || activities.length === 0) {
     return (
       <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
@@ -491,6 +566,19 @@ function ActivityFeed() {
       </div>
     );
   }
+
+  const getActivityLink = (activity: any): string | null => {
+    switch (activity.activity_type) {
+      case "referral":
+        return "/referrals";
+      case "interaction":
+        return "/interactions";
+      case "task":
+        return "/tasks";
+      default:
+        return null;
+    }
+  };
 
   return (
     <div className="max-h-[400px] overflow-auto space-y-2">
@@ -523,9 +611,15 @@ function ActivityFeed() {
 
         const IconComponent = icon;
         const timestamp = format(new Date(activity.timestamp), "MMM d, h:mm a");
+        const link = getActivityLink(activity);
 
         return (
-          <div key={activity.id} className="flex items-start gap-3 p-2 rounded-md hover-elevate" data-testid={`activity-item-${activity.id}`}>
+          <div
+            key={activity.id}
+            className={`flex items-start gap-3 p-2 rounded-md hover-elevate ${link ? "cursor-pointer" : ""}`}
+            onClick={() => link && navigate(link)}
+            data-testid={`activity-item-${activity.id}`}
+          >
             <div className={`flex items-center justify-center w-8 h-8 rounded-md shrink-0 ${colorClass}`}>
               <IconComponent className="w-4 h-4" />
             </div>
@@ -533,6 +627,7 @@ function ActivityFeed() {
               <p className="text-sm text-foreground truncate">{description}</p>
               <p className="text-xs text-muted-foreground">{timestamp}</p>
             </div>
+            {link && <ChevronRight className="w-4 h-4 text-muted-foreground mt-1 shrink-0" />}
           </div>
         );
       })}

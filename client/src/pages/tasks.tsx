@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Plus, ClipboardList, CheckCircle2, Circle, X, Download } from "lucide-react";
@@ -123,7 +123,10 @@ export default function TasksPage() {
               <Button data-testid="button-add-task"><Plus className="w-4 h-4 mr-2" />New Task</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Create Task</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Create Task</DialogTitle>
+                <DialogDescription>Add a new follow-up task for a referring provider</DialogDescription>
+              </DialogHeader>
               <form onSubmit={handleAdd} className="space-y-4">
                 <div className="space-y-1.5">
                   <Label>Referring Provider *</Label>

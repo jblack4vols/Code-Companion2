@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download, FileStack } from "lucide-react";
@@ -36,7 +36,7 @@ export default function InteractionsPage() {
   const [showAdd, setShowAdd] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
-  const { data: interactions, isLoading } = useQuery<Interaction[]>({ queryKey: ["/api/interactions"] });
+  const { data: interactions, isLoading, isError, refetch } = useQuery<Interaction[]>({ queryKey: ["/api/interactions"] });
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
@@ -144,7 +144,10 @@ export default function InteractionsPage() {
               <Button data-testid="button-add-interaction"><Plus className="w-4 h-4 mr-2" />Log Interaction</Button>
             </DialogTrigger>
             <DialogContent>
-              <DialogHeader><DialogTitle>Log New Interaction</DialogTitle></DialogHeader>
+              <DialogHeader>
+                <DialogTitle>Log New Interaction</DialogTitle>
+                <DialogDescription>Record a new outreach or touchpoint with a referring provider</DialogDescription>
+              </DialogHeader>
               <form ref={formRef} onSubmit={handleAdd} className="space-y-4">
                 {templates && templates.length > 0 && (
                   <div className="space-y-1.5">
@@ -268,6 +271,16 @@ export default function InteractionsPage() {
         <div className="space-y-3">
           {[1,2,3,4].map(i => <Skeleton key={i} className="h-20 w-full" />)}
         </div>
+      ) : isError ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-16">
+            <MessageSquare className="w-12 h-12 text-muted-foreground/30 mb-4" />
+            <p className="text-sm text-muted-foreground mb-3" data-testid="text-interactions-error">Failed to load interactions</p>
+            <Button variant="outline" size="sm" onClick={() => refetch()} data-testid="button-retry-interactions">
+              Retry
+            </Button>
+          </CardContent>
+        </Card>
       ) : filtered.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
