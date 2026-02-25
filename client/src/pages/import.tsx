@@ -787,7 +787,7 @@ export default function ImportPage() {
                   Import Another File
                 </Button>
                 {(result.unlinkedCount ?? 0) > 0 && (
-                  <Button variant="default" onClick={() => window.location.href = "/unlinked-referrals"} data-testid="button-view-unlinked">
+                  <Button variant="default" onClick={() => window.location.href = "/admin/unlinked-referrals"} data-testid="button-view-unlinked">
                     View Unlinked Referrals
                   </Button>
                 )}
