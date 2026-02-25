@@ -360,8 +360,8 @@ export default function IntegrationsPage() {
                       <p className="text-xs text-muted-foreground">Tell us which custom field holds each piece of information. The system will auto-detect what it can, but you can override here.</p>
                       <div className="grid gap-2 max-h-60 overflow-y-auto">
                         {ghlCustomFields.map((field) => (
-                          <div key={field.id} className="flex items-center gap-2 text-sm">
-                            <span className="min-w-[180px] truncate text-xs font-mono" title={`ID: ${field.id}`}>{field.name || field.fieldKey}</span>
+                          <div key={field.id} className="flex flex-col sm:flex-row sm:items-center gap-1 sm:gap-2 text-sm">
+                            <span className="min-w-0 sm:min-w-[180px] truncate text-xs font-mono" title={`ID: ${field.id}`}>{field.name || field.fieldKey}</span>
                             <Select
                               value={ghlFieldMappings[field.id] || "none"}
                               onValueChange={(val) => {
@@ -370,7 +370,7 @@ export default function IntegrationsPage() {
                                 setGhlFieldMappings((prev) => ({ ...prev, ...updates }));
                               }}
                             >
-                              <SelectTrigger className="h-7 text-xs w-[200px]" data-testid={`select-mapping-${field.id}`}>
+                              <SelectTrigger className="h-7 text-xs w-full sm:w-[200px]" data-testid={`select-mapping-${field.id}`}>
                                 <SelectValue />
                               </SelectTrigger>
                               <SelectContent>

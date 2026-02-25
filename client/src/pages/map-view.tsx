@@ -181,8 +181,8 @@ export default function MapViewPage() {
         </div>
       </div>
 
-      <div className="flex gap-4" style={{ height: "calc(100vh - 3rem)" }}>
-        <Card className="w-80 shrink-0 flex flex-col overflow-hidden">
+      <div className="flex flex-col lg:flex-row gap-4" style={{ height: "calc(100vh - 3rem)" }}>
+        <Card className="w-full lg:w-80 shrink-0 flex flex-col overflow-hidden max-h-[40vh] lg:max-h-none">
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2 shrink-0">
             <div className="flex items-center gap-2">
               <Stethoscope className="w-4 h-4 text-muted-foreground" />

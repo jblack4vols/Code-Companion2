@@ -205,14 +205,14 @@ export default function UserActivityReportsPage() {
                 <thead>
                   <tr className="border-b text-left">
                     <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs">Name</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs">Role</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Visits</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Calls</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Emails</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Lunches</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs hidden sm:table-cell">Role</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right hidden md:table-cell">Visits</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right hidden md:table-cell">Calls</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right hidden md:table-cell">Emails</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right hidden lg:table-cell">Lunches</th>
                     <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Total</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Completed</th>
-                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Open</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right hidden sm:table-cell">Completed</th>
+                    <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right hidden sm:table-cell">Open</th>
                     <th className="pb-2 font-medium text-muted-foreground text-xs text-right">On-Time %</th>
                   </tr>
                 </thead>
@@ -224,18 +224,18 @@ export default function UserActivityReportsPage() {
                     return (
                       <tr key={u.id} className="border-b last:border-0" data-testid={`row-user-${u.id}`}>
                         <td className="py-2.5 pr-4 font-medium" data-testid={`text-name-${u.id}`}>{u.name}</td>
-                        <td className="py-2.5 pr-4">
+                        <td className="py-2.5 pr-4 hidden sm:table-cell">
                           <Badge variant="outline" className={`text-[10px] shrink-0 ${roleBadgeColor[u.role] || ""}`} data-testid={`badge-role-${u.id}`}>
                             {roleLabels[u.role] || u.role}
                           </Badge>
                         </td>
-                        <td className="py-2.5 pr-4 text-right" data-testid={`text-visits-${u.id}`}>{u.visit_count}</td>
-                        <td className="py-2.5 pr-4 text-right" data-testid={`text-calls-${u.id}`}>{u.call_count}</td>
-                        <td className="py-2.5 pr-4 text-right" data-testid={`text-emails-${u.id}`}>{u.email_count}</td>
-                        <td className="py-2.5 pr-4 text-right" data-testid={`text-lunches-${u.id}`}>{u.lunch_count}</td>
+                        <td className="py-2.5 pr-4 text-right hidden md:table-cell" data-testid={`text-visits-${u.id}`}>{u.visit_count}</td>
+                        <td className="py-2.5 pr-4 text-right hidden md:table-cell" data-testid={`text-calls-${u.id}`}>{u.call_count}</td>
+                        <td className="py-2.5 pr-4 text-right hidden md:table-cell" data-testid={`text-emails-${u.id}`}>{u.email_count}</td>
+                        <td className="py-2.5 pr-4 text-right hidden lg:table-cell" data-testid={`text-lunches-${u.id}`}>{u.lunch_count}</td>
                         <td className="py-2.5 pr-4 text-right font-medium" data-testid={`text-total-${u.id}`}>{u.interaction_count}</td>
-                        <td className="py-2.5 pr-4 text-right" data-testid={`text-completed-${u.id}`}>{u.tasks_completed}</td>
-                        <td className="py-2.5 pr-4 text-right" data-testid={`text-open-${u.id}`}>{u.tasks_open}</td>
+                        <td className="py-2.5 pr-4 text-right hidden sm:table-cell" data-testid={`text-completed-${u.id}`}>{u.tasks_completed}</td>
+                        <td className="py-2.5 pr-4 text-right hidden sm:table-cell" data-testid={`text-open-${u.id}`}>{u.tasks_open}</td>
                         <td className="py-2.5 text-right" data-testid={`text-ontime-${u.id}`}>
                           <span className={onTimePercent >= 80 ? "text-chart-4" : onTimePercent >= 50 ? "text-chart-2" : "text-chart-5"}>
                             {onTimePercent}%

@@ -228,10 +228,10 @@ export default function ExecutiveDashboardPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    <TableHead className="min-w-[180px]">Referring Provider</TableHead>
+                    <TableHead className="min-w-[140px]">Referring Provider</TableHead>
                     <TableHead>Referrals</TableHead>
-                    <TableHead>Revenue</TableHead>
-                    <TableHead>Arrival Rate</TableHead>
+                    <TableHead className="hidden sm:table-cell">Revenue</TableHead>
+                    <TableHead className="hidden sm:table-cell">Arrival Rate</TableHead>
                     <TableHead>Tier</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -253,8 +253,8 @@ export default function ExecutiveDashboardPage() {
                           </span>
                         </TableCell>
                         <TableCell className="text-sm" data-testid={`text-referrer-count-${idx}`}>{r.referralsCount}</TableCell>
-                        <TableCell className="text-sm" data-testid={`text-referrer-revenue-${idx}`}>{formatCurrency(r.revenueGenerated || 0)}</TableCell>
-                        <TableCell className="text-sm" data-testid={`text-referrer-arrival-${idx}`}>{formatPercent(r.arrivalRate || 0)}</TableCell>
+                        <TableCell className="text-sm hidden sm:table-cell" data-testid={`text-referrer-revenue-${idx}`}>{formatCurrency(r.revenueGenerated || 0)}</TableCell>
+                        <TableCell className="text-sm hidden sm:table-cell" data-testid={`text-referrer-arrival-${idx}`}>{formatPercent(r.arrivalRate || 0)}</TableCell>
                         <TableCell>
                           <Badge
                             variant="outline"

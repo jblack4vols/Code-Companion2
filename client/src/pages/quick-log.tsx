@@ -257,7 +257,7 @@ export default function QuickLogPage() {
 
         <div className="space-y-2">
           <Label className="text-sm font-medium">Interaction Type</Label>
-          <div className="grid grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {INTERACTION_TYPES.map(t => {
               const Icon = t.icon;
               const isSelected = interactionType === t.value;

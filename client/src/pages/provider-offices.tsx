@@ -385,7 +385,7 @@ export default function ProviderOfficesPage() {
               <Label>Address</Label>
               <Input name="address" placeholder="Street address" data-testid="input-office-address" />
             </div>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <div className="space-y-1.5">
                 <Label>City</Label>
                 <Input name="city" placeholder="City" data-testid="input-office-city" />
