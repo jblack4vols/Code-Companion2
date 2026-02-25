@@ -15,14 +15,6 @@ app.get("/health", (_req, res) => {
   res.status(200).send("OK");
 });
 
-app.use((req, res, next) => {
-  const ua = req.headers["user-agent"] || "";
-  if (req.path === "/" && (ua.includes("GoogleHC") || ua.includes("kube-probe") || ua.includes("Cloud-Run") || ua === "")) {
-    return res.status(200).send("OK");
-  }
-  next();
-});
-
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -76,29 +68,41 @@ app.use((req, res, next) => {
   next();
 });
 
-(async () => {
-  await registerRoutes(httpServer, app);
+let appReady = false;
 
-  app.use(globalErrorHandler as any);
-
-  if (process.env.NODE_ENV === "production") {
-    serveStatic(app);
-  } else {
-    const { setupVite } = await import("./vite");
-    await setupVite(httpServer, app);
+app.use((req, res, next) => {
+  if (!appReady && !req.path.startsWith("/health")) {
+    return res.status(503).json({ message: "Server is starting up, please wait..." });
   }
+  next();
+});
 
-  const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
+const port = parseInt(process.env.PORT || "5000", 10);
+httpServer.listen(
+  {
+    port,
+    host: "0.0.0.0",
+    reusePort: true,
+  },
+  () => {
+    log(`serving on port ${port}`);
 
-      (async () => {
+    (async () => {
+      try {
+        await registerRoutes(httpServer, app);
+
+        app.use(globalErrorHandler as any);
+
+        if (process.env.NODE_ENV === "production") {
+          serveStatic(app);
+        } else {
+          const { setupVite } = await import("./vite");
+          await setupVite(httpServer, app);
+        }
+
+        appReady = true;
+        log("Application fully initialized");
+
         const { ensureSearchIndexes } = await import("./db");
         await ensureSearchIndexes().catch(err => console.error("Index error:", err));
 
@@ -107,7 +111,10 @@ app.use((req, res, next) => {
 
         const { scheduleETL } = await import("./etl");
         scheduleETL();
-      })();
-    },
-  );
-})();
+      } catch (err) {
+        console.error("Failed to initialize application:", err);
+        process.exit(1);
+      }
+    })();
+  },
+);
