@@ -7,10 +7,10 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronLeft, ChevronRight, Calendar, ClipboardList, MessageSquare,
   MapPin, Clock, Users, Phone, Mail, Coffee, MoreHorizontal,
-  CheckCircle2, Circle, AlertCircle, Building2, Target,
+  CheckCircle2, Circle, AlertCircle, Building2, Target, ExternalLink,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, isSameDay, isToday, isPast, isBefore, startOfDay } from "date-fns";
-import { Link } from "wouter";
+import { useLocation } from "wouter";
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   MEETING: "bg-blue-500",
@@ -48,6 +48,8 @@ interface HitListEvent {
   physicianId: string | null;
   description: string | null;
   locationName: string | null;
+  physicianFirstName: string | null;
+  physicianLastName: string | null;
 }
 
 interface HitListTask {
@@ -80,6 +82,7 @@ interface HitListData {
 
 export default function HitListPage() {
   const [weekOffset, setWeekOffset] = useState(0);
+  const [, navigate] = useLocation();
 
   const weekStart = useMemo(() => startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset]);
   const weekEnd = useMemo(() => endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset]);
@@ -105,6 +108,10 @@ export default function HitListPage() {
       tasks: data.tasks.filter(t => isSameDay(new Date(t.dueAt), day)),
       followUps: data.followUps.filter(f => f.followUpDueAt && isSameDay(new Date(f.followUpDueAt), day)),
     };
+  };
+
+  const goToPhysician = (physicianId: string | null) => {
+    if (physicianId) navigate(`/physicians/${physicianId}`);
   };
 
   const totalEvents = data?.events.length || 0;
@@ -231,48 +238,63 @@ export default function HitListPage() {
                     <p className="text-xs text-muted-foreground py-2 text-center">No items scheduled</p>
                   ) : (
                     <div className="space-y-1.5">
-                      {events.map(evt => (
-                        <div
-                          key={`evt-${evt.id}`}
-                          className={`flex items-center gap-2.5 p-2 rounded-md border ${evt.completed ? "bg-green-500/5 border-green-500/20" : "bg-card"}`}
-                          data-testid={`hitlist-event-${evt.id}`}
-                        >
-                          <div className={`w-1 h-8 rounded-full shrink-0 ${evt.completed ? "bg-green-500" : EVENT_TYPE_COLORS[evt.eventType] || "bg-gray-400"}`} />
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-center gap-1.5">
-                              {evt.completed ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                              ) : (
-                                <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                              )}
-                              <span className={`text-sm font-medium truncate ${evt.completed ? "line-through text-muted-foreground" : ""}`}>
-                                {evt.title}
-                              </span>
-                              <Badge variant="outline" className="text-[9px] shrink-0">{evt.eventType}</Badge>
-                            </div>
-                            <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
-                              <span className="flex items-center gap-1">
-                                <Clock className="w-3 h-3" />
-                                {evt.allDay ? "All day" : `${format(new Date(evt.startAt), "h:mm a")} - ${format(new Date(evt.endAt), "h:mm a")}`}
-                              </span>
-                              {(evt.locationName || evt.practiceName) && (
-                                <span className="flex items-center gap-1 truncate">
-                                  <MapPin className="w-3 h-3 shrink-0" />
-                                  {evt.practiceName || evt.locationName}
+                      {events.map(evt => {
+                        const hasPhysician = !!evt.physicianId;
+                        return (
+                          <div
+                            key={`evt-${evt.id}`}
+                            className={`flex items-center gap-2.5 p-2 rounded-md border transition ${evt.completed ? "bg-green-500/5 border-green-500/20" : "bg-card"} ${hasPhysician ? "cursor-pointer hover:bg-accent/50" : ""}`}
+                            onClick={() => goToPhysician(evt.physicianId)}
+                            data-testid={`hitlist-event-${evt.id}`}
+                          >
+                            <div className={`w-1 h-8 rounded-full shrink-0 ${evt.completed ? "bg-green-500" : EVENT_TYPE_COLORS[evt.eventType] || "bg-gray-400"}`} />
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-1.5">
+                                {evt.completed ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
+                                ) : (
+                                  <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                                )}
+                                <span className={`text-sm font-medium truncate ${evt.completed ? "line-through text-muted-foreground" : ""}`}>
+                                  {evt.title}
                                 </span>
-                              )}
+                                <Badge variant="outline" className="text-[9px] shrink-0">{evt.eventType}</Badge>
+                              </div>
+                              <div className="flex items-center gap-3 mt-0.5 text-[11px] text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Clock className="w-3 h-3" />
+                                  {evt.allDay ? "All day" : `${format(new Date(evt.startAt), "h:mm a")} - ${format(new Date(evt.endAt), "h:mm a")}`}
+                                </span>
+                                {evt.physicianFirstName && (
+                                  <span className="flex items-center gap-1">
+                                    <Users className="w-3 h-3 shrink-0" />
+                                    Dr. {evt.physicianFirstName} {evt.physicianLastName}
+                                  </span>
+                                )}
+                                {(evt.locationName || evt.practiceName) && (
+                                  <span className="flex items-center gap-1 truncate">
+                                    <MapPin className="w-3 h-3 shrink-0" />
+                                    {evt.practiceName || evt.locationName}
+                                  </span>
+                                )}
+                              </div>
                             </div>
+                            {hasPhysician && (
+                              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            )}
                           </div>
-                        </div>
-                      ))}
+                        );
+                      })}
 
                       {dayTasks.map(task => {
                         const isDone = task.status === "DONE";
                         const isOverdue = !isDone && isPast(new Date(task.dueAt));
+                        const hasPhysician = !!task.physicianId;
                         return (
                           <div
                             key={`task-${task.id}`}
-                            className={`flex items-center gap-2.5 p-2 rounded-md border ${isDone ? "bg-green-500/5 border-green-500/20" : isOverdue ? "bg-red-500/5 border-red-500/20" : "bg-card"}`}
+                            className={`flex items-center gap-2.5 p-2 rounded-md border transition ${isDone ? "bg-green-500/5 border-green-500/20" : isOverdue ? "bg-red-500/5 border-red-500/20" : "bg-card"} ${hasPhysician ? "cursor-pointer hover:bg-accent/50" : ""}`}
+                            onClick={() => goToPhysician(task.physicianId)}
                             data-testid={`hitlist-task-${task.id}`}
                           >
                             <div className={`w-1 h-8 rounded-full shrink-0 ${isDone ? "bg-green-500" : isOverdue ? "bg-red-500" : "bg-amber-500"}`} />
@@ -299,16 +321,21 @@ export default function HitListPage() {
                                 </div>
                               )}
                             </div>
+                            {hasPhysician && (
+                              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            )}
                           </div>
                         );
                       })}
 
                       {followUps.map(fu => {
                         const FuIcon = typeIcons[fu.type] || MoreHorizontal;
+                        const hasPhysician = !!fu.physicianId;
                         return (
                           <div
                             key={`fu-${fu.id}`}
-                            className="flex items-center gap-2.5 p-2 rounded-md border bg-card"
+                            className={`flex items-center gap-2.5 p-2 rounded-md border bg-card transition ${hasPhysician ? "cursor-pointer hover:bg-accent/50" : ""}`}
+                            onClick={() => goToPhysician(fu.physicianId)}
                             data-testid={`hitlist-followup-${fu.id}`}
                           >
                             <div className="w-1 h-8 rounded-full shrink-0 bg-purple-500" />
@@ -335,6 +362,9 @@ export default function HitListPage() {
                                 )}
                               </div>
                             </div>
+                            {hasPhysician && (
+                              <ExternalLink className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                            )}
                           </div>
                         );
                       })}

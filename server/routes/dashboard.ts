@@ -372,9 +372,12 @@ export function registerDashboardRoutes(app: Express) {
           physicianId: calendarEvents.physicianId,
           description: calendarEvents.description,
           locationName: locations.name,
+          physicianFirstName: physicians.firstName,
+          physicianLastName: physicians.lastName,
         })
           .from(calendarEvents)
           .leftJoin(locations, eq(calendarEvents.locationId, locations.id))
+          .leftJoin(physicians, eq(calendarEvents.physicianId, physicians.id))
           .where(and(gte(calendarEvents.startAt, start), lte(calendarEvents.startAt, end)))
           .orderBy(asc(calendarEvents.startAt)),
 
