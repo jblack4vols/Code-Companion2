@@ -1,15 +1,19 @@
 import { useState, useEffect, useCallback } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
-import { Search, Building2, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Users, FileText, Phone, MapPin, X, Clock } from "lucide-react";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Search, Building2, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Users, FileText, Phone, MapPin, X, Clock, Plus } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/use-debounce";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link } from "wouter";
 
 const RECENT_SEARCHES_KEY = "tristar360_provider_offices_recent";
@@ -113,11 +117,56 @@ function OfficeProviders({ officeName }: { officeName: string }) {
 
 export default function ProviderOfficesPage() {
   const { user } = useAuth();
+  const { toast } = useToast();
   const [search, setSearch] = useState("");
   const debouncedSearch = useDebounce(search, 300);
   const [page, setPage] = useState(1);
   const [expandedOffice, setExpandedOffice] = useState<string | null>(null);
   const { recent, addRecent, clearRecent } = useRecentSearches(user?.id);
+  const [addDialogOpen, setAddDialogOpen] = useState(false);
+
+  const canManage = user && ["OWNER", "DIRECTOR", "MARKETER"].includes((user as any).role);
+
+  const addOfficeMutation = useMutation({
+    mutationFn: async (data: { practiceName: string; address?: string; city?: string; state?: string; zip?: string; phone?: string; fax?: string }) => {
+      const res = await apiRequest("POST", "/api/physicians", {
+        firstName: data.practiceName,
+        lastName: "(Office)",
+        practiceName: data.practiceName,
+        primaryOfficeAddress: data.address || null,
+        city: data.city || null,
+        state: data.state || null,
+        zip: data.zip || null,
+        phone: data.phone || null,
+        fax: data.fax || null,
+        status: "PROSPECT",
+        relationshipStage: "NEW",
+        priority: "MEDIUM",
+      });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/provider-offices"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/practice-names"] });
+      setAddDialogOpen(false);
+      toast({ title: "Office added", description: `"${vars.practiceName}" has been created. You can now add providers to it.` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const handleAddOffice = (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    const fd = new FormData(e.currentTarget);
+    addOfficeMutation.mutate({
+      practiceName: (fd.get("practiceName") as string).trim(),
+      address: (fd.get("address") as string)?.trim() || undefined,
+      city: (fd.get("city") as string)?.trim() || undefined,
+      state: (fd.get("state") as string)?.trim() || undefined,
+      zip: (fd.get("zip") as string)?.trim() || undefined,
+      phone: (fd.get("phone") as string)?.trim() || undefined,
+      fax: (fd.get("fax") as string)?.trim() || undefined,
+    });
+  };
 
   useEffect(() => { setPage(1); }, [debouncedSearch]);
 
@@ -167,6 +216,12 @@ export default function ProviderOfficesPage() {
           <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-offices-title">Provider Offices</h1>
           <p className="text-xs sm:text-sm text-muted-foreground">{total} offices with linked providers</p>
         </div>
+        {canManage && (
+          <Button onClick={() => setAddDialogOpen(true)} data-testid="button-add-office">
+            <Plus className="w-4 h-4 mr-1.5" />
+            Add Office
+          </Button>
+        )}
       </div>
 
       <div className="flex flex-col sm:flex-row gap-3">
@@ -301,6 +356,60 @@ export default function ProviderOfficesPage() {
           </div>
         </div>
       )}
+
+      <Dialog open={addDialogOpen} onOpenChange={setAddDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Building2 className="w-5 h-5" />
+              Add New Office
+            </DialogTitle>
+          </DialogHeader>
+          <form onSubmit={handleAddOffice} className="space-y-4">
+            <div className="space-y-1.5">
+              <Label>Office / Practice Name *</Label>
+              <Input name="practiceName" required placeholder="e.g. Knoxville Orthopedics" data-testid="input-office-name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Address</Label>
+              <Input name="address" placeholder="Street address" data-testid="input-office-address" />
+            </div>
+            <div className="grid grid-cols-3 gap-3">
+              <div className="space-y-1.5">
+                <Label>City</Label>
+                <Input name="city" placeholder="City" data-testid="input-office-city" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>State</Label>
+                <Input name="state" placeholder="TN" maxLength={2} data-testid="input-office-state" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>ZIP</Label>
+                <Input name="zip" placeholder="37901" data-testid="input-office-zip" />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Phone</Label>
+                <Input name="phone" placeholder="(865) 555-0100" data-testid="input-office-phone" />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Fax</Label>
+                <Input name="fax" placeholder="(865) 555-0101" data-testid="input-office-fax" />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              This creates the office so you can assign providers to it. Add providers by editing their practice name.
+            </p>
+            <div className="flex justify-end gap-2">
+              <Button type="button" variant="outline" onClick={() => setAddDialogOpen(false)}>Cancel</Button>
+              <Button type="submit" disabled={addOfficeMutation.isPending} data-testid="button-submit-office">
+                {addOfficeMutation.isPending ? "Adding..." : "Add Office"}
+              </Button>
+            </div>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
