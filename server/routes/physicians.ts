@@ -34,6 +34,12 @@ export function registerPhysicianRoutes(app: Express) {
         practiceSet.add(p.practiceName.trim());
       }
     }
+    const allEvents = await storage.getCalendarEvents({});
+    for (const evt of allEvents) {
+      if (evt.practiceName && evt.practiceName.trim()) {
+        practiceSet.add(evt.practiceName.trim());
+      }
+    }
     const sorted = Array.from(practiceSet).sort((a, b) => a.localeCompare(b));
     res.json(sorted);
   });

@@ -139,6 +139,7 @@ export default function CalendarPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/practice-names"] });
       setDialogOpen(false);
       setEditingEvent(null);
       setSelectedPracticeName("");
@@ -154,6 +155,7 @@ export default function CalendarPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/practice-names"] });
       setDialogOpen(false);
       setEditingEvent(null);
       setSelectedPracticeName("");
