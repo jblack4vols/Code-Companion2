@@ -54,12 +54,19 @@ export function registerSearchRoutes(app: Express) {
 
   app.post("/api/referrals/:id/link", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const { physicianId } = req.body;
+      const { physicianId, linkAll } = req.body;
       if (!physicianId) return res.status(400).json({ message: "physicianId is required" });
       const updated = await storage.linkReferralToPhysician(req.params.id, physicianId);
       if (!updated) return res.status(404).json({ message: "Referral or physician not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "LINK_REFERRAL", entity: "Referral", entityId: req.params.id, detailJson: { physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
-      res.json(updated);
+
+      let linkedCount = 1;
+      if (linkAll && updated.referringProviderName) {
+        const additionalCount = await storage.bulkLinkReferralsByProviderName(updated.referringProviderName, physicianId, req.params.id);
+        linkedCount += additionalCount;
+      }
+
+      res.json({ ...updated, linkedCount });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -188,6 +188,7 @@ export interface IStorage {
   // Unlinked referrals
   getUnlinkedReferrals(page?: number, pageSize?: number): Promise<PaginatedResult<any>>;
   linkReferralToPhysician(referralId: string, physicianId: string): Promise<Referral | undefined>;
+  bulkLinkReferralsByProviderName(providerName: string, physicianId: string, excludeId: string): Promise<number>;
   categorizeReferralAsSelfReferral(referralId: string): Promise<Referral | undefined>;
 }
 
@@ -1674,6 +1675,23 @@ export class DatabaseStorage implements IStorage {
       updatedAt: new Date(),
     }).where(eq(referrals.id, referralId)).returning();
     return updated;
+  }
+
+  async bulkLinkReferralsByProviderName(providerName: string, physicianId: string, excludeId: string): Promise<number> {
+    const physician = await this.getPhysician(physicianId);
+    if (!physician) return 0;
+    const result = await db.update(referrals).set({
+      physicianId,
+      referringProviderName: `${physician.lastName}, ${physician.firstName}`,
+      referringProviderNpi: physician.npi,
+      updatedAt: new Date(),
+    }).where(and(
+      isNull(referrals.physicianId),
+      isNull(referrals.deletedAt),
+      eq(referrals.referringProviderName, providerName),
+      sql`${referrals.id} != ${excludeId}`,
+    ));
+    return result.rowCount ?? 0;
   }
 
   async categorizeReferralAsSelfReferral(referralId: string): Promise<Referral | undefined> {

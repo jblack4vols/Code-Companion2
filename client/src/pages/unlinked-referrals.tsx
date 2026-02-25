@@ -8,12 +8,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Loader2, Link2, UserX, Search, ArrowRight, Sparkles, UserPlus, CheckCircle2 } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Loader2, Link2, UserX, Search, ArrowRight, Sparkles, UserPlus, CheckCircle2, Copy } from "lucide-react";
 import { getQueryFn } from "@/lib/queryClient";
+import { useMemo } from "react";
 
 export default function UnlinkedReferralsPage() {
   const [page, setPage] = useState(1);
   const [linkingReferralId, setLinkingReferralId] = useState<string | null>(null);
+  const [linkAll, setLinkAll] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateProvider, setShowCreateProvider] = useState(false);
   const [npiLookup, setNpiLookup] = useState("");
@@ -54,14 +57,16 @@ export default function UnlinkedReferralsPage() {
 
   const linkMutation = useMutation({
     mutationFn: async ({ referralId, physicianId }: { referralId: string; physicianId: string }) => {
-      const res = await apiRequest("POST", `/api/referrals/${referralId}/link`, { physicianId });
+      const res = await apiRequest("POST", `/api/referrals/${referralId}/link`, { physicianId, linkAll });
       return res.json();
     },
-    onSuccess: () => {
-      toast({ title: "Referral linked", description: "Successfully linked to the referring provider." });
+    onSuccess: (result) => {
+      const count = result.linkedCount || 1;
+      toast({ title: "Referral linked", description: count > 1 ? `Successfully linked ${count} referrals to the referring provider.` : "Successfully linked to the referring provider." });
       queryClient.invalidateQueries({ queryKey: ["/api/referrals/unlinked"] });
       setLinkingReferralId(null);
       setSearchQuery("");
+      setLinkAll(false);
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -160,6 +165,18 @@ export default function UnlinkedReferralsPage() {
   const currentRef = data?.data?.find((r: any) => r.id === linkingReferralId);
   const showSuggestions = !!linkingReferralId && searchQuery.length < 2 && suggestedMatches && suggestedMatches.length > 0;
 
+  const providerNameCounts = useMemo(() => {
+    if (!data?.data) return {};
+    const counts: Record<string, number> = {};
+    data.data.forEach((r: any) => {
+      const key = r.referringProviderName;
+      if (key) counts[key] = (counts[key] || 0) + 1;
+    });
+    return counts;
+  }, [data?.data]);
+
+  const currentRefDuplicateCount = currentRef?.referringProviderName ? (providerNameCounts[currentRef.referringProviderName] || 1) : 1;
+
   return (
     <div className="p-4 md:p-6 max-w-6xl mx-auto space-y-4">
       <div>
@@ -187,6 +204,12 @@ export default function UnlinkedReferralsPage() {
                       <span className="font-medium text-sm">{ref.patientFullName || ref.patientAccountNumber || "Unknown Patient"}</span>
                       <Badge variant="outline" className="text-xs">{ref.status}</Badge>
                       {ref.referralDate && <span className="text-xs text-muted-foreground">{ref.referralDate}</span>}
+                      {ref.referringProviderName && providerNameCounts[ref.referringProviderName] > 1 && (
+                        <Badge variant="secondary" className="text-xs gap-1">
+                          <Copy className="w-3 h-3" />
+                          {providerNameCounts[ref.referringProviderName]} from same provider
+                        </Badge>
+                      )}
                     </div>
                     {ref.referringProviderName && (
                       <p className="text-xs text-muted-foreground mt-0.5">Originally listed: <span className="font-medium text-foreground">{ref.referringProviderName}</span></p>
@@ -217,7 +240,7 @@ export default function UnlinkedReferralsPage() {
         </CardContent>
       </Card>
 
-      <Dialog open={!!linkingReferralId} onOpenChange={(open) => { if (!open) { setLinkingReferralId(null); resetCreateForm(); } }}>
+      <Dialog open={!!linkingReferralId} onOpenChange={(open) => { if (!open) { setLinkingReferralId(null); resetCreateForm(); setLinkAll(false); } }}>
         <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Link to Referring Provider</DialogTitle>
@@ -226,6 +249,15 @@ export default function UnlinkedReferralsPage() {
               <p className="text-sm text-muted-foreground mt-1">Matching: <span className="font-medium">{currentRef.referringProviderName}</span></p>
             )}
           </DialogHeader>
+
+          {currentRefDuplicateCount > 1 && (
+            <div className="flex items-center gap-2 p-3 rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/30">
+              <Checkbox id="linkAll" checked={linkAll} onCheckedChange={(v) => setLinkAll(!!v)} data-testid="checkbox-link-all" />
+              <label htmlFor="linkAll" className="text-sm cursor-pointer">
+                Link all <span className="font-semibold">{currentRefDuplicateCount}</span> referrals from <span className="font-medium">{currentRef?.referringProviderName}</span> to the same provider
+              </label>
+            </div>
+          )}
 
           {!showCreateProvider ? (
             <div className="space-y-3">
