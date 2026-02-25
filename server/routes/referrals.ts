@@ -16,6 +16,8 @@ export function registerReferralRoutes(app: Express) {
       dateFrom: qstr(req.query.dateFrom as any),
       dateTo: qstr(req.query.dateTo as any),
       physicianId: qstr(req.query.physicianId as any),
+      sortBy: qstr(req.query.sortBy as any),
+      sortDir: qstr(req.query.sortDir as any),
       page: req.query.page ? parseInt(req.query.page as string) : 1,
       pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : 50,
     }));

@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2, Pencil, Save, Loader2, RotateCcw } from "lucide-react";
+import { Search, Plus, FileText, Download, X, ChevronLeft, ChevronRight, UserPlus, Check, Trash2, Pencil, Save, Loader2, RotateCcw, ArrowUp, ArrowDown, ArrowUpDown } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -62,9 +62,22 @@ export default function ReferralsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<Record<string, any>>({});
   const [page, setPage] = useState(1);
+  const [sortBy, setSortBy] = useState<string>("");
+  const [sortDir, setSortDir] = useState<string>("desc");
   const pageSize = 50;
 
   const debouncedSearch = useDebounce(search, 300);
+
+  const toggleSort = (column: string) => {
+    if (sortBy === column) {
+      if (sortDir === "desc") setSortDir("asc");
+      else { setSortBy(""); setSortDir("desc"); }
+    } else {
+      setSortBy(column);
+      setSortDir("desc");
+    }
+    setPage(1);
+  };
 
   const buildQueryParams = useCallback(() => {
     const params = new URLSearchParams();
@@ -76,8 +89,10 @@ export default function ReferralsPage() {
     if (disciplineFilter !== "all") params.set("discipline", disciplineFilter);
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
+    if (sortBy) params.set("sortBy", sortBy);
+    if (sortBy) params.set("sortDir", sortDir);
     return params.toString();
-  }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo]);
+  }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo, sortBy, sortDir]);
 
   const queryParams = buildQueryParams();
   const { data: result, isLoading, isError, refetch } = useQuery<any>({
@@ -721,11 +736,31 @@ export default function ReferralsPage() {
                         />
                       </TableHead>
                     )}
-                    <TableHead>Created</TableHead>
-                    <TableHead>Patient</TableHead>
-                    <TableHead>Referring Doctor</TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("referralDate")} data-testid="sort-referralDate">
+                      <span className="inline-flex items-center gap-1">
+                        Created
+                        {sortBy === "referralDate" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                      </span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("patientFullName")} data-testid="sort-patientFullName">
+                      <span className="inline-flex items-center gap-1">
+                        Patient
+                        {sortBy === "patientFullName" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                      </span>
+                    </TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("referringProviderName")} data-testid="sort-referringProviderName">
+                      <span className="inline-flex items-center gap-1">
+                        Referring Doctor
+                        {sortBy === "referringProviderName" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                      </span>
+                    </TableHead>
                     <TableHead>Facility</TableHead>
-                    <TableHead>Status</TableHead>
+                    <TableHead className="cursor-pointer select-none" onClick={() => toggleSort("status")} data-testid="sort-status">
+                      <span className="inline-flex items-center gap-1">
+                        Status
+                        {sortBy === "status" ? (sortDir === "asc" ? <ArrowUp className="w-3 h-3" /> : <ArrowDown className="w-3 h-3" />) : <ArrowUpDown className="w-3 h-3 opacity-30" />}
+                      </span>
+                    </TableHead>
                     <TableHead className="hidden md:table-cell">Disc.</TableHead>
                     <TableHead className="hidden md:table-cell">Diagnosis</TableHead>
                     <TableHead className="hidden lg:table-cell">Therapist</TableHead>

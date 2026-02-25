@@ -42,6 +42,35 @@ export function registerInteractionRoutes(app: Express) {
     }
   });
 
+  app.get("/api/interactions/paginated", requireAuth, async (req, res) => {
+    const filters = {
+      search: req.query.search as string | undefined,
+      type: req.query.type as string | undefined,
+      locationId: req.query.locationId as string | undefined,
+      physicianId: req.query.physicianId as string | undefined,
+      dateFrom: req.query.dateFrom as string | undefined,
+      dateTo: req.query.dateTo as string | undefined,
+      includeDeleted: req.query.includeDeleted === "true",
+      page: req.query.page ? Number(req.query.page) : 1,
+      pageSize: req.query.pageSize ? Number(req.query.pageSize) : 50,
+    };
+    res.json(await storage.getInteractionsPaginated(filters));
+  });
+
+  app.patch("/api/interactions/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const body = { ...req.body };
+      if (typeof body.occurredAt === "string") body.occurredAt = new Date(body.occurredAt);
+      if (typeof body.followUpDueAt === "string") body.followUpDueAt = new Date(body.followUpDueAt);
+      const updated = await storage.updateInteraction(req.params.id, body);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Interaction", entityId: req.params.id, detailJson: body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json(updated);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/interactions/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
       const success = await storage.softDeleteInteraction(req.params.id);

@@ -46,6 +46,18 @@ export interface PhysicianFilters {
   pageSize?: number;
 }
 
+export interface InteractionFilters {
+  search?: string;
+  type?: string;
+  locationId?: string;
+  physicianId?: string;
+  dateFrom?: string;
+  dateTo?: string;
+  includeDeleted?: boolean;
+  page?: number;
+  pageSize?: number;
+}
+
 export interface ReferralFilters {
   search?: string;
   status?: string;
@@ -54,6 +66,8 @@ export interface ReferralFilters {
   dateFrom?: string;
   dateTo?: string;
   physicianId?: string;
+  sortBy?: string;
+  sortDir?: string;
   page?: number;
   pageSize?: number;
 }
@@ -82,7 +96,9 @@ export interface IStorage {
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
 
   getInteractions(physicianId?: string, includeDeleted?: boolean): Promise<Interaction[]>;
+  getInteractionsPaginated(filters: InteractionFilters): Promise<PaginatedResult<any>>;
   createInteraction(inter: InsertInteraction): Promise<Interaction>;
+  updateInteraction(id: string, data: Partial<InsertInteraction>): Promise<Interaction | undefined>;
 
   getReferrals(physicianId?: string): Promise<Referral[]>;
   getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>>;
@@ -526,7 +542,21 @@ export class DatabaseStorage implements IStorage {
       .leftJoin(physicians, eq(referrals.physicianId, physicians.id))
       .leftJoin(locations, eq(referrals.locationId, locations.id))
       .where(where)
-      .orderBy(desc(referrals.referralDate))
+      .orderBy(...(() => {
+        const dir = filters.sortDir === "asc" ? asc : desc;
+        switch (filters.sortBy) {
+          case "referralDate":
+            return [dir(referrals.referralDate)];
+          case "patientFullName":
+            return [dir(referrals.patientFullName)];
+          case "status":
+            return [dir(referrals.status)];
+          case "referringProviderName":
+            return [dir(physicians.lastName), dir(physicians.firstName)];
+          default:
+            return [desc(referrals.referralDate)];
+        }
+      })())
       .limit(pageSize)
       .offset((page - 1) * pageSize);
 
@@ -1361,6 +1391,74 @@ export class DatabaseStorage implements IStorage {
       .set({ deletedAt: new Date(), updatedAt: new Date() })
       .where(and(eq(interactions.id, id), isNull(interactions.deletedAt)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async getInteractionsPaginated(filters: InteractionFilters): Promise<PaginatedResult<any>> {
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 50;
+    const conditions: any[] = [];
+
+    if (!filters.includeDeleted) conditions.push(isNull(interactions.deletedAt));
+    if (filters.type && filters.type !== "all") conditions.push(eq(interactions.type, filters.type as any));
+    if (filters.locationId && filters.locationId !== "all") conditions.push(eq(interactions.locationId, filters.locationId));
+    if (filters.physicianId) conditions.push(eq(interactions.physicianId, filters.physicianId));
+    if (filters.dateFrom) conditions.push(gte(interactions.occurredAt, new Date(filters.dateFrom)));
+    if (filters.dateTo) {
+      const endDate = new Date(filters.dateTo);
+      endDate.setHours(23, 59, 59, 999);
+      conditions.push(lte(interactions.occurredAt, endDate));
+    }
+    if (filters.search) {
+      const term = `%${filters.search}%`;
+      conditions.push(or(
+        ilike(interactions.summary, term),
+        ilike(sql`coalesce(${interactions.nextStep}, '')`, term),
+        ilike(sql`coalesce(${physicians.firstName} || ' ' || ${physicians.lastName}, '')`, term),
+      ));
+    }
+
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countResult] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(interactions)
+      .leftJoin(physicians, eq(interactions.physicianId, physicians.id))
+      .where(where);
+    const total = Number(countResult?.count || 0);
+
+    const data = await db
+      .select({
+        id: interactions.id,
+        physicianId: interactions.physicianId,
+        locationId: interactions.locationId,
+        userId: interactions.userId,
+        type: interactions.type,
+        occurredAt: interactions.occurredAt,
+        summary: interactions.summary,
+        nextStep: interactions.nextStep,
+        followUpDueAt: interactions.followUpDueAt,
+        deletedAt: interactions.deletedAt,
+        createdAt: interactions.createdAt,
+        updatedAt: interactions.updatedAt,
+        physicianFirstName: physicians.firstName,
+        physicianLastName: physicians.lastName,
+      })
+      .from(interactions)
+      .leftJoin(physicians, eq(interactions.physicianId, physicians.id))
+      .where(where)
+      .orderBy(desc(interactions.occurredAt))
+      .limit(pageSize)
+      .offset((page - 1) * pageSize);
+
+    return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async updateInteraction(id: string, data: Partial<InsertInteraction>): Promise<Interaction | undefined> {
+    const [updated] = await db.update(interactions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(interactions.id, id))
+      .returning();
+    return updated;
   }
 
   async restoreInteraction(id: string): Promise<boolean> {

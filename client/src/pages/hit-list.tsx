@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,10 +7,12 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   ChevronLeft, ChevronRight, Calendar, ClipboardList, MessageSquare,
   MapPin, Clock, Users, Phone, Mail, Coffee, MoreHorizontal,
-  CheckCircle2, Circle, AlertCircle, Building2, Target, ExternalLink,
+  CheckCircle2, Circle, AlertCircle, Building2, Target, ExternalLink, Loader2,
 } from "lucide-react";
 import { format, startOfWeek, endOfWeek, addWeeks, eachDayOfInterval, isSameDay, isToday, isPast, isBefore, startOfDay } from "date-fns";
 import { useLocation } from "wouter";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 
 const EVENT_TYPE_COLORS: Record<string, string> = {
   MEETING: "bg-blue-500",
@@ -83,6 +85,7 @@ interface HitListData {
 export default function HitListPage() {
   const [weekOffset, setWeekOffset] = useState(0);
   const [, navigate] = useLocation();
+  const { toast } = useToast();
 
   const weekStart = useMemo(() => startOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset]);
   const weekEnd = useMemo(() => endOfWeek(addWeeks(new Date(), weekOffset), { weekStartsOn: 1 }), [weekOffset]);
@@ -109,6 +112,28 @@ export default function HitListPage() {
       followUps: data.followUps.filter(f => f.followUpDueAt && isSameDay(new Date(f.followUpDueAt), day)),
     };
   };
+
+  const toggleEventMutation = useMutation({
+    mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => {
+      await apiRequest("PATCH", `/api/calendar-events/${id}`, { completed });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/hit-list"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const toggleTaskMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: string; status: string }) => {
+      await apiRequest("PATCH", `/api/tasks/${id}`, { status });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/dashboard/hit-list"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const goToPhysician = (physicianId: string | null) => {
     if (physicianId) navigate(`/physicians/${physicianId}`);
@@ -247,14 +272,22 @@ export default function HitListPage() {
                             onClick={() => goToPhysician(evt.physicianId)}
                             data-testid={`hitlist-event-${evt.id}`}
                           >
+                            <button
+                              type="button"
+                              className="shrink-0 p-0.5 rounded hover:bg-accent"
+                              onClick={(e) => { e.stopPropagation(); toggleEventMutation.mutate({ id: evt.id, completed: !evt.completed }); }}
+                              data-testid={`button-toggle-event-${evt.id}`}
+                              title={evt.completed ? "Mark incomplete" : "Mark complete"}
+                            >
+                              {evt.completed ? (
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              ) : (
+                                <Circle className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </button>
                             <div className={`w-1 h-8 rounded-full shrink-0 ${evt.completed ? "bg-green-500" : EVENT_TYPE_COLORS[evt.eventType] || "bg-gray-400"}`} />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
-                                {evt.completed ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                                ) : (
-                                  <Calendar className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-                                )}
                                 <span className={`text-sm font-medium truncate ${evt.completed ? "line-through text-muted-foreground" : ""}`}>
                                   {evt.title}
                                 </span>
@@ -297,16 +330,24 @@ export default function HitListPage() {
                             onClick={() => goToPhysician(task.physicianId)}
                             data-testid={`hitlist-task-${task.id}`}
                           >
+                            <button
+                              type="button"
+                              className="shrink-0 p-0.5 rounded hover:bg-accent"
+                              onClick={(e) => { e.stopPropagation(); toggleTaskMutation.mutate({ id: task.id, status: isDone ? "OPEN" : "DONE" }); }}
+                              data-testid={`button-toggle-task-${task.id}`}
+                              title={isDone ? "Reopen task" : "Mark done"}
+                            >
+                              {isDone ? (
+                                <CheckCircle2 className="w-4 h-4 text-green-500" />
+                              ) : isOverdue ? (
+                                <AlertCircle className="w-4 h-4 text-red-500" />
+                              ) : (
+                                <Circle className="w-4 h-4 text-amber-500" />
+                              )}
+                            </button>
                             <div className={`w-1 h-8 rounded-full shrink-0 ${isDone ? "bg-green-500" : isOverdue ? "bg-red-500" : "bg-amber-500"}`} />
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-1.5">
-                                {isDone ? (
-                                  <CheckCircle2 className="w-3.5 h-3.5 text-green-500 shrink-0" />
-                                ) : isOverdue ? (
-                                  <AlertCircle className="w-3.5 h-3.5 text-red-500 shrink-0" />
-                                ) : (
-                                  <Circle className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                                )}
                                 <span className={`text-sm truncate ${isDone ? "line-through text-muted-foreground" : ""}`}>
                                   {task.description}
                                 </span>

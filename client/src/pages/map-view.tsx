@@ -164,6 +164,17 @@ export default function MapViewPage() {
               <SelectItem value="PROSPECT">Prospect</SelectItem>
             </SelectContent>
           </Select>
+          <Select value={cityFilter} onValueChange={setCityFilter}>
+            <SelectTrigger className="w-[160px]" data-testid="select-filter-city">
+              <SelectValue placeholder="City" />
+            </SelectTrigger>
+            <SelectContent className="max-h-[300px]">
+              <SelectItem value="all">All Cities ({uniqueCities.length})</SelectItem>
+              {uniqueCities.map(c => (
+                <SelectItem key={c} value={c}>{c}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearFilters} data-testid="button-clear-filters">
               <X className="w-4 h-4 mr-1" />
