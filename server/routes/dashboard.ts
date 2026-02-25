@@ -169,7 +169,7 @@ export function registerDashboardRoutes(app: Express) {
       const result = await db.execute(sql`
         SELECT 
           COUNT(*)::int as received,
-          COUNT(CASE WHEN r.status IN ('SCHEDULED','ARRIVED','EVAL_COMPLETED','IN_TREATMENT','DISCHARGED') THEN 1 END)::int as scheduled,
+          COUNT(CASE WHEN r.status IN ('SCHEDULED','EVAL_COMPLETED','DISCHARGED') THEN 1 END)::int as scheduled,
           COUNT(CASE WHEN r.arrived_visits > 0 THEN 1 END)::int as arrived,
           COUNT(CASE WHEN r.status = 'DISCHARGED' THEN 1 END)::int as discharged
         FROM referrals r
