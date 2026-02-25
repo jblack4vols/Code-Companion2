@@ -6,7 +6,8 @@ import { requireAuth, requireRole, getClientIp } from "./shared";
 export function registerInteractionRoutes(app: Express) {
   app.get("/api/interactions", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
-    res.json(await storage.getInteractions(physicianId));
+    const includeDeleted = req.query.includeDeleted === "true";
+    res.json(await storage.getInteractions(physicianId, includeDeleted));
   });
 
   app.post("/api/interactions", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
@@ -36,6 +37,28 @@ export function registerInteractionRoutes(app: Express) {
       }
 
       res.json(inter);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.delete("/api/interactions/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const success = await storage.softDeleteInteraction(req.params.id);
+      if (!success) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Interaction", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/interactions/:id/restore", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const success = await storage.restoreInteraction(req.params.id);
+      if (!success) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Interaction", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }

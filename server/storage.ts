@@ -81,7 +81,7 @@ export interface IStorage {
   createPhysician(phys: InsertPhysician): Promise<Physician>;
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
 
-  getInteractions(physicianId?: string): Promise<Interaction[]>;
+  getInteractions(physicianId?: string, includeDeleted?: boolean): Promise<Interaction[]>;
   createInteraction(inter: InsertInteraction): Promise<Interaction>;
 
   getReferrals(physicianId?: string): Promise<Referral[]>;
@@ -418,13 +418,13 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getInteractions(physicianId?: string) {
-    if (physicianId) {
-      return db.select().from(interactions)
-        .where(and(eq(interactions.physicianId, physicianId), isNull(interactions.deletedAt)))
-        .orderBy(desc(interactions.occurredAt));
-    }
-    return db.select().from(interactions).where(isNull(interactions.deletedAt)).orderBy(desc(interactions.occurredAt));
+  async getInteractions(physicianId?: string, includeDeleted?: boolean) {
+    const conditions: any[] = [];
+    if (physicianId) conditions.push(eq(interactions.physicianId, physicianId));
+    if (!includeDeleted) conditions.push(isNull(interactions.deletedAt));
+    return db.select().from(interactions)
+      .where(conditions.length ? and(...conditions) : undefined)
+      .orderBy(desc(interactions.occurredAt));
   }
 
   async createInteraction(inter: InsertInteraction) {

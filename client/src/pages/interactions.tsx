@@ -9,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download, FileStack } from "lucide-react";
+import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download, FileStack, Trash2, RotateCcw, Archive } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -34,9 +34,18 @@ export default function InteractionsPage() {
   const [dateFrom, setDateFrom] = useState<string>("");
   const [dateTo, setDateTo] = useState<string>("");
   const [showAdd, setShowAdd] = useState(false);
+  const [showDeleted, setShowDeleted] = useState(false);
 
   const formRef = useRef<HTMLFormElement>(null);
-  const { data: interactions, isLoading, isError, refetch } = useQuery<Interaction[]>({ queryKey: ["/api/interactions"] });
+  const { data: interactions, isLoading, isError, refetch } = useQuery<Interaction[]>({
+    queryKey: ["/api/interactions", { includeDeleted: showDeleted }],
+    queryFn: async () => {
+      const url = showDeleted ? "/api/interactions?includeDeleted=true" : "/api/interactions";
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch");
+      return res.json();
+    },
+  });
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
@@ -55,6 +64,7 @@ export default function InteractionsPage() {
   };
 
   const canCreate = user ? hasPermission(user.role, "create", "interaction") : false;
+  const canDelete = user ? hasPermission(user.role, "create", "interaction") : false;
   const canExport = user ? ["OWNER", "DIRECTOR", "ANALYST"].includes(user.role) : false;
 
   const handleExport = async () => {
@@ -84,6 +94,30 @@ export default function InteractionsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       setShowAdd(false);
       toast({ title: "Interaction logged" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/interactions/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/interactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      toast({ title: "Interaction deleted" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("POST", `/api/interactions/${id}/restore`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/interactions"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
+      toast({ title: "Interaction restored" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -125,6 +159,8 @@ export default function InteractionsPage() {
     return matchSearch && matchType && matchLocation && matchDateFrom && matchDateTo;
   })?.sort((a, b) => new Date(b.occurredAt).getTime() - new Date(a.occurredAt).getTime()) || [];
 
+  const deletedCount = interactions?.filter(i => i.deletedAt).length || 0;
+
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-5xl mx-auto">
       <div className="flex flex-wrap items-center justify-between gap-3">
@@ -133,6 +169,20 @@ export default function InteractionsPage() {
           <p className="text-xs sm:text-sm text-muted-foreground">Track outreach and touchpoints</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
+          {canDelete && (
+            <Button
+              variant={showDeleted ? "default" : "outline"}
+              size="sm"
+              onClick={() => setShowDeleted(!showDeleted)}
+              data-testid="button-toggle-deleted"
+            >
+              <Archive className="w-3 h-3 mr-1.5" />
+              {showDeleted ? "Hide Deleted" : "Show Deleted"}
+              {showDeleted && deletedCount > 0 && (
+                <Badge variant="secondary" className="ml-1.5 text-[10px] px-1.5 py-0">{deletedCount}</Badge>
+              )}
+            </Button>
+          )}
           {canExport && (
             <Button variant="outline" size="sm" onClick={handleExport} data-testid="button-export-interactions">
               <Download className="w-3 h-3 mr-1.5" />Export CSV
@@ -311,10 +361,11 @@ export default function InteractionsPage() {
             const loc = locations?.find(l => l.id === i.locationId);
             const typeInfo = typeIcons[i.type] || typeIcons.OTHER;
             const Icon = typeInfo.icon;
+            const isDeleted = !!i.deletedAt;
             return (
-              <Card key={i.id} data-testid={`card-interaction-${i.id}`}>
+              <Card key={i.id} className={isDeleted ? "opacity-60 border-dashed" : ""} data-testid={`card-interaction-${i.id}`}>
                 <CardContent className="p-4 flex gap-3">
-                  <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${typeInfo.color}`}>
+                  <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${isDeleted ? "bg-muted text-muted-foreground" : typeInfo.color}`}>
                     <Icon className="w-4 h-4" />
                   </div>
                   <div className="flex-1 min-w-0">
@@ -322,14 +373,51 @@ export default function InteractionsPage() {
                       <Badge variant="outline" className="text-[10px]">{i.type}</Badge>
                       <span className="text-xs text-muted-foreground">{format(new Date(i.occurredAt), "MMM d, yyyy h:mm a")}</span>
                       {loc && <span className="text-xs text-muted-foreground">at {loc.name}</span>}
+                      {isDeleted && (
+                        <Badge variant="outline" className="text-[10px] bg-destructive/10 text-destructive border-destructive/30">
+                          Deleted
+                        </Badge>
+                      )}
                     </div>
-                    <p className="text-sm font-medium mt-1">
+                    <p className={`text-sm font-medium mt-1 ${isDeleted ? "line-through text-muted-foreground" : ""}`}>
                       {phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "Unknown"}
                     </p>
-                    <p className="text-sm text-muted-foreground mt-0.5">{i.summary}</p>
+                    <p className={`text-sm mt-0.5 ${isDeleted ? "line-through text-muted-foreground" : "text-muted-foreground"}`}>{i.summary}</p>
                     {i.nextStep && <p className="text-xs text-muted-foreground mt-1">Next step: {i.nextStep}</p>}
                     {usr && <p className="text-xs text-muted-foreground mt-1">by {usr.name}</p>}
+                    {isDeleted && i.deletedAt && (
+                      <p className="text-xs text-destructive/70 mt-1">Deleted {format(new Date(i.deletedAt), "MMM d, yyyy h:mm a")}</p>
+                    )}
                   </div>
+                  {canDelete && (
+                    <div className="flex items-start shrink-0">
+                      {isDeleted ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-green-600 hover:text-green-700 hover:bg-green-600/10"
+                          onClick={() => restoreMutation.mutate(i.id)}
+                          disabled={restoreMutation.isPending}
+                          data-testid={`button-restore-interaction-${i.id}`}
+                          title="Restore interaction"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => deleteMutation.mutate(i.id)}
+                          disabled={deleteMutation.isPending}
+                          data-testid={`button-delete-interaction-${i.id}`}
+                          title="Delete interaction"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             );
