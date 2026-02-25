@@ -207,6 +207,7 @@ export const calendarEvents = pgTable("calendar_events", {
   outlookEventId: text("outlook_event_id"),
   meetingUrl: text("meeting_url"),
   allDay: boolean("all_day").default(false).notNull(),
+  completed: boolean("completed").default(false).notNull(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 }, (table) => [

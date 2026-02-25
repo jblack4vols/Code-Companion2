@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User, X } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User, X, CheckCircle2, Circle } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -218,6 +218,18 @@ export default function CalendarPage() {
       toast({ title: "Synced to Outlook" });
     },
     onError: (err: any) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+  });
+
+  const toggleCompleteMutation = useMutation({
+    mutationFn: async ({ id, completed }: { id: string; completed: boolean }) => {
+      const res = await apiRequest("PATCH", `/api/calendar-events/${id}`, { completed });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      toast({ title: data.completed ? "Event marked complete" : "Event marked incomplete" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
@@ -452,7 +464,7 @@ export default function CalendarPage() {
                       {dayEvents.slice(0, 3).map((evt) => (
                         <div
                           key={evt.id}
-                          className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer ${EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
+                          className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer ${evt.completed ? "bg-green-600" : EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
                           onClick={(e) => {
                             e.stopPropagation();
                             openEditDialog(evt);
@@ -490,17 +502,22 @@ export default function CalendarPage() {
               return (
                 <Card
                   key={evt.id}
-                  className="cursor-pointer hover-elevate"
+                  className={`cursor-pointer hover-elevate ${evt.completed ? "border-green-500/40" : ""}`}
                   onClick={() => openEditDialog(evt)}
                   data-testid={`card-event-${evt.id}`}
                 >
                   <CardContent className="p-4 flex gap-3">
-                    <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${EVENT_TYPE_COLORS[evt.eventType]}`}>
-                      <CalendarIcon className="w-4 h-4" />
+                    <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${evt.completed ? "bg-green-600/15 text-green-600" : EVENT_TYPE_COLORS[evt.eventType]}`}>
+                      {evt.completed ? <CheckCircle2 className="w-4 h-4" /> : <CalendarIcon className="w-4 h-4" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <span className="text-sm font-medium truncate">{evt.title}</span>
+                        <span className={`text-sm font-medium truncate ${evt.completed ? "line-through text-muted-foreground" : ""}`}>{evt.title}</span>
+                        {evt.completed && (
+                          <Badge variant="outline" className="text-[10px] bg-green-600/15 text-green-600 border-green-500/30">
+                            Completed
+                          </Badge>
+                        )}
                         <Badge variant="outline" className={`text-[10px] ${EVENT_TYPE_COLORS[evt.eventType]}`}>
                           {EVENT_TYPE_LABELS[evt.eventType]}
                         </Badge>
@@ -807,6 +824,18 @@ export default function CalendarPage() {
               <div className="flex gap-2">
                 {editingEvent && (
                   <>
+                    <Button
+                      type="button"
+                      variant={editingEvent.completed ? "outline" : "default"}
+                      size="sm"
+                      className={editingEvent.completed ? "" : "bg-green-600 hover:bg-green-700 text-white"}
+                      onClick={() => toggleCompleteMutation.mutate({ id: editingEvent.id, completed: !editingEvent.completed })}
+                      disabled={toggleCompleteMutation.isPending}
+                      data-testid="button-toggle-complete"
+                    >
+                      {editingEvent.completed ? <Circle className="w-4 h-4 mr-1" /> : <CheckCircle2 className="w-4 h-4 mr-1" />}
+                      {toggleCompleteMutation.isPending ? "Updating..." : editingEvent.completed ? "Mark Incomplete" : "Mark Complete"}
+                    </Button>
                     <Button
                       type="button"
                       variant="destructive"
