@@ -515,22 +515,25 @@ export default function DashboardPage() {
             <h3 className="text-sm font-semibold">Recent Activity</h3>
             <p className="text-xs text-muted-foreground">Latest team actions</p>
           </div>
-          <Activity className="w-4 h-4 text-muted-foreground" />
+          <Button variant="outline" size="sm" onClick={() => navigate("/activity")} data-testid="button-view-all-activity">
+            View All
+          </Button>
         </CardHeader>
         <CardContent className="p-4 pt-0">
-          <ActivityFeed />
+          <ActivityFeed limit={5} />
         </CardContent>
       </Card>
     </div>
   );
 }
 
-function ActivityFeed() {
+function ActivityFeed({ limit = 15 }: { limit?: number }) {
   const [, navigate] = useLocation();
-  const { data: activities, isLoading, isError, refetch } = useQuery<any[]>({
+  const { data: rawActivities, isLoading, isError, refetch } = useQuery<any[]>({
     queryKey: ["/api/activity-feed?limit=15"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
+  const activities = rawActivities?.slice(0, limit);
 
   if (isLoading) {
     return (

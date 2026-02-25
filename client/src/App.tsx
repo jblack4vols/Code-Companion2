@@ -51,6 +51,7 @@ const InteractionTemplatesPage = lazy(() => import("@/pages/interaction-template
 const QuickLogPage = lazy(() => import("@/pages/quick-log"));
 const ROICalculatorPage = lazy(() => import("@/pages/roi-calculator"));
 const TeamLeaderboardPage = lazy(() => import("@/pages/team-leaderboard"));
+const RecentActivityPage = lazy(() => import("@/pages/recent-activity"));
 
 function LazyFallback() {
   return (
@@ -100,6 +101,7 @@ function AuthenticatedRouter() {
         <Route path="/quick-log" component={QuickLogPage} />
         <Route path="/roi-calculator" component={ROICalculatorPage} />
         <Route path="/leaderboard" component={TeamLeaderboardPage} />
+        <Route path="/activity" component={RecentActivityPage} />
         <Route path="/admin/templates" component={InteractionTemplatesPage} />
         <Route component={NotFound} />
       </Switch>
