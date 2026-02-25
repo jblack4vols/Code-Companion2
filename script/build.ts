@@ -56,8 +56,45 @@ const allowlist = [
   "zod-validation-error",
 ];
 
+async function runDbPush() {
+  const { execSync } = await import("child_process");
+  try {
+    execSync("npx drizzle-kit push --force", { stdio: "inherit" });
+    console.log("db:push completed");
+  } catch (e) {
+    console.warn("db:push warning:", e);
+  }
+}
+
+async function recreateTrgmIndexes() {
+  const url = process.env.DATABASE_URL;
+  if (!url) return;
+  const client = new pg.Client({ connectionString: url });
+  try {
+    await client.connect();
+    await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
+    const indexes = [
+      `CREATE INDEX IF NOT EXISTS idx_physicians_firstname_trgm ON physicians USING gin ("firstName" gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_physicians_lastname_trgm ON physicians USING gin ("lastName" gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_physicians_practicename_trgm ON physicians USING gin ("practiceName" gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_physicians_city_trgm ON physicians USING gin (city gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_referrals_provider_trgm ON referrals USING gin ("referringProviderName" gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_referrals_patient_trgm ON referrals USING gin ("patientFullName" gin_trgm_ops)`,
+    ];
+    for (const sql of indexes) {
+      await client.query(sql);
+    }
+    console.log("recreated trgm indexes after db:push");
+  } catch (e) {
+    console.warn("could not recreate trgm indexes:", e);
+  } finally {
+    await client.end();
+  }
+}
+
 async function buildAll() {
   await dropTrgmIndexes();
+  await runDbPush();
   await rm("dist", { recursive: true, force: true });
 
   console.log("building client...");
@@ -84,6 +121,8 @@ async function buildAll() {
     external: externals,
     logLevel: "info",
   });
+
+  await recreateTrgmIndexes();
 }
 
 buildAll().catch((err) => {
