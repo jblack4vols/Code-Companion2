@@ -614,28 +614,50 @@ export default function CalendarPage() {
                 {practiceComboOpen && (
                   <div className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-md">
                     {(() => {
+                      const trimmed = practiceSearchInput.trim();
                       const filtered = (practiceNames || []).filter((n) =>
                         n.toLowerCase().includes(practiceSearchInput.toLowerCase())
                       );
-                      if (filtered.length === 0) {
-                        return <div className="px-3 py-2 text-sm text-muted-foreground">No office found.</div>;
-                      }
-                      return filtered.map((name) => (
-                        <button
-                          key={name}
-                          type="button"
-                          className={`flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground ${selectedPracticeName === name ? "bg-accent/50" : ""}`}
-                          onClick={() => {
-                            setSelectedPracticeName(name);
-                            setPracticeComboOpen(false);
-                            setPracticeSearchInput("");
-                          }}
-                          data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
-                        >
-                          <Check className={`w-4 h-4 shrink-0 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
-                          {name}
-                        </button>
-                      ));
+                      const exactMatch = filtered.some((n) => n.toLowerCase() === trimmed.toLowerCase());
+                      return (
+                        <>
+                          {trimmed && !exactMatch && (
+                            <button
+                              key="__add_new__"
+                              type="button"
+                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground border-b text-primary font-medium"
+                              onClick={() => {
+                                setSelectedPracticeName(trimmed);
+                                setPracticeComboOpen(false);
+                                setPracticeSearchInput("");
+                              }}
+                              data-testid="button-add-new-practice"
+                            >
+                              <Plus className="w-4 h-4 shrink-0" />
+                              Add "{trimmed}" as new office
+                            </button>
+                          )}
+                          {filtered.length === 0 && !trimmed && (
+                            <div className="px-3 py-2 text-sm text-muted-foreground">No offices available.</div>
+                          )}
+                          {filtered.map((name) => (
+                            <button
+                              key={name}
+                              type="button"
+                              className={`flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground ${selectedPracticeName === name ? "bg-accent/50" : ""}`}
+                              onClick={() => {
+                                setSelectedPracticeName(name);
+                                setPracticeComboOpen(false);
+                                setPracticeSearchInput("");
+                              }}
+                              data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
+                            >
+                              <Check className={`w-4 h-4 shrink-0 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
+                              {name}
+                            </button>
+                          ))}
+                        </>
+                      );
                     })()}
                   </div>
                 )}
