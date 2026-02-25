@@ -12,11 +12,29 @@ export function registerInteractionRoutes(app: Express) {
   app.post("/api/interactions", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
       const body = { ...req.body };
+      const skipAutoTask = body.skipAutoTask;
+      delete body.skipAutoTask;
       if (typeof body.occurredAt === "string") body.occurredAt = new Date(body.occurredAt);
       if (typeof body.followUpDueAt === "string") body.followUpDueAt = new Date(body.followUpDueAt);
       const validated = insertInteractionSchema.parse(body);
       const inter = await storage.createInteraction(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Interaction", entityId: inter.id, detailJson: { type: inter.type, physicianId: inter.physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+
+      if (inter.followUpDueAt && !skipAutoTask) {
+        try {
+          await storage.createTask({
+            description: `Follow up on ${inter.type?.toLowerCase() || 'interaction'}: ${inter.summary || 'No details'}`,
+            physicianId: inter.physicianId,
+            assignedToUserId: req.session.userId!,
+            dueAt: inter.followUpDueAt,
+            status: "OPEN",
+            priority: "MEDIUM",
+          });
+        } catch (taskErr: any) {
+          console.error("[Interactions] Auto-task creation failed:", taskErr.message);
+        }
+      }
+
       res.json(inter);
     } catch (err: any) {
       res.status(400).json({ message: err.message });

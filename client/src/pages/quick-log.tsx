@@ -108,6 +108,7 @@ export default function QuickLogPage() {
         nextStep: nextStep.trim() || null,
         followUpDueAt: addFollowUp && followUpDate ? new Date(followUpDate).toISOString() : null,
         locationId: locationId && locationId !== "none" ? locationId : null,
+        skipAutoTask: addFollowUp && followUpDate && followUpDescription.trim() ? true : undefined,
       });
 
       if (addFollowUp && followUpDate && followUpDescription.trim()) {

@@ -6,8 +6,8 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, PieChart, Pie, Cell, Legend } from "recharts";
-import { TrendingUp, DollarSign, AlertTriangle, Activity, RefreshCw, Clock, ExternalLink } from "lucide-react";
+import { BarChart, Bar, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ComposedChart, PieChart, Pie, Cell, Legend, ScatterChart, Scatter, ZAxis, Treemap } from "recharts";
+import { TrendingUp, DollarSign, AlertTriangle, Activity, RefreshCw, Clock, ExternalLink, MapPin, Crosshair } from "lucide-react";
 import { format, subMonths } from "date-fns";
 import { useLocation } from "wouter";
 import type { Physician } from "@shared/schema";
@@ -58,6 +58,24 @@ export default function ExecutiveDashboardPage() {
 
   const { data: physicians } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
+  });
+
+  const { data: correlationData } = useQuery<any[]>({
+    queryKey: ["/api/dashboard/correlation"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/correlation", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
+  });
+
+  const { data: geoData } = useQuery<any[]>({
+    queryKey: ["/api/dashboard/geographic"],
+    queryFn: async () => {
+      const res = await fetch("/api/dashboard/geographic", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed");
+      return res.json();
+    },
   });
 
   const physicianMap = useMemo(() => {
@@ -401,6 +419,94 @@ export default function ExecutiveDashboardPage() {
             ) : (
               <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
                 No volume data available
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <div>
+              <h3 className="text-sm font-semibold" data-testid="text-correlation-title">Interaction vs Referral Correlation</h3>
+              <p className="text-xs text-muted-foreground">Outreach effort vs referral volume per provider</p>
+            </div>
+            <Crosshair className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {correlationData && correlationData.length > 0 ? (
+              <ResponsiveContainer width="100%" height={280}>
+                <ScatterChart margin={{ top: 10, right: 10, bottom: 10, left: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                  <XAxis type="number" dataKey="interactions" name="Interactions" tick={{ fontSize: 11 }} label={{ value: "Interactions", position: "bottom", fontSize: 11 }} />
+                  <YAxis type="number" dataKey="referrals" name="Referrals" tick={{ fontSize: 11 }} label={{ value: "Referrals", angle: -90, position: "insideLeft", fontSize: 11 }} />
+                  <ZAxis range={[40, 200]} />
+                  <Tooltip
+                    content={({ active, payload }) => {
+                      if (!active || !payload?.length) return null;
+                      const d = payload[0].payload;
+                      return (
+                        <div className="bg-popover border rounded-lg shadow-lg p-3 text-xs">
+                          <p className="font-medium text-foreground">{d.name}</p>
+                          <p className="text-muted-foreground">Interactions: {d.interactions}</p>
+                          <p className="text-muted-foreground">Referrals: {d.referrals}</p>
+                          <p className="text-muted-foreground">Stage: {d.stage?.replace(/_/g, ' ')}</p>
+                        </div>
+                      );
+                    }}
+                  />
+                  <Scatter
+                    data={correlationData}
+                    fill="hsl(var(--chart-1))"
+                    fillOpacity={0.7}
+                    onClick={(data) => {
+                      if (data?.physicianId) navigate(`/physicians/${data.physicianId}`);
+                    }}
+                    style={{ cursor: "pointer" }}
+                  />
+                </ScatterChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
+                No correlation data available
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <div>
+              <h3 className="text-sm font-semibold" data-testid="text-geographic-title">Geographic Distribution</h3>
+              <p className="text-xs text-muted-foreground">Referral volume by location city</p>
+            </div>
+            <MapPin className="w-4 h-4 text-muted-foreground" />
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            {geoData && geoData.length > 0 ? (
+              <div className="space-y-2">
+                {geoData.slice(0, 12).map((city: any, i: number) => {
+                  const maxCount = geoData[0]?.referrals || 1;
+                  const pct = Math.round((city.referrals / maxCount) * 100);
+                  return (
+                    <div key={`${city.city}-${city.state}`} className="flex items-center gap-2" data-testid={`geo-row-${i}`}>
+                      <span className="text-xs w-28 truncate text-muted-foreground">{city.city}, {city.state}</span>
+                      <div className="flex-1 h-5 bg-muted rounded-sm overflow-hidden">
+                        <div
+                          className="h-full bg-chart-1 rounded-sm transition-all"
+                          style={{ width: `${pct}%` }}
+                        />
+                      </div>
+                      <span className="text-xs font-medium w-10 text-right">{city.referrals}</span>
+                      <span className="text-[10px] text-muted-foreground w-16 text-right">{city.providers} docs</span>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
+                No geographic data available
               </div>
             )}
           </CardContent>

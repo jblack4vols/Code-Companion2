@@ -17,7 +17,7 @@ import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/use-debounce";
 import type { Physician, Location } from "@shared/schema";
-import { format } from "date-fns";
+import { format, parse, endOfMonth } from "date-fns";
 
 const statusBadge: Record<string, string> = {
   RECEIVED: "bg-chart-1/15 text-chart-1",
@@ -30,12 +30,33 @@ const statusBadge: Record<string, string> = {
 export default function ReferralsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const urlParams = new URLSearchParams(window.location.search);
+  const monthParam = urlParams.get("month");
+  const initialDateFrom = (() => {
+    if (monthParam) {
+      try {
+        const d = parse(monthParam, "yyyy-MM", new Date());
+        if (!isNaN(d.getTime())) return format(d, "yyyy-MM-dd");
+      } catch {}
+    }
+    return "";
+  })();
+  const initialDateTo = (() => {
+    if (monthParam) {
+      try {
+        const d = parse(monthParam, "yyyy-MM", new Date());
+        if (!isNaN(d.getTime())) return format(endOfMonth(d), "yyyy-MM-dd");
+      } catch {}
+    }
+    return "";
+  })();
+
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState<string>("all");
-  const [locationFilter, setLocationFilter] = useState<string>("all");
+  const [statusFilter, setStatusFilter] = useState<string>(urlParams.get("status") || "all");
+  const [locationFilter, setLocationFilter] = useState<string>(urlParams.get("locationId") || "all");
   const [disciplineFilter, setDisciplineFilter] = useState<string>("all");
-  const [dateFrom, setDateFrom] = useState<string>("");
-  const [dateTo, setDateTo] = useState<string>("");
+  const [dateFrom, setDateFrom] = useState<string>(initialDateFrom);
+  const [dateTo, setDateTo] = useState<string>(initialDateTo);
   const [showAdd, setShowAdd] = useState(false);
   const [selectedReferral, setSelectedReferral] = useState<any>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -669,6 +690,21 @@ export default function ReferralsPage() {
             <div className="flex flex-col items-center justify-center py-16">
               <FileText className="w-12 h-12 text-muted-foreground/30 mb-4" />
               <p className="text-sm text-muted-foreground">No referrals found</p>
+              <p className="text-xs text-muted-foreground mt-1">
+                {hasActiveFilters ? "Try adjusting your filters" : "Get started by adding your first referral"}
+              </p>
+              <div className="flex items-center gap-2 mt-4 flex-wrap justify-center">
+                {hasActiveFilters && (
+                  <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-empty-clear-referral-filters">
+                    <X className="w-3 h-3 mr-1.5" />Clear Filters
+                  </Button>
+                )}
+                {canCreate && (
+                  <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-empty-add-referral">
+                    <Plus className="w-4 h-4 mr-1.5" />New Referral
+                  </Button>
+                )}
+              </div>
             </div>
           ) : (
             <div className="overflow-x-auto">

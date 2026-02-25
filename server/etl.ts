@@ -7,7 +7,7 @@ import {
   tieringWeights, appSettings, tasks, users, scheduledReports,
   physicianStageHistory,
 } from "@shared/schema";
-import { sendOverdueTaskDigest, sendScheduledReportEmail, sendProviderAlertEmail } from "./outlook";
+import { sendOverdueTaskDigest, sendScheduledReportEmail, sendProviderAlertEmail, sendUserInactivityDigest } from "./outlook";
 import { storage } from "./storage";
 
 function getMonthStart(d: Date): string {
@@ -661,25 +661,107 @@ async function processScheduledReports() {
   }
 }
 
-export function scheduleETL() {
-  cron.schedule("0 2 * * *", async () => {
+async function checkUserInactivity() {
+  try {
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const allUsers = await db.select().from(users).where(
+      and(
+        eq(users.approvalStatus, "APPROVED"),
+        isNull(users.lockedUntil)
+      )
+    );
+
+    const inactiveUsers = allUsers.filter(u => {
+      if (!u.lastLoginAt) return true;
+      return new Date(u.lastLoginAt) < sevenDaysAgo;
+    });
+
+    if (inactiveUsers.length === 0) {
+      console.log("[Inactivity] No inactive users found");
+      return;
+    }
+
+    const admins = allUsers.filter(u => u.role === "OWNER" || u.role === "DIRECTOR");
+    const appUrl = process.env.REPLIT_DEV_DOMAIN
+      ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+      : process.env.REPLIT_DOMAINS
+        ? `https://${process.env.REPLIT_DOMAINS.split(",")[0]}`
+        : "https://tristar360.replit.app";
+
+    const inactiveData = inactiveUsers.map(u => ({
+      name: u.name || u.email,
+      role: u.role || "Unknown",
+      lastLogin: u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleDateString() : "Never",
+      daysSince: u.lastLoginAt
+        ? Math.floor((Date.now() - new Date(u.lastLoginAt).getTime()) / (1000 * 60 * 60 * 24))
+        : 999,
+    }));
+
+    for (const admin of admins) {
+      if (admin.email) {
+        await sendUserInactivityDigest(admin.email, admin.name || "Admin", inactiveData, appUrl);
+      }
+    }
+    console.log(`[Inactivity] Sent digest for ${inactiveUsers.length} inactive users to ${admins.length} admins`);
+  } catch (err: any) {
+    console.error("[Inactivity] Error checking user inactivity:", err.message);
+  }
+}
+
+async function getScheduleSetting(key: string, defaultValue: string): Promise<string> {
+  try {
+    const result = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    return result[0]?.value || defaultValue;
+  } catch {
+    return defaultValue;
+  }
+}
+
+let etlTask: cron.ScheduledTask | null = null;
+let digestTask: cron.ScheduledTask | null = null;
+let reportTask: cron.ScheduledTask | null = null;
+let inactivityTask: cron.ScheduledTask | null = null;
+
+export async function scheduleETL() {
+  const etlTime = await getScheduleSetting("etl_schedule_time", "2:00");
+  const digestTime = await getScheduleSetting("digest_schedule_time", "7:00");
+  const reportTime = await getScheduleSetting("report_schedule_time", "6:30");
+
+  const [etlH, etlM] = etlTime.split(":").map(Number);
+  const [digH, digM] = digestTime.split(":").map(Number);
+  const [repH, repM] = reportTime.split(":").map(Number);
+
+  if (etlTask) etlTask.stop();
+  if (digestTask) digestTask.stop();
+  if (reportTask) reportTask.stop();
+  if (inactivityTask) inactivityTask.stop();
+
+  etlTask = cron.schedule(`${etlM} ${etlH} * * *`, async () => {
     console.log("[ETL] Nightly job triggered at", new Date().toISOString());
     await runETL();
   });
 
-  cron.schedule("0 7 * * 1-5", async () => {
+  digestTask = cron.schedule(`${digM} ${digH} * * 1-5`, async () => {
     console.log("[Email] Morning overdue digest triggered at", new Date().toISOString());
     await sendOverdueDigests();
   });
 
-  cron.schedule("30 6 * * *", async () => {
+  reportTask = cron.schedule(`${repM} ${repH} * * *`, async () => {
     console.log("[Reports] Scheduled report check triggered at", new Date().toISOString());
     await processScheduledReports();
   });
 
-  console.log("[ETL] Nightly ETL scheduled for 2:00 AM daily (includes provider stage updates and alerts)");
-  console.log("[Email] Overdue task digest scheduled for 7:00 AM weekdays");
-  console.log("[Reports] Scheduled report delivery check at 6:30 AM daily");
+  inactivityTask = cron.schedule("0 8 * * 1", async () => {
+    console.log("[Inactivity] Weekly user inactivity check triggered at", new Date().toISOString());
+    await checkUserInactivity();
+  });
+
+  console.log(`[ETL] Nightly ETL scheduled for ${etlTime} daily (includes provider stage updates and alerts)`);
+  console.log(`[Email] Overdue task digest scheduled for ${digestTime} weekdays`);
+  console.log(`[Reports] Scheduled report delivery check at ${reportTime} daily`);
+  console.log("[Inactivity] User inactivity check scheduled for 8:00 AM Mondays");
 }
 
 export async function triggerETL() {

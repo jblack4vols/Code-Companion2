@@ -331,4 +331,58 @@ export async function registerImportRoutes(app: Express) {
       res.status(500).json({ message: err.message });
     }
   });
+
+  app.post("/api/import/verify-npis", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
+    try {
+      const { npis } = req.body;
+      if (!Array.isArray(npis) || npis.length === 0) {
+        return res.status(400).json({ message: "Provide an array of NPIs" });
+      }
+
+      const results: Array<{ npi: string; valid: boolean; name?: string; specialty?: string; address?: string; city?: string; state?: string; zip?: string }> = [];
+
+      const batchSize = 10;
+      for (let i = 0; i < Math.min(npis.length, 200); i += batchSize) {
+        const batch = npis.slice(i, i + batchSize);
+        const promises = batch.map(async (npi: string) => {
+          try {
+            const response = await fetch(
+              `https://npiregistry.cms.hhs.gov/api/?number=${encodeURIComponent(npi)}&version=2.1`
+            );
+            if (!response.ok) return { npi, valid: false };
+            const data = await response.json() as any;
+            if (data.result_count > 0) {
+              const r = data.results[0];
+              const basic = r.basic || {};
+              const addr = r.addresses?.[0] || {};
+              return {
+                npi,
+                valid: true,
+                name: `${basic.first_name || ''} ${basic.last_name || ''}`.trim(),
+                specialty: r.taxonomies?.[0]?.desc || null,
+                address: addr.address_1 || null,
+                city: addr.city || null,
+                state: addr.state || null,
+                zip: addr.postal_code?.slice(0, 5) || null,
+              };
+            }
+            return { npi, valid: false };
+          } catch {
+            return { npi, valid: false };
+          }
+        });
+        const batchResults = await Promise.all(promises);
+        results.push(...batchResults);
+      }
+
+      res.json({
+        total: results.length,
+        valid: results.filter(r => r.valid).length,
+        invalid: results.filter(r => !r.valid).length,
+        results,
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 }

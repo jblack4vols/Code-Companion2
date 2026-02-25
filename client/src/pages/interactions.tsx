@@ -286,6 +286,21 @@ export default function InteractionsPage() {
           <CardContent className="flex flex-col items-center justify-center py-16">
             <MessageSquare className="w-12 h-12 text-muted-foreground/30 mb-4" />
             <p className="text-sm text-muted-foreground">No interactions found</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {hasActiveFilters ? "Try adjusting your filters" : "Get started by logging your first interaction"}
+            </p>
+            <div className="flex items-center gap-2 mt-4 flex-wrap justify-center">
+              {hasActiveFilters && (
+                <Button variant="outline" size="sm" onClick={clearFilters} data-testid="button-empty-clear-interaction-filters">
+                  <X className="w-3 h-3 mr-1.5" />Clear Filters
+                </Button>
+              )}
+              {canCreate && (
+                <Button size="sm" onClick={() => setShowAdd(true)} data-testid="button-empty-add-interaction">
+                  <Plus className="w-4 h-4 mr-1.5" />Log Interaction
+                </Button>
+              )}
+            </div>
           </CardContent>
         </Card>
       ) : (

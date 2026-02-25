@@ -148,6 +148,99 @@ export function registerDashboardRoutes(app: Express) {
     res.json(summaries);
   });
 
+  app.get("/api/dashboard/funnel", requireAuth, async (req, res) => {
+    try {
+      const startDate = req.query.startDate as string | undefined;
+      const endDate = req.query.endDate as string | undefined;
+      const locationId = req.query.locationId as string | undefined;
+      const territoryId = req.query.territoryId as string | undefined;
+
+      const dateFilter = startDate && endDate
+        ? sql`AND r.referral_date >= ${startDate} AND r.referral_date <= ${endDate}`
+        : startDate ? sql`AND r.referral_date >= ${startDate}`
+        : endDate ? sql`AND r.referral_date <= ${endDate}`
+        : sql``;
+
+      const locFilter = locationId ? sql`AND r.location_id = ${locationId}` : sql``;
+      const terrFilter = territoryId
+        ? sql`AND r.physician_id IN (SELECT id FROM physicians WHERE territory_id = ${territoryId} AND deleted_at IS NULL)`
+        : sql``;
+
+      const result = await db.execute(sql`
+        SELECT 
+          COUNT(*)::int as received,
+          COUNT(CASE WHEN r.status IN ('SCHEDULED','ARRIVED','EVAL_COMPLETED','IN_TREATMENT','DISCHARGED') THEN 1 END)::int as scheduled,
+          COUNT(CASE WHEN r.arrived_visits > 0 THEN 1 END)::int as arrived,
+          COUNT(CASE WHEN r.status = 'DISCHARGED' THEN 1 END)::int as discharged
+        FROM referrals r
+        WHERE r.deleted_at IS NULL ${dateFilter} ${locFilter} ${terrFilter}
+      `);
+
+      const row = (result.rows as any[])[0] || { received: 0, scheduled: 0, arrived: 0, discharged: 0 };
+      res.json([
+        { stage: "Received", count: row.received },
+        { stage: "Scheduled", count: row.scheduled },
+        { stage: "Arrived", count: row.arrived },
+        { stage: "Discharged", count: row.discharged },
+      ]);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/dashboard/correlation", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          p.id as "physicianId",
+          CONCAT(p.first_name, ' ', p.last_name) as name,
+          p.relationship_stage as stage,
+          COALESCE(ref_counts.ref_count, 0)::int as referrals,
+          COALESCE(int_counts.int_count, 0)::int as interactions
+        FROM physicians p
+        LEFT JOIN (
+          SELECT physician_id, COUNT(*)::int as ref_count
+          FROM referrals WHERE deleted_at IS NULL
+          GROUP BY physician_id
+        ) ref_counts ON ref_counts.physician_id = p.id
+        LEFT JOIN (
+          SELECT physician_id, COUNT(*)::int as int_count
+          FROM interactions WHERE deleted_at IS NULL
+          GROUP BY physician_id
+        ) int_counts ON int_counts.physician_id = p.id
+        WHERE p.deleted_at IS NULL
+          AND (COALESCE(ref_counts.ref_count, 0) > 0 OR COALESCE(int_counts.int_count, 0) > 0)
+        ORDER BY referrals DESC
+        LIMIT 100
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/dashboard/geographic", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT 
+          COALESCE(l.city, 'Unknown') as city,
+          l.state,
+          COUNT(r.id)::int as referrals,
+          COUNT(DISTINCT r.physician_id)::int as providers
+        FROM referrals r
+        LEFT JOIN locations l ON r.location_id = l.id
+        WHERE r.deleted_at IS NULL
+        GROUP BY l.city, l.state
+        HAVING COUNT(r.id) > 0
+        ORDER BY referrals DESC
+        LIMIT 30
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     const filters = {
       startDate: req.query.startDate as string | undefined,

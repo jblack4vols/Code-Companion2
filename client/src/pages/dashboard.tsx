@@ -8,7 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar } from "lucide-react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell } from "recharts";
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Funnel, FunnelChart, LabelList } from "recharts";
 import type { Physician, Location, Territory } from "@shared/schema";
 import { format, subMonths, differenceInDays, subDays, startOfQuarter, startOfYear } from "date-fns";
 import { getQueryFn } from "@/lib/queryClient";
@@ -65,15 +65,41 @@ const DATE_PRESETS = [
   { label: "12 Months", getRange: () => ({ start: format(subMonths(new Date(), 12), "yyyy-MM-dd"), end: format(new Date(), "yyyy-MM-dd") }) },
 ];
 
+function useUrlFilters() {
+  const urlParams = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  return {
+    startDate: urlParams.get("startDate") || format(subMonths(new Date(), 6), "yyyy-MM-dd"),
+    endDate: urlParams.get("endDate") || format(new Date(), "yyyy-MM-dd"),
+    locationId: urlParams.get("locationId") || "",
+    territoryId: urlParams.get("territoryId") || "",
+    physicianId: urlParams.get("physicianId") || "",
+  };
+}
+
 export default function DashboardPage() {
   const [, navigate] = useLocation();
-  const [startDate, setStartDate] = useState(format(subMonths(new Date(), 6), "yyyy-MM-dd"));
-  const [endDate, setEndDate] = useState(format(new Date(), "yyyy-MM-dd"));
-  const [locationId, setLocationId] = useState("");
-  const [territoryId, setTerritoryId] = useState("");
-  const [physicianId, setPhysicianId] = useState("");
+  const defaults = useUrlFilters();
+  const [startDate, setStartDate] = useState(defaults.startDate);
+  const [endDate, setEndDate] = useState(defaults.endDate);
+  const [locationId, setLocationId] = useState(defaults.locationId);
+  const [territoryId, setTerritoryId] = useState(defaults.territoryId);
+  const [physicianId, setPhysicianId] = useState(defaults.physicianId);
   const [showFilters, setShowFilters] = useState(false);
   const [comparePeriod, setComparePeriod] = useState(false);
+
+  useMemo(() => {
+    const p = new URLSearchParams();
+    if (startDate !== format(subMonths(new Date(), 6), "yyyy-MM-dd")) p.set("startDate", startDate);
+    if (endDate !== format(new Date(), "yyyy-MM-dd")) p.set("endDate", endDate);
+    if (locationId) p.set("locationId", locationId);
+    if (territoryId) p.set("territoryId", territoryId);
+    if (physicianId) p.set("physicianId", physicianId);
+    const qs = p.toString();
+    const newUrl = qs ? `${window.location.pathname}?${qs}` : window.location.pathname;
+    if (window.location.search !== (qs ? `?${qs}` : "")) {
+      window.history.replaceState(null, "", newUrl);
+    }
+  }, [startDate, endDate, locationId, territoryId, physicianId]);
 
   const params = new URLSearchParams();
   if (startDate) params.set("startDate", startDate);
@@ -103,6 +129,12 @@ export default function DashboardPage() {
     queryKey: [`/api/dashboard/stats?${prevParams.toString()}`],
     queryFn: getQueryFn({ on401: "throw" }),
     enabled: comparePeriod,
+  });
+
+  const funnelUrl = queryString ? `/api/dashboard/funnel?${queryString}` : "/api/dashboard/funnel";
+  const { data: funnelData } = useQuery<any[]>({
+    queryKey: [funnelUrl],
+    queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const { data: physicians } = useQuery<Physician[]>({ queryKey: ["/api/physicians"] });
@@ -381,6 +413,38 @@ export default function DashboardPage() {
         />
       </div>
 
+      {funnelData && funnelData.some((d: any) => d.count > 0) && (
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+            <div>
+              <h3 className="text-sm font-semibold" data-testid="text-funnel-title">Conversion Funnel</h3>
+              <p className="text-xs text-muted-foreground">Referral pipeline progression</p>
+            </div>
+          </CardHeader>
+          <CardContent className="p-4 pt-0">
+            <div className="grid grid-cols-4 gap-2 sm:gap-4">
+              {funnelData.map((stage: any, i: number) => {
+                const prevCount = i > 0 ? funnelData[i - 1].count : stage.count;
+                const dropRate = prevCount > 0 && i > 0 ? Math.round(((prevCount - stage.count) / prevCount) * 100) : 0;
+                const colors = ["bg-chart-1/15 text-chart-1", "bg-chart-2/15 text-chart-2", "bg-chart-4/15 text-chart-4", "bg-green-500/15 text-green-600 dark:text-green-400"];
+                return (
+                  <div key={stage.stage} className="text-center" data-testid={`funnel-stage-${stage.stage.toLowerCase()}`}>
+                    <div className={`rounded-lg p-3 sm:p-4 ${colors[i] || colors[0]}`}>
+                      <p className="text-xl sm:text-2xl font-bold">{stage.count}</p>
+                      <p className="text-[11px] sm:text-xs font-medium mt-1">{stage.stage}</p>
+                    </div>
+                    {i > 0 && dropRate > 0 && (
+                      <p className="text-[10px] text-muted-foreground mt-1">-{dropRate}% drop</p>
+                    )}
+                    {i === 0 && <p className="text-[10px] text-muted-foreground mt-1">Starting</p>}
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
@@ -393,13 +457,18 @@ export default function DashboardPage() {
           <CardContent className="p-4 pt-0">
             {referralTrendData.length > 0 ? (
               <ResponsiveContainer width="100%" height={240}>
-                <LineChart data={referralTrendData}>
+                <BarChart data={referralTrendData} onClick={(data) => {
+                  if (data?.activePayload?.[0]?.payload?.month) {
+                    const m = data.activePayload[0].payload.month;
+                    navigate(`/referrals?month=${m}`);
+                  }
+                }} style={{ cursor: "pointer" }}>
                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} />
                   <YAxis tick={{ fontSize: 11 }} />
                   <Tooltip />
-                  <Line type="monotone" dataKey="count" stroke="hsl(var(--chart-1))" strokeWidth={2} dot={{ r: 4 }} />
-                </LineChart>
+                  <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                </BarChart>
               </ResponsiveContainer>
             ) : (
               <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
@@ -451,11 +520,18 @@ export default function DashboardPage() {
               <div className="flex items-center gap-4">
                 <ResponsiveContainer width="50%" height={160}>
                   <PieChart>
-                    <Pie data={stageData} dataKey="value" cx="50%" cy="50%" innerRadius={30} outerRadius={60}>
+                    <Pie data={stageData} dataKey="value" cx="50%" cy="50%" innerRadius={30} outerRadius={60}
+                      onClick={(_, index) => {
+                        const stage = stageData[index]?.name?.replace(/ /g, "_");
+                        if (stage) navigate(`/physicians?stage=${stage}`);
+                      }}
+                      style={{ cursor: "pointer" }}
+                    >
                       {stageData.map((entry, i) => (
                         <Cell key={i} fill={entry.fill} />
                       ))}
                     </Pie>
+                    <Tooltip />
                   </PieChart>
                 </ResponsiveContainer>
                 <div className="space-y-2 flex-1">

@@ -5,7 +5,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
-import { Shield, MapPin, Cloud, CheckCircle, XCircle, Loader2, Lock, Timer, KeyRound, ShieldCheck, Eye, Trash2, Database } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Shield, MapPin, Cloud, CheckCircle, XCircle, Loader2, Lock, Timer, KeyRound, ShieldCheck, Eye, Trash2, Database, Clock } from "lucide-react";
 import type { Location } from "@shared/schema";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -48,6 +49,26 @@ export default function AdminSettingsPage() {
   });
 
   const currentRetention = retentionSetting?.value || "365";
+
+  const { data: etlSchedule, isLoading: loadingEtl } = useQuery<{ etlTime: string; digestTime: string; reportTime: string }>({
+    queryKey: ["/api/settings/etl-schedule"],
+    queryFn: getQueryFn({ on401: "throw" }),
+    enabled: isOwner,
+  });
+  const [etlTime, setEtlTime] = useState("");
+  const [digestTime, setDigestTime] = useState("");
+  const [reportTime, setReportTime] = useState("");
+
+  const updateEtlScheduleMutation = useMutation({
+    mutationFn: async (payload: { etlTime?: string; digestTime?: string; reportTime?: string }) => {
+      await apiRequest("PATCH", "/api/settings/etl-schedule", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/settings/etl-schedule"] });
+      toast({ title: "ETL schedule updated", description: "Cron jobs have been rescheduled with new times." });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
 
   const { data: integrationStatus, isLoading: loadingStatus } = useQuery<{ outlook: boolean; sharepoint: boolean }>({
     queryKey: ["/api/integrations/status"],
@@ -262,6 +283,86 @@ export default function AdminSettingsPage() {
             <p className="text-[10px] text-muted-foreground">
               Current policy: {currentRetention} day retention. Logs older than this will be removed during purge.
             </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {isOwner && (
+        <Card data-testid="card-etl-schedule">
+          <CardHeader className="flex flex-row items-center gap-2 pb-2">
+            <Clock className="w-4 h-4 text-muted-foreground" />
+            <h3 className="text-sm font-semibold">ETL & Notification Schedule</h3>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <p className="text-xs text-muted-foreground">
+              Configure when nightly ETL processing, overdue task digests, and scheduled report delivery run. Times are in 24-hour format (HH:MM).
+            </p>
+            {loadingEtl ? (
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <Loader2 className="w-4 h-4 animate-spin" />
+                Loading schedule...
+              </div>
+            ) : (
+              <>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">ETL Processing Time</Label>
+                    <Input
+                      type="time"
+                      value={etlTime || etlSchedule?.etlTime || "02:00"}
+                      onChange={(e) => setEtlTime(e.target.value)}
+                      data-testid="input-etl-time"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Nightly data aggregation & tiering</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Digest Email Time</Label>
+                    <Input
+                      type="time"
+                      value={digestTime || etlSchedule?.digestTime || "07:00"}
+                      onChange={(e) => setDigestTime(e.target.value)}
+                      data-testid="input-digest-time"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Overdue task digest (weekdays)</p>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Report Delivery Time</Label>
+                    <Input
+                      type="time"
+                      value={reportTime || etlSchedule?.reportTime || "06:30"}
+                      onChange={(e) => setReportTime(e.target.value)}
+                      data-testid="input-report-time"
+                    />
+                    <p className="text-[10px] text-muted-foreground">Scheduled report generation</p>
+                  </div>
+                </div>
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={updateEtlScheduleMutation.isPending || (!etlTime && !digestTime && !reportTime)}
+                    onClick={() => {
+                      const payload: { etlTime?: string; digestTime?: string; reportTime?: string } = {};
+                      if (etlTime) payload.etlTime = etlTime;
+                      if (digestTime) payload.digestTime = digestTime;
+                      if (reportTime) payload.reportTime = reportTime;
+                      updateEtlScheduleMutation.mutate(payload);
+                    }}
+                    data-testid="button-save-etl-schedule"
+                  >
+                    {updateEtlScheduleMutation.isPending ? (
+                      <>
+                        <Loader2 className="w-3 h-3 mr-1.5 animate-spin" />
+                        Saving...
+                      </>
+                    ) : "Save Schedule"}
+                  </Button>
+                  <p className="text-[10px] text-muted-foreground">
+                    Current: ETL at {etlSchedule?.etlTime || "2:00"}, Digest at {etlSchedule?.digestTime || "7:00"}, Reports at {etlSchedule?.reportTime || "6:30"}
+                  </p>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}

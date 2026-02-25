@@ -369,6 +369,53 @@ export async function sendScheduledReportEmail(
   }
 }
 
+export async function sendUserInactivityDigest(
+  recipientEmail: string,
+  recipientName: string,
+  inactiveUsers: Array<{ name: string; role: string; lastLogin: string; daysSince: number }>,
+  appUrl: string
+) {
+  try {
+    const rows = inactiveUsers.map(u => `<tr>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #1e293b; font-weight: 500;">${u.name}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${u.role}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #64748b;">${u.lastLogin}</td>
+      <td style="padding: 10px; border-bottom: 1px solid #e2e8f0; color: #ef4444; font-weight: 500;">${u.daysSince} days</td>
+    </tr>`).join('');
+
+    await sendEmail({
+      to: recipientEmail,
+      toName: recipientName,
+      subject: `Tristar 360° - ${inactiveUsers.length} Inactive Team Member${inactiveUsers.length !== 1 ? 's' : ''}`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <div style="background-color: #1a365d; padding: 20px; border-radius: 8px 8px 0 0; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0; font-size: 24px;">Tristar 360°</h1>
+            <p style="color: #93c5fd; margin: 5px 0 0 0; font-size: 14px;">User Inactivity Report</p>
+          </div>
+          <div style="background-color: #f8fafc; padding: 30px; border: 1px solid #e2e8f0; border-top: none; border-radius: 0 0 8px 8px;">
+            <h2 style="color: #1e293b; margin-top: 0;">Hi ${recipientName},</h2>
+            <p style="color: #475569; line-height: 1.6;">The following team members haven't logged in for 7+ days:</p>
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <thead><tr style="background-color: #f1f5f9;">
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Name</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Role</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Last Login</th>
+                <th style="padding: 10px; text-align: left; color: #64748b; font-size: 13px;">Inactive</th>
+              </tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <div style="text-align: center; margin: 25px 0;">
+              <a href="${appUrl}/admin/users" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Manage Users</a>
+            </div>
+          </div>
+        </div>`,
+    });
+  } catch (err: any) {
+    console.error(`[Email] Failed to send inactivity digest: ${err.message}`);
+  }
+}
+
 export async function sendProviderAlertEmail(
   recipientEmail: string,
   recipientName: string,

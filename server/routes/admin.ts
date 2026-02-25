@@ -52,6 +52,53 @@ export function registerAdminRoutes(app: Express) {
     }
   });
 
+  app.get("/api/settings/etl-schedule", requireRole("OWNER"), async (req, res) => {
+    try {
+      const etlResult = await db.select().from(appSettings).where(eq(appSettings.key, "etl_schedule_time")).limit(1);
+      const digestResult = await db.select().from(appSettings).where(eq(appSettings.key, "digest_schedule_time")).limit(1);
+      const reportResult = await db.select().from(appSettings).where(eq(appSettings.key, "report_schedule_time")).limit(1);
+      res.json({
+        etlTime: etlResult[0]?.value || "2:00",
+        digestTime: digestResult[0]?.value || "7:00",
+        reportTime: reportResult[0]?.value || "6:30",
+      });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.patch("/api/settings/etl-schedule", requireRole("OWNER"), async (req, res) => {
+    try {
+      const { etlTime, digestTime, reportTime } = req.body;
+      const timeRegex = /^\d{1,2}:\d{2}$/;
+      if (etlTime && !timeRegex.test(etlTime)) return res.status(400).json({ message: "Invalid ETL time format (HH:MM)" });
+      if (digestTime && !timeRegex.test(digestTime)) return res.status(400).json({ message: "Invalid digest time format (HH:MM)" });
+      if (reportTime && !timeRegex.test(reportTime)) return res.status(400).json({ message: "Invalid report time format (HH:MM)" });
+
+      if (etlTime) {
+        await db.insert(appSettings).values({ key: "etl_schedule_time", value: etlTime })
+          .onConflictDoUpdate({ target: appSettings.key, set: { value: etlTime, updatedAt: new Date() } });
+      }
+      if (digestTime) {
+        await db.insert(appSettings).values({ key: "digest_schedule_time", value: digestTime })
+          .onConflictDoUpdate({ target: appSettings.key, set: { value: digestTime, updatedAt: new Date() } });
+      }
+      if (reportTime) {
+        await db.insert(appSettings).values({ key: "report_schedule_time", value: reportTime })
+          .onConflictDoUpdate({ target: appSettings.key, set: { value: reportTime, updatedAt: new Date() } });
+      }
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Setting", entityId: "etl_schedule", detailJson: { etlTime, digestTime, reportTime }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+
+      const { scheduleETL } = await import("../etl");
+      await scheduleETL();
+
+      res.json({ success: true });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/export/physicians", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
     try {
       const data = await storage.exportPhysiciansCsv({

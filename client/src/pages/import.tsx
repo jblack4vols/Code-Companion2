@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2 } from "lucide-react";
+import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2, ShieldCheck, ShieldX, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 function getCsrfToken(): string | null {
@@ -147,6 +147,11 @@ export default function ImportPage() {
     invalidDateCount?: number; unmatchedFacilities?: string[]; unmatchedDoctors?: string[];
     unlinkedCount?: number;
   } | null>(null);
+  const [npiVerifying, setNpiVerifying] = useState(false);
+  const [npiResults, setNpiResults] = useState<{
+    total: number; valid: number; invalid: number;
+    results: Array<{ npi: string; valid: boolean; name?: string; specialty?: string; address?: string; city?: string; state?: string; zip?: string }>;
+  } | null>(null);
 
   const fields = importType === "physicians" ? PHYSICIAN_FIELDS : REFERRAL_FIELDS;
   const autoMap = importType === "physicians" ? PHYSICIAN_AUTO_MAP : REFERRAL_AUTO_MAP;
@@ -245,6 +250,64 @@ export default function ImportPage() {
     }
   }, [file, mapping, importType, fields, toast]);
 
+  const handleVerifyNpis = useCallback(async () => {
+    if (!preview) return;
+    const npiColumn = importType === "physicians" ? mapping["npi"] : mapping["referringDoctorNpi"];
+    if (!npiColumn) {
+      toast({ title: "No NPI column mapped", description: "Map the NPI column first to verify NPIs.", variant: "destructive" });
+      return;
+    }
+
+    if (!file) return;
+    setNpiVerifying(true);
+    setNpiResults(null);
+    try {
+      const csrfToken = await ensureCsrfToken();
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (csrfToken) headers["x-csrf-token"] = csrfToken;
+
+      const previewRes = await fetch("/api/import/preview", {
+        method: "POST",
+        body: (() => { const fd = new FormData(); fd.append("file", file); return fd; })(),
+        credentials: "include",
+        headers: csrfToken ? { "x-csrf-token": csrfToken } : {},
+      });
+      if (!previewRes.ok) throw new Error("Failed to read file for NPI extraction");
+      const fullData = await previewRes.json();
+
+      const allRows = fullData.sampleRows || preview.sampleRows;
+      const npiSet = new Set<string>();
+      for (const row of allRows) {
+        const val = row[npiColumn];
+        if (val != null && String(val).trim() !== "") {
+          npiSet.add(String(val).trim());
+        }
+      }
+      const allUniqueNpis = Array.from(npiSet);
+
+      const res = await fetch("/api/import/verify-npis", {
+        method: "POST",
+        credentials: "include",
+        headers,
+        body: JSON.stringify({ npis: allUniqueNpis.slice(0, 200) }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message);
+      }
+      const data = await res.json();
+      setNpiResults(data);
+      toast({
+        title: "NPI Verification Complete",
+        description: `${data.valid} valid, ${data.invalid} invalid out of ${data.total} NPIs checked.`,
+      });
+    } catch (err: any) {
+      toast({ title: "NPI Verification Failed", description: err.message, variant: "destructive" });
+    } finally {
+      setNpiVerifying(false);
+    }
+  }, [preview, mapping, importType, file, toast]);
+
   const reset = () => {
     setStep("select");
     setFile(null);
@@ -252,6 +315,7 @@ export default function ImportPage() {
     setMapping({});
     setCustomFieldMappings([]);
     setResult(null);
+    setNpiResults(null);
   };
 
   const mappedCount = Object.keys(mapping).length;
@@ -489,6 +553,94 @@ export default function ImportPage() {
                     </div>
                   )}
                 </CardContent>
+              </Card>
+            )}
+
+            {(mapping["npi"] || mapping["referringDoctorNpi"]) && (
+              <Card>
+                <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-5 h-5 text-muted-foreground" />
+                    <div>
+                      <h2 className="font-semibold">NPI Verification</h2>
+                      <p className="text-sm text-muted-foreground">
+                        Validate NPIs against the NPPES registry before importing
+                      </p>
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    onClick={handleVerifyNpis}
+                    disabled={npiVerifying}
+                    data-testid="button-verify-npis"
+                  >
+                    {npiVerifying ? (
+                      <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    ) : (
+                      <ShieldCheck className="w-4 h-4 mr-2" />
+                    )}
+                    {npiVerifying ? "Verifying..." : "Verify NPIs"}
+                  </Button>
+                </CardHeader>
+                {npiResults && (
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center gap-4">
+                      <Badge variant="outline" data-testid="badge-npi-total">
+                        {npiResults.total} checked
+                      </Badge>
+                      <Badge variant="default" className="bg-chart-2/15 text-chart-2" data-testid="badge-npi-valid">
+                        <ShieldCheck className="w-3 h-3 mr-1" />
+                        {npiResults.valid} valid
+                      </Badge>
+                      {npiResults.invalid > 0 && (
+                        <Badge variant="destructive" data-testid="badge-npi-invalid">
+                          <ShieldX className="w-3 h-3 mr-1" />
+                          {npiResults.invalid} invalid
+                        </Badge>
+                      )}
+                    </div>
+                    {npiResults.results.length > 0 && (
+                      <div className="max-h-[300px] overflow-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="text-xs">NPI</TableHead>
+                              <TableHead className="text-xs">Status</TableHead>
+                              <TableHead className="text-xs">Name</TableHead>
+                              <TableHead className="text-xs">Specialty</TableHead>
+                              <TableHead className="text-xs">Location</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {npiResults.results.map((r) => (
+                              <TableRow key={r.npi}>
+                                <TableCell className="text-xs font-mono" data-testid={`text-npi-${r.npi}`}>{r.npi}</TableCell>
+                                <TableCell>
+                                  {r.valid ? (
+                                    <Badge variant="default" className="bg-chart-2/15 text-chart-2" data-testid={`badge-npi-status-${r.npi}`}>
+                                      <ShieldCheck className="w-3 h-3 mr-1" />
+                                      Valid
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="destructive" data-testid={`badge-npi-status-${r.npi}`}>
+                                      <ShieldX className="w-3 h-3 mr-1" />
+                                      Invalid
+                                    </Badge>
+                                  )}
+                                </TableCell>
+                                <TableCell className="text-xs" data-testid={`text-npi-name-${r.npi}`}>{r.name || "-"}</TableCell>
+                                <TableCell className="text-xs" data-testid={`text-npi-specialty-${r.npi}`}>{r.specialty || "-"}</TableCell>
+                                <TableCell className="text-xs" data-testid={`text-npi-location-${r.npi}`}>
+                                  {r.city && r.state ? `${r.city}, ${r.state}` : r.city || r.state || "-"}
+                                </TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      </div>
+                    )}
+                  </CardContent>
+                )}
               </Card>
             )}
 
