@@ -75,6 +75,8 @@ export default function CalendarPage() {
   const [selectedPracticeName, setSelectedPracticeName] = useState<string>("");
   const [practiceComboOpen, setPracticeComboOpen] = useState(false);
   const [practiceSearchInput, setPracticeSearchInput] = useState("");
+  const [showNewOfficeForm, setShowNewOfficeForm] = useState(false);
+  const [newOfficeName, setNewOfficeName] = useState("");
   const practiceDropdownRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -87,6 +89,34 @@ export default function CalendarPage() {
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, [practiceComboOpen]);
+
+  const addOfficeMutation = useMutation({
+    mutationFn: async (data: { practiceName: string; address?: string; city?: string; state?: string; phone?: string }) => {
+      const res = await apiRequest("POST", "/api/physicians", {
+        firstName: data.practiceName,
+        lastName: "(Office)",
+        practiceName: data.practiceName,
+        primaryOfficeAddress: data.address || null,
+        city: data.city || null,
+        state: data.state || null,
+        phone: data.phone || null,
+        status: "PROSPECT",
+        relationshipStage: "NEW",
+        priority: "MEDIUM",
+      });
+      return res.json();
+    },
+    onSuccess: (_, vars) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/practice-names"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/provider-offices"] });
+      setSelectedPracticeName(vars.practiceName);
+      setShowNewOfficeForm(false);
+      setNewOfficeName("");
+      toast({ title: "Office created", description: `"${vars.practiceName}" added and selected.` });
+    },
+    onError: (err: any) => toast({ title: "Error creating office", description: err.message, variant: "destructive" }),
+  });
+
   const [practiceDetailName, setPracticeDetailName] = useState<string | null>(null);
 
   const monthStart = startOfMonth(currentMonth);
@@ -589,81 +619,142 @@ export default function CalendarPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Office/Practice Name</Label>
-              <div className="relative" ref={practiceDropdownRef}>
-                <Input
-                  placeholder="Search for an office..."
-                  value={practiceComboOpen ? practiceSearchInput : selectedPracticeName}
-                  onChange={(e) => {
-                    setPracticeSearchInput(e.target.value);
-                    if (!practiceComboOpen) setPracticeComboOpen(true);
-                  }}
-                  onFocus={() => {
-                    setPracticeComboOpen(true);
-                    setPracticeSearchInput(selectedPracticeName);
-                  }}
-                  data-testid="input-search-practice"
-                />
-                {selectedPracticeName && !practiceComboOpen && (
-                  <button
-                    type="button"
-                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                    onClick={() => { setSelectedPracticeName(""); setPracticeSearchInput(""); }}
-                    data-testid="button-clear-practice"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
-                )}
-                {practiceComboOpen && (
-                  <div className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-md">
-                    {(() => {
-                      const trimmed = practiceSearchInput.trim();
-                      const filtered = (practiceNames || []).filter((n) =>
-                        n.toLowerCase().includes(practiceSearchInput.toLowerCase())
-                      );
-                      const exactMatch = filtered.some((n) => n.toLowerCase() === trimmed.toLowerCase());
-                      return (
-                        <>
-                          {trimmed && !exactMatch && (
-                            <button
-                              key="__add_new__"
-                              type="button"
-                              className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground border-b text-primary font-medium"
-                              onClick={() => {
-                                setSelectedPracticeName(trimmed);
-                                setPracticeComboOpen(false);
-                                setPracticeSearchInput("");
-                              }}
-                              data-testid="button-add-new-practice"
-                            >
-                              <Plus className="w-4 h-4 shrink-0" />
-                              Add "{trimmed}" as new office
-                            </button>
-                          )}
-                          {filtered.length === 0 && !trimmed && (
-                            <div className="px-3 py-2 text-sm text-muted-foreground">No offices available.</div>
-                          )}
-                          {filtered.map((name) => (
-                            <button
-                              key={name}
-                              type="button"
-                              className={`flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground ${selectedPracticeName === name ? "bg-accent/50" : ""}`}
-                              onClick={() => {
-                                setSelectedPracticeName(name);
-                                setPracticeComboOpen(false);
-                                setPracticeSearchInput("");
-                              }}
-                              data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
-                            >
-                              <Check className={`w-4 h-4 shrink-0 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
-                              {name}
-                            </button>
-                          ))}
-                        </>
-                      );
-                    })()}
+              {showNewOfficeForm ? (
+                <div className="rounded-md border bg-muted/30 p-3 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-medium flex items-center gap-1.5">
+                      <Building2 className="w-4 h-4 text-primary" />
+                      New Office
+                    </p>
+                    <button
+                      type="button"
+                      className="text-muted-foreground hover:text-foreground"
+                      onClick={() => { setShowNewOfficeForm(false); setNewOfficeName(""); }}
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
-              </div>
+                  <Input
+                    placeholder="Office name *"
+                    value={newOfficeName}
+                    onChange={(e) => setNewOfficeName(e.target.value)}
+                    data-testid="input-new-office-name"
+                    autoFocus
+                  />
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="Address" id="newOfficeAddress" className="text-xs" data-testid="input-new-office-address" />
+                    <Input placeholder="City" id="newOfficeCity" className="text-xs" data-testid="input-new-office-city" />
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <Input placeholder="State" id="newOfficeState" maxLength={2} className="text-xs" data-testid="input-new-office-state" />
+                    <Input placeholder="Phone" id="newOfficePhone" className="text-xs" data-testid="input-new-office-phone" />
+                  </div>
+                  <div className="flex gap-2 justify-end">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setShowNewOfficeForm(false); setNewOfficeName(""); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!newOfficeName.trim() || addOfficeMutation.isPending}
+                      onClick={() => {
+                        addOfficeMutation.mutate({
+                          practiceName: newOfficeName.trim(),
+                          address: (document.getElementById("newOfficeAddress") as HTMLInputElement)?.value.trim() || undefined,
+                          city: (document.getElementById("newOfficeCity") as HTMLInputElement)?.value.trim() || undefined,
+                          state: (document.getElementById("newOfficeState") as HTMLInputElement)?.value.trim() || undefined,
+                          phone: (document.getElementById("newOfficePhone") as HTMLInputElement)?.value.trim() || undefined,
+                        });
+                      }}
+                      data-testid="button-save-new-office"
+                    >
+                      {addOfficeMutation.isPending ? "Creating..." : "Create & Select"}
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="relative" ref={practiceDropdownRef}>
+                  <Input
+                    placeholder="Search for an office..."
+                    value={practiceComboOpen ? practiceSearchInput : selectedPracticeName}
+                    onChange={(e) => {
+                      setPracticeSearchInput(e.target.value);
+                      if (!practiceComboOpen) setPracticeComboOpen(true);
+                    }}
+                    onFocus={() => {
+                      setPracticeComboOpen(true);
+                      setPracticeSearchInput(selectedPracticeName);
+                    }}
+                    data-testid="input-search-practice"
+                  />
+                  {selectedPracticeName && !practiceComboOpen && (
+                    <button
+                      type="button"
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      onClick={() => { setSelectedPracticeName(""); setPracticeSearchInput(""); }}
+                      data-testid="button-clear-practice"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  )}
+                  {practiceComboOpen && (
+                    <div className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-md">
+                      {(() => {
+                        const trimmed = practiceSearchInput.trim();
+                        const filtered = (practiceNames || []).filter((n) =>
+                          n.toLowerCase().includes(practiceSearchInput.toLowerCase())
+                        );
+                        const exactMatch = filtered.some((n) => n.toLowerCase() === trimmed.toLowerCase());
+                        return (
+                          <>
+                            {trimmed && !exactMatch && (
+                              <button
+                                key="__add_new__"
+                                type="button"
+                                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground border-b text-primary font-medium"
+                                onClick={() => {
+                                  setNewOfficeName(trimmed);
+                                  setShowNewOfficeForm(true);
+                                  setPracticeComboOpen(false);
+                                  setPracticeSearchInput("");
+                                }}
+                                data-testid="button-add-new-practice"
+                              >
+                                <Plus className="w-4 h-4 shrink-0" />
+                                Add "{trimmed}" as new office
+                              </button>
+                            )}
+                            {filtered.length === 0 && !trimmed && (
+                              <div className="px-3 py-2 text-sm text-muted-foreground">No offices available.</div>
+                            )}
+                            {filtered.map((name) => (
+                              <button
+                                key={name}
+                                type="button"
+                                className={`flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground ${selectedPracticeName === name ? "bg-accent/50" : ""}`}
+                                onClick={() => {
+                                  setSelectedPracticeName(name);
+                                  setPracticeComboOpen(false);
+                                  setPracticeSearchInput("");
+                                }}
+                                data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
+                              >
+                                <Check className={`w-4 h-4 shrink-0 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
+                                {name}
+                              </button>
+                            ))}
+                          </>
+                        );
+                      })()}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             {selectedPracticeName && practicePhysicians && practicePhysicians.length > 0 && (
