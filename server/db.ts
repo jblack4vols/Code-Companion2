@@ -17,12 +17,13 @@ export async function ensureSearchIndexes() {
   try {
     await db.execute(sql`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
 
+    await db.execute(sql.raw(`DROP INDEX IF EXISTS idx_physicians_npi_trgm`));
+
     const indexes = [
       `CREATE INDEX IF NOT EXISTS idx_physicians_firstname_trgm ON physicians USING gin (first_name gin_trgm_ops)`,
       `CREATE INDEX IF NOT EXISTS idx_physicians_lastname_trgm ON physicians USING gin (last_name gin_trgm_ops)`,
       `CREATE INDEX IF NOT EXISTS idx_physicians_practicename_trgm ON physicians USING gin (practice_name gin_trgm_ops)`,
       `CREATE INDEX IF NOT EXISTS idx_physicians_city_trgm ON physicians USING gin (city gin_trgm_ops)`,
-      `CREATE INDEX IF NOT EXISTS idx_physicians_npi_trgm ON physicians USING gin (npi gin_trgm_ops)`,
       `CREATE INDEX IF NOT EXISTS idx_referrals_provider_trgm ON referrals USING gin (referring_provider_name gin_trgm_ops)`,
       `CREATE INDEX IF NOT EXISTS idx_referrals_patient_trgm ON referrals USING gin (patient_full_name gin_trgm_ops)`,
 
