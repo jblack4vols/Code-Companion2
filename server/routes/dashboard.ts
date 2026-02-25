@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { db } from "../db";
-import { sql, eq, and, gte, lt } from "drizzle-orm";
-import { referrals as referralsTable } from "@shared/schema";
+import { sql, eq, and, gte, lt, lte, isNull, asc, desc } from "drizzle-orm";
+import { referrals as referralsTable, calendarEvents, tasks, interactions, physicians, locations } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
 
 export function registerDashboardRoutes(app: Express) {
@@ -343,6 +343,78 @@ export function registerDashboardRoutes(app: Express) {
       }));
 
       res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/dashboard/hit-list", requireAuth, async (req, res) => {
+    try {
+      const startDate = req.query.startDate as string;
+      const endDate = req.query.endDate as string;
+      if (!startDate || !endDate) {
+        return res.status(400).json({ message: "startDate and endDate are required" });
+      }
+      const start = new Date(startDate);
+      const end = new Date(endDate);
+
+      const [events, taskList, followUps] = await Promise.all([
+        db.select({
+          id: calendarEvents.id,
+          title: calendarEvents.title,
+          eventType: calendarEvents.eventType,
+          startAt: calendarEvents.startAt,
+          endAt: calendarEvents.endAt,
+          allDay: calendarEvents.allDay,
+          completed: calendarEvents.completed,
+          locationId: calendarEvents.locationId,
+          practiceName: calendarEvents.practiceName,
+          physicianId: calendarEvents.physicianId,
+          description: calendarEvents.description,
+          locationName: locations.name,
+        })
+          .from(calendarEvents)
+          .leftJoin(locations, eq(calendarEvents.locationId, locations.id))
+          .where(and(gte(calendarEvents.startAt, start), lte(calendarEvents.startAt, end)))
+          .orderBy(asc(calendarEvents.startAt)),
+
+        db.select({
+          id: tasks.id,
+          description: tasks.description,
+          status: tasks.status,
+          priority: tasks.priority,
+          dueAt: tasks.dueAt,
+          physicianId: tasks.physicianId,
+          physicianFirstName: physicians.firstName,
+          physicianLastName: physicians.lastName,
+        })
+          .from(tasks)
+          .leftJoin(physicians, eq(tasks.physicianId, physicians.id))
+          .where(and(gte(tasks.dueAt, start), lte(tasks.dueAt, end)))
+          .orderBy(asc(tasks.dueAt)),
+
+        db.select({
+          id: interactions.id,
+          type: interactions.type,
+          summary: interactions.summary,
+          followUpDueAt: interactions.followUpDueAt,
+          physicianId: interactions.physicianId,
+          physicianFirstName: physicians.firstName,
+          physicianLastName: physicians.lastName,
+          locationName: locations.name,
+        })
+          .from(interactions)
+          .leftJoin(physicians, eq(interactions.physicianId, physicians.id))
+          .leftJoin(locations, eq(interactions.locationId, locations.id))
+          .where(and(
+            gte(interactions.followUpDueAt, start),
+            lte(interactions.followUpDueAt, end),
+            isNull(interactions.deletedAt),
+          ))
+          .orderBy(asc(interactions.followUpDueAt)),
+      ]);
+
+      res.json({ events, tasks: taskList, followUps });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
