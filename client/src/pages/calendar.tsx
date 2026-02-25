@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -74,6 +74,19 @@ export default function CalendarPage() {
 
   const [selectedPracticeName, setSelectedPracticeName] = useState<string>("");
   const [practiceComboOpen, setPracticeComboOpen] = useState(false);
+  const [practiceSearchInput, setPracticeSearchInput] = useState("");
+  const practiceDropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!practiceComboOpen) return;
+    function handleClickOutside(e: MouseEvent) {
+      if (practiceDropdownRef.current && !practiceDropdownRef.current.contains(e.target as Node)) {
+        setPracticeComboOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, [practiceComboOpen]);
   const [practiceDetailName, setPracticeDetailName] = useState<string | null>(null);
 
   const monthStart = startOfMonth(currentMonth);
@@ -574,56 +587,59 @@ export default function CalendarPage() {
             </div>
             <div className="space-y-1.5">
               <Label>Office/Practice Name</Label>
-              <Popover open={practiceComboOpen} onOpenChange={setPracticeComboOpen} modal={true}>
-                <PopoverTrigger asChild>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-between font-normal"
-                    data-testid="select-event-practice"
+              <div className="relative" ref={practiceDropdownRef}>
+                <Input
+                  placeholder="Search for an office..."
+                  value={practiceComboOpen ? practiceSearchInput : selectedPracticeName}
+                  onChange={(e) => {
+                    setPracticeSearchInput(e.target.value);
+                    if (!practiceComboOpen) setPracticeComboOpen(true);
+                  }}
+                  onFocus={() => {
+                    setPracticeComboOpen(true);
+                    setPracticeSearchInput(selectedPracticeName);
+                  }}
+                  data-testid="input-search-practice"
+                />
+                {selectedPracticeName && !practiceComboOpen && (
+                  <button
+                    type="button"
+                    className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                    onClick={() => { setSelectedPracticeName(""); setPracticeSearchInput(""); }}
+                    data-testid="button-clear-practice"
                   >
-                    {selectedPracticeName ? (
-                      <span className="truncate">{selectedPracticeName}</span>
-                    ) : (
-                      <span className="text-muted-foreground">Search for an office...</span>
-                    )}
-                    <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-                  </Button>
-                </PopoverTrigger>
-                <PopoverContent className="w-[--radix-popover-trigger-width] p-0 z-[9999]" align="start" sideOffset={4}>
-                  <Command>
-                    <CommandInput placeholder="Search offices..." data-testid="input-search-practice" />
-                    <CommandList>
-                      <CommandEmpty>No office found.</CommandEmpty>
-                      <CommandGroup>
-                        <CommandItem
-                          value=""
-                          onSelect={() => {
-                            setSelectedPracticeName("");
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+                {practiceComboOpen && (
+                  <div className="absolute z-50 mt-1 w-full max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-md">
+                    {(() => {
+                      const filtered = (practiceNames || []).filter((n) =>
+                        n.toLowerCase().includes(practiceSearchInput.toLowerCase())
+                      );
+                      if (filtered.length === 0) {
+                        return <div className="px-3 py-2 text-sm text-muted-foreground">No office found.</div>;
+                      }
+                      return filtered.map((name) => (
+                        <button
+                          key={name}
+                          type="button"
+                          className={`flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground ${selectedPracticeName === name ? "bg-accent/50" : ""}`}
+                          onClick={() => {
+                            setSelectedPracticeName(name);
                             setPracticeComboOpen(false);
+                            setPracticeSearchInput("");
                           }}
+                          data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
                         >
-                          <Check className={`mr-2 h-4 w-4 ${!selectedPracticeName ? "opacity-100" : "opacity-0"}`} />
-                          None
-                        </CommandItem>
-                        {practiceNames?.map((name) => (
-                          <CommandItem
-                            key={name}
-                            value={name}
-                            onSelect={() => {
-                              setSelectedPracticeName(name);
-                              setPracticeComboOpen(false);
-                            }}
-                            data-testid={`option-practice-${name.replace(/\s+/g, "-").substring(0, 30)}`}
-                          >
-                            <Check className={`mr-2 h-4 w-4 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
-                            {name}
-                          </CommandItem>
-                        ))}
-                      </CommandGroup>
-                    </CommandList>
-                  </Command>
-                </PopoverContent>
-              </Popover>
+                          <Check className={`w-4 h-4 shrink-0 ${selectedPracticeName === name ? "opacity-100" : "opacity-0"}`} />
+                          {name}
+                        </button>
+                      ));
+                    })()}
+                  </div>
+                )}
+              </div>
             </div>
 
             {selectedPracticeName && practicePhysicians && practicePhysicians.length > 0 && (
