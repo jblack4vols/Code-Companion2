@@ -96,6 +96,8 @@ export const physicians = pgTable("physicians", {
   phone: text("phone"),
   fax: text("fax"),
   email: text("email"),
+  latitude: real("latitude"),
+  longitude: real("longitude"),
   status: physicianStatusEnum("status").notNull().default("PROSPECT"),
   relationshipStage: relationshipStageEnum("relationship_stage").notNull().default("NEW"),
   priority: priorityEnum("priority").notNull().default("MEDIUM"),

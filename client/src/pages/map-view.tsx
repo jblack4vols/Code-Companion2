@@ -20,17 +20,6 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-const CITY_COORDS: Record<string, [number, number]> = {
-  "johnson city": [36.31, -82.35],
-  "morristown": [36.21, -83.29],
-  "newport": [35.97, -83.19],
-  "rogersville": [36.41, -83.01],
-  "maryville": [35.76, -83.97],
-  "jefferson city": [36.12, -83.49],
-  "new tazewell": [36.44, -83.60],
-  "bean station": [36.34, -83.28],
-};
-
 const STAGE_COLORS: Record<string, string> = {
   NEW: "hsl(var(--chart-1))",
   DEVELOPING: "hsl(var(--chart-3))",
@@ -56,43 +45,45 @@ function createStageIcon(stage: string) {
   });
 }
 
-function getCoords(city: string | null | undefined): [number, number] | null {
-  if (!city) return null;
-  return CITY_COORDS[city.toLowerCase().trim()] || null;
-}
-
 export default function MapViewPage() {
   const [, navigate] = useWouterLocation();
   const [stageFilter, setStageFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [search, setSearch] = useState("");
+  const [cityFilter, setCityFilter] = useState("all");
 
   const { data: physicians, isLoading } = useQuery<Physician[]>({
     queryKey: ["/api/physicians"],
   });
+
+  const uniqueCities = useMemo(() => {
+    if (!physicians) return [];
+    const cities = new Set<string>();
+    physicians.forEach(p => { if (p.city) cities.add(p.city.trim()); });
+    return [...cities].sort();
+  }, [physicians]);
 
   const filtered = useMemo(() => {
     if (!physicians) return [];
     return physicians.filter((p) => {
       if (stageFilter !== "all" && p.relationshipStage !== stageFilter) return false;
       if (statusFilter !== "all" && p.status !== statusFilter) return false;
+      if (cityFilter !== "all" && (p.city || "").trim().toLowerCase() !== cityFilter.toLowerCase()) return false;
       if (search) {
         const q = search.toLowerCase();
         const fullName = `${p.firstName} ${p.lastName}`.toLowerCase();
-        if (!fullName.includes(q) && !(p.practiceName || "").toLowerCase().includes(q)) return false;
+        if (!fullName.includes(q) && !(p.practiceName || "").toLowerCase().includes(q) && !(p.city || "").toLowerCase().includes(q)) return false;
       }
       return true;
     });
-  }, [physicians, stageFilter, statusFilter, search]);
+  }, [physicians, stageFilter, statusFilter, search, cityFilter]);
 
   const { mapped, unmapped } = useMemo(() => {
     const m: Array<Physician & { coords: [number, number] }> = [];
     const u: Physician[] = [];
     for (const p of filtered) {
-      const coords = getCoords(p.city);
-      if (coords) {
-        const jitter = (Math.random() - 0.5) * 0.01;
-        m.push({ ...p, coords: [coords[0] + jitter, coords[1] + jitter] });
+      if (p.latitude && p.longitude) {
+        m.push({ ...p, coords: [p.latitude, p.longitude] });
       } else {
         u.push(p);
       }
@@ -103,10 +94,11 @@ export default function MapViewPage() {
   const clearFilters = () => {
     setStageFilter("all");
     setStatusFilter("all");
+    setCityFilter("all");
     setSearch("");
   };
 
-  const hasActiveFilters = stageFilter !== "all" || statusFilter !== "all" || search !== "";
+  const hasActiveFilters = stageFilter !== "all" || statusFilter !== "all" || cityFilter !== "all" || search !== "";
 
   if (isLoading) {
     return (
