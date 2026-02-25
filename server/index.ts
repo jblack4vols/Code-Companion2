@@ -11,6 +11,10 @@ const app = express();
 app.set("trust proxy", 1);
 const httpServer = createServer(app);
 
+app.get("/health", (_req, res) => {
+  res.status(200).send("OK");
+});
+
 declare module "http" {
   interface IncomingMessage {
     rawBody: unknown;
@@ -65,16 +69,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const { ensureSearchIndexes } = await import("./db");
-  await ensureSearchIndexes().catch(err => console.error("Index error:", err));
-
-  const { seed } = await import("./seed");
-  await seed().catch(err => console.error("Seed error:", err));
-
   await registerRoutes(httpServer, app);
-
-  const { scheduleETL } = await import("./etl");
-  scheduleETL();
 
   app.use(globalErrorHandler as any);
 
@@ -94,6 +89,17 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+
+      (async () => {
+        const { ensureSearchIndexes } = await import("./db");
+        await ensureSearchIndexes().catch(err => console.error("Index error:", err));
+
+        const { seed } = await import("./seed");
+        await seed().catch(err => console.error("Seed error:", err));
+
+        const { scheduleETL } = await import("./etl");
+        scheduleETL();
+      })();
     },
   );
 })();
