@@ -74,19 +74,19 @@ async function recreateTrgmIndexes() {
     await client.connect();
     await client.query(`CREATE EXTENSION IF NOT EXISTS pg_trgm`);
     const indexes = [
-      `CREATE INDEX IF NOT EXISTS idx_physicians_firstname_trgm ON physicians USING gin ("firstName" gin_trgm_ops)`,
-      `CREATE INDEX IF NOT EXISTS idx_physicians_lastname_trgm ON physicians USING gin ("lastName" gin_trgm_ops)`,
-      `CREATE INDEX IF NOT EXISTS idx_physicians_practicename_trgm ON physicians USING gin ("practiceName" gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_physicians_firstname_trgm ON physicians USING gin (first_name gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_physicians_lastname_trgm ON physicians USING gin (last_name gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_physicians_practicename_trgm ON physicians USING gin (practice_name gin_trgm_ops)`,
       `CREATE INDEX IF NOT EXISTS idx_physicians_city_trgm ON physicians USING gin (city gin_trgm_ops)`,
-      `CREATE INDEX IF NOT EXISTS idx_referrals_provider_trgm ON referrals USING gin ("referringProviderName" gin_trgm_ops)`,
-      `CREATE INDEX IF NOT EXISTS idx_referrals_patient_trgm ON referrals USING gin ("patientFullName" gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_referrals_provider_trgm ON referrals USING gin (referring_provider_name gin_trgm_ops)`,
+      `CREATE INDEX IF NOT EXISTS idx_referrals_patient_trgm ON referrals USING gin (patient_full_name gin_trgm_ops)`,
     ];
     for (const sql of indexes) {
-      await client.query(sql);
+      await client.query(sql).catch(err => console.warn(`Index warning: ${err.message}`));
     }
     console.log("recreated trgm indexes after db:push");
   } catch (e) {
-    console.warn("could not recreate trgm indexes:", e);
+    console.warn("could not recreate trgm indexes (non-fatal):", e);
   } finally {
     await client.end();
   }
