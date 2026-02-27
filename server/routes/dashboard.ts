@@ -139,7 +139,12 @@ export function registerDashboardRoutes(app: Express) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    res.json({ location: loc, summaries, month, topReferrers });
+    // Conversion metrics: scheduled → arrived
+    const totalScheduled = locationReferrals.reduce((sum, r) => sum + (r.scheduledVisits || 0), 0);
+    const totalArrived = locationReferrals.reduce((sum, r) => sum + (r.arrivedVisits || 0), 0);
+    const arrivalRate = totalScheduled > 0 ? Math.round((totalArrived / totalScheduled) * 1000) / 10 : 0;
+
+    res.json({ location: loc, summaries, month, topReferrers, conversionMetrics: { totalScheduled, totalArrived, arrivalRate } });
   });
 
   app.get("/api/physicians/:id/monthly", requireAuth, async (req, res) => {

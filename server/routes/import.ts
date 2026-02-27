@@ -1,12 +1,16 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { Readable } from "stream";
 import { requireRole, getClientIp } from "./shared";
+import os from "os";
+import path from "path";
+import fs from "fs";
 
 export async function registerImportRoutes(app: Express) {
   const multer = (await import("multer")).default;
   const ExcelJS = (await import("exceljs")).default;
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+  const uploadDir = path.join(os.tmpdir(), "crm-uploads");
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
 
   function excelSerialToDate(serial: number): Date {
     const utcDays = Math.floor(serial - 25569);
@@ -46,15 +50,25 @@ export async function registerImportRoutes(app: Express) {
     return rows;
   }
 
+  // Read uploaded file from disk into ExcelJS workbook, then clean up temp file
+  async function loadWorkbook(file: Express.Multer.File): Promise<InstanceType<typeof ExcelJS.Workbook>> {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      if (file.originalname.endsWith(".csv")) {
+        await workbook.csv.readFile(file.path);
+      } else {
+        await workbook.xlsx.readFile(file.path);
+      }
+    } finally {
+      fs.unlink(file.path, () => {});
+    }
+    return workbook;
+  }
+
   app.post("/api/import/preview", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-      const workbook = new ExcelJS.Workbook();
-      if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(Readable.from(req.file.buffer));
-      } else {
-        await workbook.xlsx.load(req.file.buffer);
-      }
+      const workbook = await loadWorkbook(req.file);
       const worksheet = workbook.worksheets[0];
       const sheetName = worksheet.name;
       const rows = worksheetToArrays(worksheet);
@@ -72,12 +86,7 @@ export async function registerImportRoutes(app: Express) {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
-      const workbook = new ExcelJS.Workbook();
-      if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(Readable.from(req.file.buffer));
-      } else {
-        await workbook.xlsx.load(req.file.buffer);
-      }
+      const workbook = await loadWorkbook(req.file);
       const rows = worksheetToJson(workbook.worksheets[0]);
 
       const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
@@ -143,12 +152,7 @@ export async function registerImportRoutes(app: Express) {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
-      const workbook = new ExcelJS.Workbook();
-      if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(Readable.from(req.file.buffer));
-      } else {
-        await workbook.xlsx.load(req.file.buffer);
-      }
+      const workbook = await loadWorkbook(req.file);
       const rows = worksheetToJson(workbook.worksheets[0]);
 
       const allLocations = await storage.getLocations();
