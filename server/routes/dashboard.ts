@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql, eq, and, gte, lt, lte, isNull, asc, desc } from "drizzle-orm";
 import { referrals as referralsTable, calendarEvents, tasks, interactions, physicians, locations } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
 
 export function registerDashboardRoutes(app: Express) {
   app.get("/api/tiering-weights", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
@@ -106,6 +106,12 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/dashboard/location/:locationId", requireAuth, async (req, res) => {
+    // Verify user has access to the requested location
+    const locationScope = await getUserLocationScope(req);
+    const locationId = String(req.params.locationId);
+    if (locationScope !== null && !locationScope.includes(locationId)) {
+      return res.status(403).json({ message: "Forbidden: no access to this location" });
+    }
     const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
     const summaries = await storage.getLocationMonthlySummaries({ locationId: req.params.locationId, month });
     const loc = await storage.getLocation(req.params.locationId);
@@ -247,10 +253,20 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    // If user requested a specific location, verify they have access to it
+    const requestedLocationId = req.query.locationId as string | undefined;
+    if (locationScope !== null && requestedLocationId && !locationScope.includes(requestedLocationId)) {
+      return res.status(403).json({ message: "Forbidden: no access to this location" });
+    }
+    // Determine the effective locationId for scoped users (if only one location, use it directly)
+    const effectiveLocationId = locationScope !== null && locationScope.length === 1
+      ? locationScope[0]
+      : requestedLocationId;
     const filters = {
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
-      locationId: req.query.locationId as string | undefined,
+      locationId: effectiveLocationId,
       territoryId: req.query.territoryId as string | undefined,
       physicianId: req.query.physicianId as string | undefined,
     };

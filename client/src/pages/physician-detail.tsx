@@ -251,9 +251,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
           </Button>
         </Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold" data-testid="text-physician-name">{physician.firstName} {physician.lastName}{physician.credentials ? `, ${physician.credentials}` : ""}</h1>
-          <div className="flex items-center gap-3 flex-wrap">
-            <p className="text-sm text-muted-foreground">{[physician.specialty, physician.practiceName].filter(Boolean).join(" · ") || "No practice info"}</p>
+          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-physician-name">{physician.firstName} {physician.lastName}{physician.credentials ? `, ${physician.credentials}` : ""}</h1>
+          <div className="flex items-center gap-3 flex-wrap mt-0.5">
+            <p className="page-subtitle">{[physician.specialty, physician.practiceName].filter(Boolean).join(" · ") || "No practice info"}</p>
             {physician.npi && (
               <Badge variant="secondary" className="text-[10px] font-mono" data-testid="badge-npi">NPI: {physician.npi}</Badge>
             )}

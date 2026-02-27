@@ -244,7 +244,12 @@ export async function upsertFinancialTarget(data: InsertFinancialTarget): Promis
 
 // ---- Aggregation Queries ----
 
-export async function getUnitEconomicsDashboard(): Promise<UnitEconomicsLocationSummary[]> {
+export async function getUnitEconomicsDashboard(locationIds?: string[]): Promise<UnitEconomicsLocationSummary[]> {
+  // Build optional IN clause for location scoping
+  const locationFilter = locationIds && locationIds.length > 0
+    ? sql`AND l.id = ANY(${locationIds}::uuid[])`
+    : sql``;
+
   const rows = await db.execute(sql`
     SELECT
       l.id as location_id,
@@ -274,7 +279,7 @@ export async function getUnitEconomicsDashboard(): Promise<UnitEconomicsLocation
       WHERE acknowledged_at IS NULL
       GROUP BY location_id
     ) alert_counts ON alert_counts.location_id = l.id
-    WHERE l.is_active = true
+    WHERE l.is_active = true ${locationFilter}
     GROUP BY l.id, l.name, alert_counts.active_alerts
     ORDER BY gross_revenue DESC
   `);

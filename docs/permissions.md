@@ -89,14 +89,24 @@ FRONT_DESK and MARKETER no longer have access to collections or ROI data.
 
 ## Location Scoping
 
-**Partially implemented.**
+**Enforced.**
 
 - `user_location_access` junction table maps users to locations
 - `getUserLocationIds()` storage method reads this table and returns a user's allowed location IDs
 - `GET /api/user/locations` endpoint exposes location list to the client
 - API keys now carry a `locationIds` field — public API queries are filtered to those locations
 - Dashboard hit-list scoped to current user for non-admin roles (MARKETER, FRONT_DESK)
-- Full server-side query enforcement (joining `user_location_access` in every storage query) is **not yet implemented** — users can still see cross-location data via unfiltered list endpoints
+- `getUserLocationScope(req)` helper in `server/routes/shared.ts` centralises scope resolution:
+  - Returns `null` for OWNER/DIRECTOR (bypass — all locations visible)
+  - Returns `string[]` of allowed location IDs for MARKETER, FRONT_DESK, ANALYST
+  - Returns `[]` (empty) if user has no location assignments → empty results
+- Server-side enforcement applied to:
+  - `GET /api/referrals` and `GET /api/referrals/paginated` — filtered by `locationIds IN (...)`
+  - `GET /api/collections` — filtered by `locationIds IN (...)`
+  - `GET /api/unit-economics/dashboard` — filtered to user's locations
+  - `GET /api/unit-economics/location/:id` — 403 if user lacks access to that location
+  - `GET /api/dashboard/location/:locationId` — 403 if user lacks access to that location
+  - `GET /api/dashboard/stats` — locationId validated against user's scope
 
 ## Territory Scoping
 
@@ -114,7 +124,7 @@ FRONT_DESK and MARKETER no longer have access to collections or ROI data.
 
 | # | Gap | Risk | Location |
 |---|---|---|---|
-| 1 | `user_location_access` — partial enforcement only | Cross-location data leakage for list endpoints | Entire storage layer |
+| 1 | ~~`user_location_access` — partial enforcement only~~ | **RESOLVED** — `getUserLocationScope()` enforces location filtering on all list endpoints | `server/routes/shared.ts`, `server/storage.ts`, `server/storage-unit-economics.ts` |
 
 ### High
 

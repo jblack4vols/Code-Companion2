@@ -4,7 +4,7 @@
  */
 import type { Express } from "express";
 import { storage } from "../storage";
-import { requireRole, getClientIp } from "./shared";
+import { requireRole, getClientIp, getUserLocationScope } from "./shared";
 import { evaluateAlerts, evaluateProviderAlerts } from "../unit-economics-alert-engine";
 import os from "os";
 import path from "path";
@@ -104,7 +104,12 @@ export async function registerUnitEconomicsRoutes(app: Express) {
     requireRole("OWNER", "DIRECTOR", "ANALYST"),
     async (req, res) => {
       try {
-        const data = await storage.getUnitEconomicsDashboard();
+        const locationScope = await getUserLocationScope(req);
+        // Non-admin with no location assignments — return empty results
+        if (locationScope !== null && locationScope.length === 0) {
+          return res.json([]);
+        }
+        const data = await storage.getUnitEconomicsDashboard(locationScope ?? undefined);
         res.json(data);
       } catch (err: any) {
         res.status(500).json({ message: err.message });
@@ -118,9 +123,15 @@ export async function registerUnitEconomicsRoutes(app: Express) {
     requireRole("OWNER", "DIRECTOR", "ANALYST"),
     async (req, res) => {
       try {
+        const locationScope = await getUserLocationScope(req);
+        const locationId = String(req.params.id);
+        // Non-admin: verify user has access to the requested location
+        if (locationScope !== null && !locationScope.includes(locationId)) {
+          return res.status(403).json({ message: "Forbidden: no access to this location" });
+        }
         const dateFrom = typeof req.query.dateFrom === "string" ? req.query.dateFrom : undefined;
         const dateTo = typeof req.query.dateTo === "string" ? req.query.dateTo : undefined;
-        const data = await storage.getUnitEconomicsLocationDetail(String(req.params.id), dateFrom, dateTo);
+        const data = await storage.getUnitEconomicsLocationDetail(locationId, dateFrom, dateTo);
         res.json(data);
       } catch (err: any) {
         res.status(500).json({ message: err.message });

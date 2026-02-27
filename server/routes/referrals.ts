@@ -4,14 +4,20 @@ import { db } from "../db";
 import { sql, eq } from "drizzle-orm";
 import { z } from "zod";
 import { insertPhysicianSchema, insertReferralSchema, referrals as referralsTable, physicians as physiciansTable } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
 
 export function registerReferralRoutes(app: Express) {
   app.get("/api/referrals/paginated", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    // Non-admin with no location assignments — return empty results
+    if (locationScope !== null && locationScope.length === 0) {
+      return res.json({ data: [], total: 0, page: 1, pageSize: 50, activeCount: 0, dischargedCount: 0 });
+    }
     res.json(await storage.getReferralsPaginated({
       search: qstr(req.query.search as any),
       status: qstr(req.query.status as any),
       locationId: qstr(req.query.locationId as any),
+      locationIds: locationScope ?? undefined,
       discipline: qstr(req.query.discipline as any),
       dateFrom: qstr(req.query.dateFrom as any),
       dateTo: qstr(req.query.dateTo as any),
@@ -24,8 +30,13 @@ export function registerReferralRoutes(app: Express) {
   });
 
   app.get("/api/referrals", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    // Non-admin with no location assignments — return empty results
+    if (locationScope !== null && locationScope.length === 0) {
+      return res.json([]);
+    }
     const physicianId = req.query.physicianId as string | undefined;
-    res.json(await storage.getReferrals(physicianId));
+    res.json(await storage.getReferrals(physicianId, locationScope ?? undefined));
   });
 
   app.post("/api/referrals", requireRole("OWNER", "DIRECTOR", "MARKETER", "FRONT_DESK"), async (req, res) => {

@@ -126,12 +126,12 @@ export function AppSidebar() {
 
   return (
     <Sidebar data-testid="sidebar">
-      <SidebarHeader className="p-4">
+      <SidebarHeader className="p-4 border-b border-sidebar-border">
         <div className="flex items-center gap-3">
           <img src={tristarLogo} alt="Tristar Physical Therapy" className="h-9 w-auto object-contain" data-testid="img-logo" />
           <div className="flex flex-col min-w-0">
             <span className="text-sm font-semibold truncate" data-testid="text-app-title">Tristar 360</span>
-            <span className="text-xs text-muted-foreground">Provider CRM</span>
+            <span className="text-[11px] text-muted-foreground tracking-wide uppercase">Provider CRM</span>
           </div>
         </div>
       </SidebarHeader>
@@ -323,7 +323,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      <SidebarFooter className="p-3">
+      <SidebarFooter className="p-3 border-t border-sidebar-border">
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <button

@@ -76,6 +76,8 @@ export interface ReferralFilters {
   search?: string;
   status?: string;
   locationId?: string;
+  /** Server-side location scope enforcement: list of allowed location IDs for non-admin users */
+  locationIds?: string[];
   discipline?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -144,7 +146,7 @@ export interface IStorage {
   createInteraction(inter: InsertInteraction): Promise<Interaction>;
   updateInteraction(id: string, data: Partial<InsertInteraction>): Promise<Interaction | undefined>;
 
-  getReferrals(physicianId?: string): Promise<Referral[]>;
+  getReferrals(physicianId?: string, locationIds?: string[]): Promise<Referral[]>;
   getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>>;
   createReferral(ref: InsertReferral): Promise<Referral>;
   updateReferral(id: string, data: Partial<InsertReferral>): Promise<Referral | undefined>;
@@ -199,7 +201,7 @@ export interface IStorage {
   updateTerritory(id: string, data: Partial<InsertTerritory>): Promise<Territory | undefined>;
   deleteTerritory(id: string): Promise<boolean>;
 
-  getCollections(filters?: { physicianId?: string; locationId?: string; dateFrom?: string; dateTo?: string }): Promise<Collection[]>;
+  getCollections(filters?: { physicianId?: string; locationId?: string; locationIds?: string[]; dateFrom?: string; dateTo?: string }): Promise<Collection[]>;
   createCollection(col: InsertCollection): Promise<Collection>;
 
   getTieringWeights(): Promise<TieringWeights | undefined>;
@@ -297,7 +299,7 @@ export interface IStorage {
   upsertFinancialTarget(data: InsertFinancialTarget): Promise<FinancialTarget>;
 
   // Unit Economics - Aggregation
-  getUnitEconomicsDashboard(): Promise<unitEconomicsStorage.UnitEconomicsLocationSummary[]>;
+  getUnitEconomicsDashboard(locationIds?: string[]): Promise<unitEconomicsStorage.UnitEconomicsLocationSummary[]>;
   getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string): Promise<unitEconomicsStorage.UnitEconomicsLocationDetail>;
   getProviderProductivityLeaderboard(dateFrom?: string, dateTo?: string, locationId?: string): Promise<unitEconomicsStorage.ProviderProductivityEntry[]>;
   getUnitEconomicsForecast(locationId?: string): Promise<unitEconomicsStorage.ForecastEntry[]>;
@@ -572,13 +574,13 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getReferrals(physicianId?: string) {
-    if (physicianId) {
-      return db.select().from(referrals)
-        .where(and(eq(referrals.physicianId, physicianId), isNull(referrals.deletedAt)))
-        .orderBy(desc(referrals.referralDate));
-    }
-    return db.select().from(referrals).where(isNull(referrals.deletedAt)).orderBy(desc(referrals.referralDate));
+  async getReferrals(physicianId?: string, locationIds?: string[]) {
+    const conditions: any[] = [isNull(referrals.deletedAt)];
+    if (physicianId) conditions.push(eq(referrals.physicianId, physicianId));
+    if (locationIds && locationIds.length > 0) conditions.push(inArray(referrals.locationId, locationIds));
+    return db.select().from(referrals)
+      .where(and(...conditions))
+      .orderBy(desc(referrals.referralDate));
   }
 
   async getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>> {
@@ -588,6 +590,8 @@ export class DatabaseStorage implements IStorage {
 
     if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
     if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
+    // Server-side scope: restrict to user's allowed locations (non-admin)
+    if (filters.locationIds && filters.locationIds.length > 0) conditions.push(inArray(referrals.locationId, filters.locationIds));
     if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
     if (filters.physicianId) conditions.push(eq(referrals.physicianId, filters.physicianId));
     if (filters.dateFrom) conditions.push(gte(referrals.referralDate, filters.dateFrom));
@@ -1617,10 +1621,12 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getCollections(filters?: { physicianId?: string; locationId?: string; dateFrom?: string; dateTo?: string }) {
+  async getCollections(filters?: { physicianId?: string; locationId?: string; locationIds?: string[]; dateFrom?: string; dateTo?: string }) {
     const conditions = [];
     if (filters?.physicianId) conditions.push(eq(collections.physicianId, filters.physicianId));
     if (filters?.locationId) conditions.push(eq(collections.locationId, filters.locationId));
+    // Server-side scope: restrict to user's allowed locations (non-admin)
+    if (filters?.locationIds && filters.locationIds.length > 0) conditions.push(inArray(collections.locationId, filters.locationIds));
     if (filters?.dateFrom) conditions.push(gte(collections.collectionDate, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(collections.collectionDate, filters.dateTo));
     if (conditions.length > 0) {
@@ -2325,8 +2331,8 @@ export class DatabaseStorage implements IStorage {
   async upsertFinancialTarget(data: InsertFinancialTarget) {
     return unitEconomicsStorage.upsertFinancialTarget(data);
   }
-  async getUnitEconomicsDashboard() {
-    return unitEconomicsStorage.getUnitEconomicsDashboard();
+  async getUnitEconomicsDashboard(locationIds?: string[]) {
+    return unitEconomicsStorage.getUnitEconomicsDashboard(locationIds);
   }
   async getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string) {
     return unitEconomicsStorage.getUnitEconomicsLocationDetail(locationId, dateFrom, dateTo);

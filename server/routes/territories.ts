@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { requireAuth, requireRole, getClientIp } from "./shared";
+import { requireAuth, requireRole, getClientIp, getUserLocationScope } from "./shared";
 
 export function registerTerritoryRoutes(app: Express) {
   app.get("/api/territories", requireAuth, async (req, res) => {
@@ -45,9 +45,15 @@ export function registerTerritoryRoutes(app: Express) {
   });
 
   app.get("/api/collections", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    // Non-admin with no location assignments — return empty results
+    if (locationScope !== null && locationScope.length === 0) {
+      return res.json([]);
+    }
     const filters = {
       physicianId: req.query.physicianId as string | undefined,
       locationId: req.query.locationId as string | undefined,
+      locationIds: locationScope ?? undefined,
       dateFrom: req.query.dateFrom as string | undefined,
       dateTo: req.query.dateTo as string | undefined,
     };

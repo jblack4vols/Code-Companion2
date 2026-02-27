@@ -136,13 +136,15 @@ function PracticeListView() {
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
       {/* Header */}
-      <div>
-        <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-practices-title">
-          Practice Intelligence
-        </h1>
-        <p className="text-xs sm:text-sm text-muted-foreground">
-          {total} practice{total !== 1 ? "s" : ""} tracked
-        </p>
+      <div className="page-header">
+        <div>
+          <h1 data-testid="text-practices-title">
+            Practice Intelligence
+          </h1>
+          <p className="page-subtitle">
+            {total} practice{total !== 1 ? "s" : ""} tracked
+          </p>
+        </div>
       </div>
 
       {/* Search */}
@@ -166,7 +168,7 @@ function PracticeListView() {
             </div>
           ) : practices.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-center">
-              <Building2 className="h-10 w-10 text-muted-foreground/30 mb-3" />
+              <Building2 className="h-12 w-12 text-muted-foreground/30 mb-4" />
               <p className="text-sm text-muted-foreground">
                 No practices found{search ? ` matching "${search}"` : ""}
               </p>
@@ -175,7 +177,7 @@ function PracticeListView() {
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader>
-                  <TableRow className="bg-muted/30">
+                  <TableRow>
                     <TableHead {...thProps("practiceName")}>
                       Practice Name <SortIcon column="practiceName" current={sortBy} order={sortOrder} />
                     </TableHead>

@@ -98,7 +98,7 @@ export default function UnitEconomicsDashboardPage() {
   if (locations.length === 0) {
     return (
       <div className="p-4 sm:p-6 max-w-7xl mx-auto">
-        <h1 className="text-xl sm:text-2xl font-bold mb-6">Unit Economics</h1>
+        <h1 className="text-xl sm:text-2xl font-bold mb-4">Unit Economics</h1>
         <Card>
           <CardContent className="p-8 flex flex-col items-center justify-center text-center gap-3">
             <DollarSign className="w-12 h-12 text-muted-foreground/30" />
@@ -116,10 +116,10 @@ export default function UnitEconomicsDashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between gap-3">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold">Unit Economics</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-1">Financial performance across all locations</p>
+          <h1>Unit Economics</h1>
+          <p className="page-subtitle">Financial performance across all locations</p>
         </div>
         <Button variant="outline" size="sm" onClick={handleRefresh}>
           <RefreshCw className="w-4 h-4 mr-2" />
@@ -136,7 +136,7 @@ export default function UnitEconomicsDashboardPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Total Revenue</p>
-              <p className="text-xl font-bold mt-0.5">{fmt$(totalRevenue)}</p>
+              <p className="text-2xl font-bold mt-0.5">{fmt$(totalRevenue)}</p>
             </div>
           </CardContent>
         </Card>
@@ -147,7 +147,7 @@ export default function UnitEconomicsDashboardPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Avg Rev/Visit</p>
-              <p className="text-xl font-bold mt-0.5">{fmt$(avgRevenuePerVisit)}</p>
+              <p className="text-2xl font-bold mt-0.5">{fmt$(avgRevenuePerVisit)}</p>
             </div>
           </CardContent>
         </Card>
@@ -158,7 +158,7 @@ export default function UnitEconomicsDashboardPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Avg Cost/Visit</p>
-              <p className="text-xl font-bold mt-0.5">{fmt$(avgCostPerVisit)}</p>
+              <p className="text-2xl font-bold mt-0.5">{fmt$(avgCostPerVisit)}</p>
             </div>
           </CardContent>
         </Card>
@@ -169,7 +169,7 @@ export default function UnitEconomicsDashboardPage() {
             </div>
             <div>
               <p className="text-sm text-muted-foreground">Active Alerts</p>
-              <p className="text-xl font-bold mt-0.5">{totalAlerts}</p>
+              <p className="text-2xl font-bold mt-0.5">{totalAlerts}</p>
             </div>
           </CardContent>
         </Card>
