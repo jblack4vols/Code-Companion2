@@ -96,9 +96,9 @@ export async function ensureRevenueRecoveryTables() {
       `CREATE TABLE IF NOT EXISTS claims (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         claim_number VARCHAR(50) NOT NULL,
-        location_id UUID REFERENCES locations(id),
-        provider_id UUID,
-        physician_id UUID REFERENCES physicians(id),
+        location_id VARCHAR(36) REFERENCES locations(id),
+        provider_id VARCHAR(36),
+        physician_id VARCHAR(36) REFERENCES physicians(id),
         patient_account_number VARCHAR(50),
         dos DATE NOT NULL,
         cpt_codes TEXT,
@@ -138,7 +138,7 @@ export async function ensureRevenueRecoveryTables() {
         cpt_code VARCHAR(10) NOT NULL,
         expected_rate NUMERIC(10,2) NOT NULL,
         effective_date DATE,
-        location_id UUID REFERENCES locations(id),
+        location_id VARCHAR(36) REFERENCES locations(id),
         source VARCHAR(50) DEFAULT 'manual',
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -162,7 +162,7 @@ export async function ensureRevenueRecoveryTables() {
         outcome_date DATE,
         outcome_notes TEXT,
         recovered_amount NUMERIC(12,2),
-        created_by UUID REFERENCES users(id),
+        created_by VARCHAR(36) REFERENCES users(id),
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       )`,

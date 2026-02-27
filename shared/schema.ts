@@ -721,9 +721,9 @@ export const appealStatusEnum = pgEnum("appeal_status", [
 export const claims = pgTable("claims", {
   id: uuid("id").defaultRandom().primaryKey(),
   claimNumber: varchar("claim_number", { length: 50 }).notNull(),
-  locationId: uuid("location_id").references(() => locations.id),
-  providerId: uuid("provider_id"), // user who provided service (therapist)
-  physicianId: uuid("physician_id").references(() => physicians.id), // referring physician
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
+  providerId: varchar("provider_id", { length: 36 }), // user who provided service (therapist)
+  physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id), // referring physician
   patientAccountNumber: varchar("patient_account_number", { length: 50 }),
   dos: date("dos").notNull(), // date of service
   cptCodes: text("cpt_codes"), // comma-separated CPT codes
@@ -773,7 +773,7 @@ export const payerRateSchedule = pgTable("payer_rate_schedule", {
   cptCode: varchar("cpt_code", { length: 10 }).notNull(),
   expectedRate: numeric("expected_rate", { precision: 10, scale: 2 }).notNull(),
   effectiveDate: date("effective_date"),
-  locationId: uuid("location_id").references(() => locations.id), // null = global default
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id), // null = global default
   source: varchar("source", { length: 50 }).default("manual"), // "manual" or "calculated"
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
@@ -801,7 +801,7 @@ export const appeals = pgTable("appeals", {
   outcomeDate: date("outcome_date"),
   outcomeNotes: text("outcome_notes"),
   recoveredAmount: numeric("recovered_amount", { precision: 12, scale: 2 }),
-  createdBy: uuid("created_by").references(() => users.id),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
