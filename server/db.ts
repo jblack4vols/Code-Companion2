@@ -91,8 +91,8 @@ export async function ensureSearchIndexes() {
 export async function ensureRevenueRecoveryTables() {
   try {
     const statements = [
-      `CREATE TYPE IF NOT EXISTS claim_status AS ENUM ('SUBMITTED','PAID','PARTIAL','DENIED','APPEALED','ADJUSTED','VOID')`,
-      `CREATE TYPE IF NOT EXISTS appeal_status AS ENUM ('DRAFTED','SUBMITTED','WON','LOST','WITHDRAWN')`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'claim_status') THEN CREATE TYPE claim_status AS ENUM ('SUBMITTED','PAID','PARTIAL','DENIED','APPEALED','ADJUSTED','VOID'); END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'appeal_status') THEN CREATE TYPE appeal_status AS ENUM ('DRAFTED','SUBMITTED','WON','LOST','WITHDRAWN'); END IF; END $$`,
       `CREATE TABLE IF NOT EXISTS claims (
         id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
         claim_number VARCHAR(50) NOT NULL,
