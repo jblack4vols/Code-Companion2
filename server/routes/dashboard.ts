@@ -363,6 +363,9 @@ export function registerDashboardRoutes(app: Express) {
       const start = new Date(startDate);
       const end = new Date(endDate);
 
+      const sessionUser = await storage.getUser(req.session.userId!);
+      const isPrivileged = sessionUser?.role === "OWNER" || sessionUser?.role === "DIRECTOR";
+
       const [events, taskList, followUps] = await Promise.all([
         db.select({
           id: calendarEvents.id,
@@ -383,7 +386,11 @@ export function registerDashboardRoutes(app: Express) {
           .from(calendarEvents)
           .leftJoin(locations, eq(calendarEvents.locationId, locations.id))
           .leftJoin(physicians, eq(calendarEvents.physicianId, physicians.id))
-          .where(and(gte(calendarEvents.startAt, start), lte(calendarEvents.startAt, end)))
+          .where(and(
+            gte(calendarEvents.startAt, start),
+            lte(calendarEvents.startAt, end),
+            isPrivileged ? undefined : eq(calendarEvents.organizerUserId, req.session.userId!),
+          ))
           .orderBy(asc(calendarEvents.startAt)),
 
         db.select({
@@ -398,7 +405,11 @@ export function registerDashboardRoutes(app: Express) {
         })
           .from(tasks)
           .leftJoin(physicians, eq(tasks.physicianId, physicians.id))
-          .where(and(gte(tasks.dueAt, start), lte(tasks.dueAt, end)))
+          .where(and(
+            gte(tasks.dueAt, start),
+            lte(tasks.dueAt, end),
+            isPrivileged ? undefined : eq(tasks.assignedToUserId, req.session.userId!),
+          ))
           .orderBy(asc(tasks.dueAt)),
 
         db.select({
@@ -418,6 +429,7 @@ export function registerDashboardRoutes(app: Express) {
             gte(interactions.followUpDueAt, start),
             lte(interactions.followUpDueAt, end),
             isNull(interactions.deletedAt),
+            isPrivileged ? undefined : eq(interactions.userId, req.session.userId!),
           ))
           .orderBy(asc(interactions.followUpDueAt)),
       ]);

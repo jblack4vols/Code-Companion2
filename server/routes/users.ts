@@ -7,8 +7,13 @@ import { sendWelcomeEmail } from "../outlook";
 
 export function registerUserRoutes(app: Express) {
   app.get("/api/users", requireAuth, async (req, res) => {
+    const requestingUser = await storage.getUser(req.session.userId!);
     const allUsers = await storage.getUsers();
-    res.json(allUsers.map(u => { const { password: _, ...safe } = u; return safe; }));
+    if (requestingUser?.role === "OWNER" || requestingUser?.role === "DIRECTOR") {
+      res.json(allUsers.map(u => { const { password: _, ...safe } = u; return safe; }));
+    } else {
+      res.json(allUsers.map(u => ({ id: u.id, name: u.name })));
+    }
   });
 
   app.post("/api/users", requireRole("OWNER"), async (req, res) => {

@@ -1,9 +1,9 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import { z } from "zod";
-import { insertPhysicianSchema, insertReferralSchema } from "@shared/schema";
+import { insertPhysicianSchema, insertReferralSchema, referrals as referralsTable, physicians as physiciansTable } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
 
 export function registerReferralRoutes(app: Express) {
@@ -61,6 +61,18 @@ export function registerReferralRoutes(app: Express) {
 
   app.patch("/api/referrals/:id", requireRole("OWNER", "DIRECTOR", "MARKETER", "FRONT_DESK"), async (req, res) => {
     try {
+      // Ownership check: MARKETERs and FRONT_DESK may only edit referrals whose physician is assigned to them
+      const sessionUser = await storage.getUser(req.session.userId!);
+      if (sessionUser && sessionUser.role !== "OWNER" && sessionUser.role !== "DIRECTOR") {
+        const [existingReferral] = await db.select().from(referralsTable).where(eq(referralsTable.id, req.params.id as string));
+        if (existingReferral?.physicianId) {
+          const physician = await storage.getPhysician(existingReferral.physicianId);
+          if (physician && physician.assignedOwnerId !== req.session.userId) {
+            return res.status(403).json({ message: "Forbidden: physician not assigned to you" });
+          }
+        }
+      }
+
       const updateSchema = z.object({
         patientFullName: z.string().max(200).optional(),
         patientPhone: z.string().max(30).nullable().optional(),

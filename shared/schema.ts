@@ -102,7 +102,7 @@ export const physicians = pgTable("physicians", {
   relationshipStage: relationshipStageEnum("relationship_stage").notNull().default("NEW"),
   priority: priorityEnum("priority").notNull().default("MEDIUM"),
   referralSourceAttribution: text("referral_source_attribution"),
-  territoryId: varchar("territory_id", { length: 36 }),
+  territoryId: varchar("territory_id", { length: 36 }).references(() => territories.id),
   assignedOwnerId: varchar("assigned_owner_id", { length: 36 }).references(() => users.id),
   lastInteractionAt: timestamp("last_interaction_at"),
   nextFollowUpAt: timestamp("next_follow_up_at"),

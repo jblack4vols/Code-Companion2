@@ -315,6 +315,16 @@ export function registerPhysicianRoutes(app: Express) {
 
   app.patch("/api/physicians/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
+      // Ownership check: MARKETERs may only edit physicians assigned to them
+      const sessionUser = await storage.getUser(req.session.userId!);
+      if (sessionUser?.role === "MARKETER") {
+        const existing = await storage.getPhysician(req.params.id as string);
+        if (!existing) return res.status(404).json({ message: "Not found" });
+        if (existing.assignedOwnerId !== req.session.userId) {
+          return res.status(403).json({ message: "Forbidden: physician not assigned to you" });
+        }
+      }
+
       const validated = insertPhysicianSchema.partial().parse(req.body);
       const phys = await storage.updatePhysician(req.params.id, validated);
       if (!phys) return res.status(404).json({ message: "Not found" });
