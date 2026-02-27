@@ -53,6 +53,13 @@ const ROICalculatorPage = lazy(() => import("@/pages/roi-calculator"));
 const TeamLeaderboardPage = lazy(() => import("@/pages/team-leaderboard"));
 const RecentActivityPage = lazy(() => import("@/pages/recent-activity"));
 const HitListPage = lazy(() => import("@/pages/hit-list"));
+const PracticeIntelligencePage = lazy(() => import("@/pages/practice-intelligence"));
+const UnitEconomicsDashboardPage = lazy(() => import("@/pages/unit-economics-dashboard"));
+const UnitEconomicsLocationDetailPage = lazy(() => import("@/pages/unit-economics-location-detail"));
+const UnitEconomicsProviderProductivityPage = lazy(() => import("@/pages/unit-economics-provider-productivity"));
+const UnitEconomicsAlertsPage = lazy(() => import("@/pages/unit-economics-alerts"));
+const UnitEconomicsTargetsPage = lazy(() => import("@/pages/unit-economics-targets"));
+const UnitEconomicsDataImportPage = lazy(() => import("@/pages/unit-economics-data-import"));
 
 function LazyFallback() {
   return (
@@ -104,7 +111,15 @@ function AuthenticatedRouter() {
         <Route path="/leaderboard" component={TeamLeaderboardPage} />
         <Route path="/activity" component={RecentActivityPage} />
         <Route path="/hit-list" component={HitListPage} />
+        <Route path="/practices" component={PracticeIntelligencePage} />
+        <Route path="/practices/:name" component={PracticeIntelligencePage} />
         <Route path="/admin/templates" component={InteractionTemplatesPage} />
+        <Route path="/unit-economics" component={UnitEconomicsDashboardPage} />
+        <Route path="/unit-economics/location/:id" component={UnitEconomicsLocationDetailPage} />
+        <Route path="/unit-economics/providers" component={UnitEconomicsProviderProductivityPage} />
+        <Route path="/unit-economics/alerts" component={UnitEconomicsAlertsPage} />
+        <Route path="/unit-economics/targets" component={UnitEconomicsTargetsPage} />
+        <Route path="/unit-economics/import" component={UnitEconomicsDataImportPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

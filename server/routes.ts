@@ -91,7 +91,7 @@ export async function registerRoutes(
   registerTemplateRoutes(app);
   registerFeatureRoutes(app);
   registerPracticeRoutes(app);
-  registerUnitEconomicsRoutes(app);
+  await registerUnitEconomicsRoutes(app);
 
   return httpServer;
 }
