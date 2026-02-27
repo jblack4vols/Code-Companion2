@@ -4,6 +4,7 @@ import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
   integrationConfigs, apiKeys, integrationSyncLogs, physicianComments, scheduledReports, physicianFavorites,
+  interactionTemplates, physicianStageHistory,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -24,6 +25,8 @@ import {
   type PhysicianComment, type InsertPhysicianComment,
   type ScheduledReport, type InsertScheduledReport,
   type PhysicianFavorite,
+  type InteractionTemplate, type InsertInteractionTemplate,
+  type PhysicianStageHistory,
 } from "@shared/schema";
 
 export interface PaginatedResult<T> {
@@ -211,6 +214,18 @@ export interface IStorage {
 
   // At-risk referral sources
   getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<AtRiskResult>;
+
+  // Location scoping
+  getUserLocationIds(userId: string): Promise<string[]>;
+
+  // Interaction templates
+  getInteractionTemplates(): Promise<InteractionTemplate[]>;
+  createInteractionTemplate(template: InsertInteractionTemplate): Promise<InteractionTemplate>;
+  updateInteractionTemplate(id: string, data: Partial<InsertInteractionTemplate>): Promise<InteractionTemplate | undefined>;
+  deleteInteractionTemplate(id: string): Promise<boolean>;
+
+  // Physician stage history
+  getPhysicianStageHistory(physicianId: string): Promise<PhysicianStageHistory[]>;
 }
 
 export interface AtRiskSourceEntry {
@@ -1834,6 +1849,46 @@ export class DatabaseStorage implements IStorage {
       updatedAt: new Date(),
     }).where(eq(referrals.id, referralId)).returning();
     return updated;
+  }
+
+  async getUserLocationIds(userId: string): Promise<string[]> {
+    const rows = await db.select({ locationId: userLocationAccess.locationId })
+      .from(userLocationAccess)
+      .where(eq(userLocationAccess.userId, userId));
+    return rows.map(r => r.locationId);
+  }
+
+  async getInteractionTemplates(): Promise<InteractionTemplate[]> {
+    return db.select().from(interactionTemplates)
+      .where(eq(interactionTemplates.isActive, true))
+      .orderBy(asc(interactionTemplates.name));
+  }
+
+  async createInteractionTemplate(template: InsertInteractionTemplate): Promise<InteractionTemplate> {
+    const [created] = await db.insert(interactionTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateInteractionTemplate(id: string, data: Partial<InsertInteractionTemplate>): Promise<InteractionTemplate | undefined> {
+    const [updated] = await db.update(interactionTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(interactionTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInteractionTemplate(id: string): Promise<boolean> {
+    const [updated] = await db.update(interactionTemplates)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(interactionTemplates.id, id))
+      .returning();
+    return !!updated;
+  }
+
+  async getPhysicianStageHistory(physicianId: string): Promise<PhysicianStageHistory[]> {
+    return db.select().from(physicianStageHistory)
+      .where(eq(physicianStageHistory.physicianId, physicianId))
+      .orderBy(desc(physicianStageHistory.changedAt));
   }
 
   async getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<AtRiskResult> {

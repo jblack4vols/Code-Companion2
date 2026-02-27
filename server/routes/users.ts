@@ -83,6 +83,26 @@ export function registerUserRoutes(app: Express) {
     }
   });
 
+  // Returns location IDs the authenticated user is allowed to access.
+  // OWNER/DIRECTOR with no explicit assignments get all locations (unrestricted).
+  // Other roles get only their assigned location IDs from user_location_access.
+  app.get("/api/user/locations", requireAuth, async (req, res) => {
+    try {
+      const user = await storage.getUser(req.session.userId!);
+      if (!user) return res.status(401).json({ message: "Unauthorized" });
+
+      if (user.role === "OWNER" || user.role === "DIRECTOR") {
+        const all = await storage.getLocations();
+        return res.json({ locationIds: all.map(l => l.id), all: true });
+      }
+
+      const locationIds = await storage.getUserLocationIds(user.id);
+      res.json({ locationIds, all: false });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/marketers", requireAuth, async (req, res) => {
     res.json(await storage.getMarketers());
   });

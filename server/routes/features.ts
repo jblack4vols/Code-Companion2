@@ -3,7 +3,7 @@ import { db } from "../db";
 import { sql, eq, and, desc } from "drizzle-orm";
 import {
   physicians, interactions, referrals, tasks, physicianMonthlySummary,
-  physicianStageHistory, users, locations, territories,
+  physicianStageHistory, users,
   territoryMonthlySummary,
 } from "@shared/schema";
 import { requireAuth, requireRole, qstr } from "./shared";
@@ -286,9 +286,7 @@ export function registerFeatureRoutes(app: Express) {
 
   app.get("/api/physicians/:id/stage-history", requireAuth, async (req, res) => {
     try {
-      const history = await db.select().from(physicianStageHistory)
-        .where(eq(physicianStageHistory.physicianId, req.params.id))
-        .orderBy(desc(physicianStageHistory.changedAt));
+      const history = await storage.getPhysicianStageHistory(req.params.id);
       res.json(history);
     } catch (err: any) {
       res.status(500).json({ message: err.message });

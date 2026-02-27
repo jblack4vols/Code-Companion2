@@ -451,6 +451,9 @@ export const apiKeys = pgTable("api_keys", {
   keyHash: text("key_hash").notNull(),
   keyPrefix: varchar("key_prefix", { length: 8 }).notNull(),
   scopes: json("scopes").$type<string[]>().default([]),
+  // Optional location scoping: if set, public API endpoints filter results to these location IDs.
+  // If null/empty, all data is returned (backward-compatible).
+  locationIds: json("location_ids").$type<string[]>().default([]),
   isActive: boolean("is_active").notNull().default(true),
   expiresAt: timestamp("expires_at"),
   lastUsedAt: timestamp("last_used_at"),
