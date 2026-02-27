@@ -19,4 +19,4 @@ pnpm-debug.log*
 
 # OS
 .DS_Store
-Thumbs.db
+Thumbs.db.claude/hooks/.logs/
