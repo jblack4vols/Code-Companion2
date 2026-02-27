@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -22,6 +22,7 @@ const navItems = [
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Patients", url: "/referrals", icon: FileText },
   { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
+  { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Recent Activity", url: "/activity", icon: Activity, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
 ];
@@ -59,6 +60,14 @@ const adminItems = [
   { title: "Developer Guide", url: "/admin/developer-guide", icon: Code2 },
 ];
 
+const financeItems = [
+  { title: "Unit Economics", url: "/unit-economics", icon: DollarSign },
+  { title: "Providers", url: "/unit-economics/providers", icon: Activity },
+  { title: "Alerts", url: "/unit-economics/alerts", icon: AlertTriangle },
+  { title: "Targets", url: "/unit-economics/targets", icon: Target },
+  { title: "Import Financials", url: "/unit-economics/import", icon: Upload },
+];
+
 const roleLabels: Record<string, string> = {
   OWNER: "Owner",
   DIRECTOR: "Director",
@@ -86,11 +95,13 @@ export function AppSidebar() {
 
   const isAdminActive = location.startsWith("/admin/") || location === "/import";
   const isIntelActive = location.startsWith("/dashboards/") || location === "/roi-calculator" || location === "/leaderboard";
+  const isFinanceActive = location.startsWith("/unit-economics");
   const opsUrls = ["/tiering", "/declining", "/tasks", "/map", "/territories", "/goals"];
   const isOpsActive = opsUrls.some((u) => location === u || location.startsWith(u + "/"));
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
   const [intelOpen, setIntelOpen] = useState(isIntelActive);
   const [opsOpen, setOpsOpen] = useState(isOpsActive);
+  const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
 
   useEffect(() => {
     if (!isAdminActive) setAdminOpen(false);
@@ -103,6 +114,10 @@ export function AppSidebar() {
   useEffect(() => {
     if (!isOpsActive) setOpsOpen(false);
   }, [isOpsActive]);
+
+  useEffect(() => {
+    if (!isFinanceActive) setFinanceOpen(false);
+  }, [isFinanceActive]);
 
   if (!user) return null;
 
@@ -210,6 +225,46 @@ export function AppSidebar() {
                             <SidebarMenuSubButton
                               asChild
                               isActive={location === item.url || location.startsWith(item.url)}
+                            >
+                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                                <item.icon className="w-3.5 h-3.5" />
+                                <span>{item.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <Collapsible open={financeOpen || isFinanceActive} onOpenChange={setFinanceOpen} className="group/finance">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isFinanceActive}
+                        data-testid="button-finance-dropdown"
+                      >
+                        <DollarSign className="w-4 h-4" />
+                        <span>Finance</span>
+                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {financeItems.map((item) => (
+                          <SidebarMenuSubItem key={item.title}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={location === item.url || location.startsWith(item.url + "/")}
                             >
                               <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
                                 <item.icon className="w-3.5 h-3.5" />

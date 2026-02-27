@@ -2,9 +2,9 @@
 import nodemailer from 'nodemailer';
 import { Client } from '@microsoft/microsoft-graph-client';
 
-const SMTP_USER = 'jblack@tristarpt.com';
-const SMTP_HOST = 'smtp.office365.com';
-const SMTP_PORT = 587;
+const SMTP_USER = process.env.SMTP_USER || 'jblack@tristarpt.com';
+const SMTP_HOST = process.env.SMTP_HOST || 'smtp.office365.com';
+const SMTP_PORT = process.env.SMTP_PORT ? parseInt(process.env.SMTP_PORT) : 587;
 
 function getSmtpTransporter() {
   const password = process.env.SMTP_PASSWORD;

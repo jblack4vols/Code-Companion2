@@ -49,6 +49,12 @@ export function registerTaskRoutes(app: Express) {
 
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
     try {
+      const existing = await storage.getTask(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && existing.assignedToUserId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden: you can only edit tasks assigned to you" });
+      }
       const body = { ...req.body };
       if (typeof body.dueAt === "string") body.dueAt = new Date(body.dueAt);
       const validated = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() }).parse(body);

@@ -45,6 +45,18 @@ export const approvalStatusEnum = pgEnum("approval_status", [
   "PENDING", "APPROVED", "REJECTED",
 ]);
 
+export const periodTypeEnum = pgEnum("period_type", [
+  "DAILY", "WEEKLY", "MONTHLY",
+]);
+
+export const financialAlertTypeEnum = pgEnum("financial_alert_type", [
+  "LOW_REVENUE_PER_VISIT",
+  "HIGH_COST_PER_VISIT",
+  "LOW_PROVIDER_REVENUE",
+  "LOW_ARRIVAL_RATE",
+  "HIGH_LABOR_PERCENT",
+]);
+
 export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
@@ -102,7 +114,7 @@ export const physicians = pgTable("physicians", {
   relationshipStage: relationshipStageEnum("relationship_stage").notNull().default("NEW"),
   priority: priorityEnum("priority").notNull().default("MEDIUM"),
   referralSourceAttribution: text("referral_source_attribution"),
-  territoryId: varchar("territory_id", { length: 36 }),
+  territoryId: varchar("territory_id", { length: 36 }).references(() => territories.id),
   assignedOwnerId: varchar("assigned_owner_id", { length: 36 }).references(() => users.id),
   lastInteractionAt: timestamp("last_interaction_at"),
   nextFollowUpAt: timestamp("next_follow_up_at"),
@@ -330,6 +342,78 @@ export const locationMonthlySummary = pgTable("location_monthly_summary", {
   index("location_summary_month_idx").on(table.month),
 ]);
 
+// Unit Economics Tables
+
+export const clinicFinancials = pgTable("clinic_financials", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  periodDate: date("period_date").notNull(),
+  periodType: periodTypeEnum("period_type").notNull().default("WEEKLY"),
+  grossRevenue: numeric("gross_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalVisits: integer("total_visits").notNull().default(0),
+  totalUnits: integer("total_units").notNull().default(0),
+  laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  rentCost: numeric("rent_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  suppliesCost: numeric("supplies_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  otherFixedCosts: numeric("other_fixed_costs", { precision: 12, scale: 2 }).notNull().default("0"),
+  netContribution: numeric("net_contribution", { precision: 12, scale: 2 }).notNull().default("0"),
+  source: text("source").notNull().default("manual"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("clinic_fin_location_period_idx").on(table.locationId, table.periodDate, table.periodType),
+  index("clinic_fin_period_date_idx").on(table.periodDate),
+  index("clinic_fin_location_idx").on(table.locationId),
+]);
+
+export const providerProductivity = pgTable("provider_productivity", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  weekStartDate: date("week_start_date").notNull(),
+  totalVisits: integer("total_visits").notNull().default(0),
+  totalUnits: integer("total_units").notNull().default(0),
+  unitsPerHour: real("units_per_hour").default(0),
+  hoursWorked: real("hours_worked").default(0),
+  revenueGenerated: numeric("revenue_generated", { precision: 12, scale: 2 }).notNull().default("0"),
+  revenueTarget: numeric("revenue_target", { precision: 12, scale: 2 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("provider_prod_user_week_idx").on(table.userId, table.locationId, table.weekStartDate),
+  index("provider_prod_location_idx").on(table.locationId),
+  index("provider_prod_week_idx").on(table.weekStartDate),
+]);
+
+export const financialAlerts = pgTable("financial_alerts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  alertType: financialAlertTypeEnum("alert_type").notNull(),
+  threshold: real("threshold").notNull(),
+  actualValue: real("actual_value").notNull(),
+  message: text("message"),
+  triggeredAt: timestamp("triggered_at").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: varchar("acknowledged_by", { length: 36 }).references(() => users.id),
+}, (table) => [
+  index("fin_alert_location_idx").on(table.locationId),
+  index("fin_alert_triggered_idx").on(table.triggeredAt),
+  index("fin_alert_ack_idx").on(table.acknowledgedAt),
+]);
+
+export const financialTargets = pgTable("financial_targets", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
+  metricName: text("metric_name").notNull(),
+  targetValue: real("target_value").notNull(),
+  warningThreshold: real("warning_threshold"),
+  criticalThreshold: real("critical_threshold"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("fin_target_location_metric_idx").on(table.locationId, table.metricName),
+  index("fin_target_metric_idx").on(table.metricName),
+]);
+
 export const tieringWeights = pgTable("tiering_weights", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   revenueWeight: real("revenue_weight").default(0.4).notNull(),
@@ -451,6 +535,9 @@ export const apiKeys = pgTable("api_keys", {
   keyHash: text("key_hash").notNull(),
   keyPrefix: varchar("key_prefix", { length: 8 }).notNull(),
   scopes: json("scopes").$type<string[]>().default([]),
+  // Optional location scoping: if set, public API endpoints filter results to these location IDs.
+  // If null/empty, all data is returned (backward-compatible).
+  locationIds: json("location_ids").$type<string[]>().default([]),
   isActive: boolean("is_active").notNull().default(true),
   expiresAt: timestamp("expires_at"),
   lastUsedAt: timestamp("last_used_at"),
@@ -588,6 +675,30 @@ export type InteractionTemplate = typeof interactionTemplates.$inferSelect;
 export type InsertInteractionTemplate = z.infer<typeof insertInteractionTemplateSchema>;
 export type PhysicianStageHistory = typeof physicianStageHistory.$inferSelect;
 export type InsertPhysicianStageHistory = z.infer<typeof insertPhysicianStageHistorySchema>;
+
+// Unit Economics Insert Schemas and Types
+
+export const insertClinicFinancialSchema = createInsertSchema(clinicFinancials).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertProviderProductivitySchema = createInsertSchema(providerProductivity).omit({
+  id: true, createdAt: true,
+});
+export const insertFinancialAlertSchema = createInsertSchema(financialAlerts).omit({
+  id: true, triggeredAt: true,
+});
+export const insertFinancialTargetSchema = createInsertSchema(financialTargets).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export type ClinicFinancial = typeof clinicFinancials.$inferSelect;
+export type InsertClinicFinancial = z.infer<typeof insertClinicFinancialSchema>;
+export type ProviderProductivity = typeof providerProductivity.$inferSelect;
+export type InsertProviderProductivity = z.infer<typeof insertProviderProductivitySchema>;
+export type FinancialAlert = typeof financialAlerts.$inferSelect;
+export type InsertFinancialAlert = z.infer<typeof insertFinancialAlertSchema>;
+export type FinancialTarget = typeof financialTargets.$inferSelect;
+export type InsertFinancialTarget = z.infer<typeof insertFinancialTargetSchema>;
 
 export const loginSchema = z.object({
   email: z.string().email(),
