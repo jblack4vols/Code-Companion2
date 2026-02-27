@@ -44,7 +44,7 @@ export function registerTerritoryRoutes(app: Express) {
     }
   });
 
-  app.get("/api/collections", requireAuth, async (req, res) => {
+  app.get("/api/collections", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
     const filters = {
       physicianId: req.query.physicianId as string | undefined,
       locationId: req.query.locationId as string | undefined,

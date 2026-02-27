@@ -95,6 +95,7 @@ export interface IStorage {
   createPhysician(phys: InsertPhysician): Promise<Physician>;
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
 
+  getInteraction(id: string): Promise<Interaction | undefined>;
   getInteractions(physicianId?: string, includeDeleted?: boolean): Promise<Interaction[]>;
   getInteractionsPaginated(filters: InteractionFilters): Promise<PaginatedResult<any>>;
   createInteraction(inter: InsertInteraction): Promise<Interaction>;
@@ -105,6 +106,7 @@ export interface IStorage {
   createReferral(ref: InsertReferral): Promise<Referral>;
   updateReferral(id: string, data: Partial<InsertReferral>): Promise<Referral | undefined>;
 
+  getTask(id: string): Promise<Task | undefined>;
   getTasks(physicianId?: string): Promise<Task[]>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, data: Partial<InsertTask & { status: string }>): Promise<Task | undefined>;
@@ -458,6 +460,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async getInteraction(id: string) {
+    const [interaction] = await db.select().from(interactions).where(eq(interactions.id, id));
+    return interaction;
+  }
+
   async getInteractions(physicianId?: string, includeDeleted?: boolean) {
     const conditions: any[] = [];
     if (physicianId) conditions.push(eq(interactions.physicianId, physicianId));
@@ -605,6 +612,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(referrals.id, id), isNull(referrals.deletedAt)))
       .returning();
     return updated;
+  }
+
+  async getTask(id: string) {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
   }
 
   async getTasks(physicianId?: string) {

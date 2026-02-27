@@ -141,7 +141,7 @@ export function registerFeatureRoutes(app: Express) {
     }
   });
 
-  app.get("/api/roi/providers", requireAuth, async (req, res) => {
+  app.get("/api/roi/providers", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
     try {
       const months = parseInt(req.query.months as string) || 6;
 

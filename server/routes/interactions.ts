@@ -59,6 +59,12 @@ export function registerInteractionRoutes(app: Express) {
 
   app.patch("/api/interactions/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
+      const interaction = await storage.getInteraction(req.params.id);
+      if (!interaction) return res.status(404).json({ message: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && interaction.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden: you can only edit your own interactions" });
+      }
       const body = { ...req.body };
       if (typeof body.occurredAt === "string") body.occurredAt = new Date(body.occurredAt);
       if (typeof body.followUpDueAt === "string") body.followUpDueAt = new Date(body.followUpDueAt);
@@ -73,6 +79,12 @@ export function registerInteractionRoutes(app: Express) {
 
   app.delete("/api/interactions/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
+      const interaction = await storage.getInteraction(req.params.id);
+      if (!interaction) return res.status(404).json({ message: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && interaction.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden: you can only delete your own interactions" });
+      }
       const success = await storage.softDeleteInteraction(req.params.id);
       if (!success) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Interaction", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
@@ -84,6 +96,12 @@ export function registerInteractionRoutes(app: Express) {
 
   app.post("/api/interactions/:id/restore", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
+      const interaction = await storage.getInteraction(req.params.id);
+      if (!interaction) return res.status(404).json({ message: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && interaction.userId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden: you can only restore your own interactions" });
+      }
       const success = await storage.restoreInteraction(req.params.id);
       if (!success) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Interaction", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
