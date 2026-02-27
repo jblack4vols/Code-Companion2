@@ -200,16 +200,6 @@ export function registerPublicApiRoutes(app: Express) {
       const { event, data } = req.body;
       if (!event || !data) return res.status(400).json({ error: "event and data fields required" });
 
-      await storage.createAuditLog({
-        userId: "system",
-        action: "WEBHOOK_RECEIVED",
-        entity: "Webhook",
-        entityId: (req as any).apiKeyId,
-        detailJson: { event, dataKeys: Object.keys(data) },
-        ipAddress: getClientIp(req),
-        userAgent: req.headers["user-agent"] || null,
-      });
-
       res.json({ received: true, event });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
