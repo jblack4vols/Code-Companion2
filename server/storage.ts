@@ -27,7 +27,18 @@ import {
   type PhysicianFavorite,
   type InteractionTemplate, type InsertInteractionTemplate,
   type PhysicianStageHistory,
+  type ClinicFinancial, type InsertClinicFinancial,
+  type ProviderProductivity, type InsertProviderProductivity,
+  type FinancialAlert, type InsertFinancialAlert,
+  type FinancialTarget, type InsertFinancialTarget,
 } from "@shared/schema";
+import * as unitEconomicsStorage from "./storage-unit-economics";
+export type {
+  UnitEconomicsLocationSummary,
+  UnitEconomicsLocationDetail,
+  ProviderProductivityEntry,
+  ForecastEntry,
+} from "./storage-unit-economics";
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -73,6 +84,35 @@ export interface ReferralFilters {
   sortDir?: string;
   page?: number;
   pageSize?: number;
+}
+
+export interface PracticeSummary {
+  practiceName: string;
+  physicianCount: number;
+  totalReferrals: number;
+  totalRevenue: number;
+  arrivalRate: number;
+  lastInteractionAt: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+export interface PracticeDetail {
+  practice: PracticeSummary;
+  physicians: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    credentials: string | null;
+    specialty: string | null;
+    status: string;
+    relationshipStage: string;
+    referralCount: number;
+    revenueGenerated: number;
+    arrivalRate: number;
+    lastInteractionAt: string | null;
+    interactionCount: number;
+  }>;
 }
 
 export interface IStorage {
@@ -226,6 +266,41 @@ export interface IStorage {
 
   // Physician stage history
   getPhysicianStageHistory(physicianId: string): Promise<PhysicianStageHistory[]>;
+
+  // Practice Intelligence
+  getPractices(filters: {
+    search?: string;
+    sortBy?: string;
+    sortOrder?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResult<PracticeSummary>>;
+  getPracticeDetail(practiceName: string): Promise<PracticeDetail | null>;
+
+  // Unit Economics - Clinic Financials
+  getClinicFinancials(filters: { locationId?: string; periodType?: string; dateFrom?: string; dateTo?: string }): Promise<ClinicFinancial[]>;
+  upsertClinicFinancial(data: InsertClinicFinancial): Promise<ClinicFinancial>;
+  bulkUpsertClinicFinancials(rows: InsertClinicFinancial[]): Promise<{ inserted: number; updated: number }>;
+
+  // Unit Economics - Provider Productivity
+  getProviderProductivity(filters: { userId?: string; locationId?: string; dateFrom?: string; dateTo?: string }): Promise<ProviderProductivity[]>;
+  upsertProviderProductivity(data: InsertProviderProductivity): Promise<ProviderProductivity>;
+  bulkUpsertProviderProductivity(rows: InsertProviderProductivity[]): Promise<{ inserted: number; updated: number }>;
+
+  // Unit Economics - Financial Alerts
+  getFinancialAlerts(filters: { locationId?: string; acknowledged?: boolean }): Promise<FinancialAlert[]>;
+  createFinancialAlert(alert: InsertFinancialAlert): Promise<FinancialAlert>;
+  acknowledgeFinancialAlert(id: string, userId: string): Promise<FinancialAlert | undefined>;
+
+  // Unit Economics - Financial Targets
+  getFinancialTargets(locationId?: string): Promise<FinancialTarget[]>;
+  upsertFinancialTarget(data: InsertFinancialTarget): Promise<FinancialTarget>;
+
+  // Unit Economics - Aggregation
+  getUnitEconomicsDashboard(): Promise<unitEconomicsStorage.UnitEconomicsLocationSummary[]>;
+  getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string): Promise<unitEconomicsStorage.UnitEconomicsLocationDetail>;
+  getProviderProductivityLeaderboard(dateFrom?: string, dateTo?: string, locationId?: string): Promise<unitEconomicsStorage.ProviderProductivityEntry[]>;
+  getUnitEconomicsForecast(locationId?: string): Promise<unitEconomicsStorage.ForecastEntry[]>;
 }
 
 export interface AtRiskSourceEntry {
@@ -2049,6 +2124,218 @@ export class DatabaseStorage implements IStorage {
       total: result.length,
       period: { currentStart: currentStartStr, currentEnd: currentEndStr, priorStart: priorStartStr, priorEnd: priorEndStr },
     };
+  }
+
+  async getPractices(filters: {
+    search?: string; sortBy?: string; sortOrder?: string;
+    page?: number; pageSize?: number;
+  }): Promise<PaginatedResult<PracticeSummary>> {
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 50;
+    const offset = (page - 1) * pageSize;
+    const searchPattern = filters.search ? `%${filters.search}%` : null;
+
+    // Valid sort column mapping to prevent SQL injection
+    const sortMap: Record<string, string> = {
+      practiceName: "practice_name",
+      physicianCount: "physician_count",
+      totalReferrals: "total_referrals",
+      totalRevenue: "total_revenue",
+      arrivalRate: "arrival_rate",
+      lastInteractionAt: "last_interaction",
+    };
+    const sortCol = sortMap[filters.sortBy || "totalReferrals"] || "total_referrals";
+    const sortDir = filters.sortOrder === "asc" ? "ASC" : "DESC";
+
+    const searchCond = searchPattern
+      ? sql`AND (p.practice_name ILIKE ${searchPattern} OR p.city ILIKE ${searchPattern})`
+      : sql``;
+
+    const countResult = await db.execute(sql`
+      SELECT COUNT(DISTINCT TRIM(p.practice_name)) as total
+      FROM physicians p
+      WHERE p.deleted_at IS NULL
+        AND p.practice_name IS NOT NULL
+        AND TRIM(p.practice_name) != ''
+        ${searchCond}
+    `);
+    const total = parseInt((countResult.rows[0] as any)?.total || "0");
+
+    const dataResult = await db.execute(sql.raw(`
+      SELECT
+        TRIM(p.practice_name) as practice_name,
+        COUNT(DISTINCT p.id)::int as physician_count,
+        COALESCE(SUM(ref_agg.ref_count), 0)::int as total_referrals,
+        COALESCE(SUM(rev_agg.total_rev), 0)::numeric as total_revenue,
+        CASE
+          WHEN COALESCE(SUM(ref_agg.scheduled), 0) > 0
+          THEN ROUND(SUM(ref_agg.arrived)::numeric / SUM(ref_agg.scheduled)::numeric * 100, 1)
+          ELSE 0
+        END as arrival_rate,
+        MAX(p.last_interaction_at) as last_interaction,
+        MIN(p.city) as city,
+        MIN(p.state) as state
+      FROM physicians p
+      LEFT JOIN (
+        SELECT physician_id,
+          COUNT(*) as ref_count,
+          SUM(COALESCE(scheduled_visits, 0)) as scheduled,
+          SUM(COALESCE(arrived_visits, 0)) as arrived
+        FROM referrals WHERE deleted_at IS NULL
+        GROUP BY physician_id
+      ) ref_agg ON ref_agg.physician_id = p.id
+      LEFT JOIN (
+        SELECT physician_id, SUM(COALESCE(revenue_generated, 0)::numeric) as total_rev
+        FROM physician_monthly_summary
+        GROUP BY physician_id
+      ) rev_agg ON rev_agg.physician_id = p.id
+      WHERE p.deleted_at IS NULL
+        AND p.practice_name IS NOT NULL
+        AND TRIM(p.practice_name) != ''
+        ${searchPattern ? `AND (p.practice_name ILIKE '${searchPattern.replace(/'/g, "''")}' OR p.city ILIKE '${searchPattern.replace(/'/g, "''")}')` : ''}
+      GROUP BY TRIM(p.practice_name)
+      ORDER BY ${sortCol} ${sortDir}
+      LIMIT ${pageSize} OFFSET ${offset}
+    `));
+
+    const data: PracticeSummary[] = (dataResult.rows as any[]).map(r => ({
+      practiceName: r.practice_name,
+      physicianCount: r.physician_count,
+      totalReferrals: r.total_referrals,
+      totalRevenue: parseFloat(r.total_revenue || "0"),
+      arrivalRate: parseFloat(r.arrival_rate || "0"),
+      lastInteractionAt: r.last_interaction ? new Date(r.last_interaction).toISOString() : null,
+      city: r.city,
+      state: r.state,
+    }));
+
+    return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async getPracticeDetail(practiceName: string): Promise<PracticeDetail | null> {
+    const trimmedName = practiceName.trim();
+    if (!trimmedName) return null;
+
+    const physResult = await db.execute(sql`
+      SELECT p.*,
+        COALESCE(ref_agg.ref_count, 0)::int as referral_count,
+        COALESCE(ref_agg.scheduled, 0)::int as total_scheduled,
+        COALESCE(ref_agg.arrived, 0)::int as total_arrived,
+        COALESCE(rev_agg.total_rev, 0)::numeric as revenue_generated,
+        COALESCE(int_agg.int_count, 0)::int as interaction_count
+      FROM physicians p
+      LEFT JOIN (
+        SELECT physician_id,
+          COUNT(*) as ref_count,
+          SUM(COALESCE(scheduled_visits, 0)) as scheduled,
+          SUM(COALESCE(arrived_visits, 0)) as arrived
+        FROM referrals WHERE deleted_at IS NULL
+        GROUP BY physician_id
+      ) ref_agg ON ref_agg.physician_id = p.id
+      LEFT JOIN (
+        SELECT physician_id, SUM(COALESCE(revenue_generated, 0)::numeric) as total_rev
+        FROM physician_monthly_summary
+        GROUP BY physician_id
+      ) rev_agg ON rev_agg.physician_id = p.id
+      LEFT JOIN (
+        SELECT physician_id, COUNT(*) as int_count
+        FROM interactions WHERE deleted_at IS NULL
+        GROUP BY physician_id
+      ) int_agg ON int_agg.physician_id = p.id
+      WHERE p.deleted_at IS NULL
+        AND TRIM(p.practice_name) = ${trimmedName}
+      ORDER BY revenue_generated DESC
+    `);
+
+    if (physResult.rows.length === 0) return null;
+
+    const physicians = (physResult.rows as any[]).map(r => {
+      const scheduled = r.total_scheduled || 0;
+      const arrived = r.total_arrived || 0;
+      return {
+        id: r.id,
+        firstName: r.first_name,
+        lastName: r.last_name,
+        credentials: r.credentials,
+        specialty: r.specialty,
+        status: r.status,
+        relationshipStage: r.relationship_stage,
+        referralCount: r.referral_count,
+        revenueGenerated: parseFloat(r.revenue_generated || "0"),
+        arrivalRate: scheduled > 0 ? Math.round((arrived / scheduled) * 1000) / 10 : 0,
+        lastInteractionAt: r.last_interaction_at ? new Date(r.last_interaction_at).toISOString() : null,
+        interactionCount: r.interaction_count,
+      };
+    });
+
+    const rows = physResult.rows as any[];
+    const totalSched = rows.reduce((s, r) => s + (r.total_scheduled || 0), 0);
+    const totalArr = rows.reduce((s, r) => s + (r.total_arrived || 0), 0);
+
+    const practice: PracticeSummary = {
+      practiceName: trimmedName,
+      physicianCount: physicians.length,
+      totalReferrals: physicians.reduce((s, p) => s + p.referralCount, 0),
+      totalRevenue: physicians.reduce((s, p) => s + p.revenueGenerated, 0),
+      arrivalRate: totalSched > 0 ? Math.round((totalArr / totalSched) * 1000) / 10 : 0,
+      lastInteractionAt: physicians.reduce((latest: string | null, p) => {
+        if (!p.lastInteractionAt) return latest;
+        if (!latest) return p.lastInteractionAt;
+        return p.lastInteractionAt > latest ? p.lastInteractionAt : latest;
+      }, null),
+      city: rows[0]?.city || null,
+      state: rows[0]?.state || null,
+    };
+
+    return { practice, physicians };
+  }
+
+  // Unit Economics — delegate to storage-unit-economics module
+
+  async getClinicFinancials(filters: { locationId?: string; periodType?: string; dateFrom?: string; dateTo?: string }) {
+    return unitEconomicsStorage.getClinicFinancials(filters);
+  }
+  async upsertClinicFinancial(data: InsertClinicFinancial) {
+    return unitEconomicsStorage.upsertClinicFinancial(data);
+  }
+  async bulkUpsertClinicFinancials(rows: InsertClinicFinancial[]) {
+    return unitEconomicsStorage.bulkUpsertClinicFinancials(rows);
+  }
+  async getProviderProductivity(filters: { userId?: string; locationId?: string; dateFrom?: string; dateTo?: string }) {
+    return unitEconomicsStorage.getProviderProductivity(filters);
+  }
+  async upsertProviderProductivity(data: InsertProviderProductivity) {
+    return unitEconomicsStorage.upsertProviderProductivity(data);
+  }
+  async bulkUpsertProviderProductivity(rows: InsertProviderProductivity[]) {
+    return unitEconomicsStorage.bulkUpsertProviderProductivity(rows);
+  }
+  async getFinancialAlerts(filters: { locationId?: string; acknowledged?: boolean }) {
+    return unitEconomicsStorage.getFinancialAlerts(filters);
+  }
+  async createFinancialAlert(alert: InsertFinancialAlert) {
+    return unitEconomicsStorage.createFinancialAlert(alert);
+  }
+  async acknowledgeFinancialAlert(id: string, userId: string) {
+    return unitEconomicsStorage.acknowledgeFinancialAlert(id, userId);
+  }
+  async getFinancialTargets(locationId?: string) {
+    return unitEconomicsStorage.getFinancialTargets(locationId);
+  }
+  async upsertFinancialTarget(data: InsertFinancialTarget) {
+    return unitEconomicsStorage.upsertFinancialTarget(data);
+  }
+  async getUnitEconomicsDashboard() {
+    return unitEconomicsStorage.getUnitEconomicsDashboard();
+  }
+  async getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string) {
+    return unitEconomicsStorage.getUnitEconomicsLocationDetail(locationId, dateFrom, dateTo);
+  }
+  async getProviderProductivityLeaderboard(dateFrom?: string, dateTo?: string, locationId?: string) {
+    return unitEconomicsStorage.getProviderProductivityLeaderboard(dateFrom, dateTo, locationId);
+  }
+  async getUnitEconomicsForecast(locationId?: string) {
+    return unitEconomicsStorage.getUnitEconomicsForecast(locationId);
   }
 }
 

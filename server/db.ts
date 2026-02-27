@@ -67,6 +67,12 @@ export async function ensureSearchIndexes() {
       `CREATE INDEX IF NOT EXISTS idx_monthly_physician ON physician_monthly_summary (physician_id, month)`,
       `CREATE INDEX IF NOT EXISTS idx_monthly_territory ON territory_monthly_summary (territory_id, month)`,
       `CREATE INDEX IF NOT EXISTS idx_monthly_location ON location_monthly_summary (location_id, month)`,
+
+      // Unit economics indexes
+      `CREATE INDEX IF NOT EXISTS idx_clinic_fin_location_period ON clinic_financials (location_id, period_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_clinic_fin_period_type ON clinic_financials (period_type, period_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_provider_prod_user ON provider_productivity (user_id, week_start_date)`,
+      `CREATE INDEX IF NOT EXISTS idx_fin_alerts_unack ON financial_alerts (acknowledged_at) WHERE acknowledged_at IS NULL`,
     ];
 
     for (const idx of indexes) {

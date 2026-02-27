@@ -24,6 +24,8 @@ import { registerSearchRoutes } from "./routes/search";
 import { registerGoalRoutes } from "./routes/goals";
 import { registerTemplateRoutes } from "./routes/templates";
 import { registerFeatureRoutes } from "./routes/features";
+import { registerPracticeRoutes } from "./routes/practice-intelligence";
+import { registerUnitEconomicsRoutes } from "./routes/unit-economics";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -88,6 +90,8 @@ export async function registerRoutes(
   registerGoalRoutes(app);
   registerTemplateRoutes(app);
   registerFeatureRoutes(app);
+  registerPracticeRoutes(app);
+  registerUnitEconomicsRoutes(app);
 
   return httpServer;
 }
