@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, jsonb, index, pgEnum, numeric, uniqueIndex,
+  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, jsonb, index, pgEnum, numeric, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -43,6 +43,21 @@ export const eventTypeEnum = pgEnum("event_type", [
 
 export const approvalStatusEnum = pgEnum("approval_status", [
   "PENDING", "APPROVED", "REJECTED",
+]);
+
+export const periodTypeEnum = pgEnum("period_type", [
+  "DAILY", "WEEKLY", "MONTHLY",
+]);
+
+export const financialAlertTypeEnum = pgEnum("financial_alert_type", [
+  "LOW_REVENUE_PER_VISIT",
+  "HIGH_COST_PER_VISIT",
+  "LOW_PROVIDER_REVENUE",
+  "LOW_ARRIVAL_RATE",
+  "HIGH_LABOR_PERCENT",
+  "HIGH_BILLING_LAG",
+  "HIGH_AR_AGING",
+  "UNDERPAYMENT_RATE",
 ]);
 
 export const users = pgTable("users", {
@@ -102,7 +117,7 @@ export const physicians = pgTable("physicians", {
   relationshipStage: relationshipStageEnum("relationship_stage").notNull().default("NEW"),
   priority: priorityEnum("priority").notNull().default("MEDIUM"),
   referralSourceAttribution: text("referral_source_attribution"),
-  territoryId: varchar("territory_id", { length: 36 }),
+  territoryId: varchar("territory_id", { length: 36 }).references(() => territories.id),
   assignedOwnerId: varchar("assigned_owner_id", { length: 36 }).references(() => users.id),
   lastInteractionAt: timestamp("last_interaction_at"),
   nextFollowUpAt: timestamp("next_follow_up_at"),
@@ -330,6 +345,78 @@ export const locationMonthlySummary = pgTable("location_monthly_summary", {
   index("location_summary_month_idx").on(table.month),
 ]);
 
+// Unit Economics Tables
+
+export const clinicFinancials = pgTable("clinic_financials", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  periodDate: date("period_date").notNull(),
+  periodType: periodTypeEnum("period_type").notNull().default("WEEKLY"),
+  grossRevenue: numeric("gross_revenue", { precision: 12, scale: 2 }).notNull().default("0"),
+  totalVisits: integer("total_visits").notNull().default(0),
+  totalUnits: integer("total_units").notNull().default(0),
+  laborCost: numeric("labor_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  rentCost: numeric("rent_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  suppliesCost: numeric("supplies_cost", { precision: 12, scale: 2 }).notNull().default("0"),
+  otherFixedCosts: numeric("other_fixed_costs", { precision: 12, scale: 2 }).notNull().default("0"),
+  netContribution: numeric("net_contribution", { precision: 12, scale: 2 }).notNull().default("0"),
+  source: text("source").notNull().default("manual"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("clinic_fin_location_period_idx").on(table.locationId, table.periodDate, table.periodType),
+  index("clinic_fin_period_date_idx").on(table.periodDate),
+  index("clinic_fin_location_idx").on(table.locationId),
+]);
+
+export const providerProductivity = pgTable("provider_productivity", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  weekStartDate: date("week_start_date").notNull(),
+  totalVisits: integer("total_visits").notNull().default(0),
+  totalUnits: integer("total_units").notNull().default(0),
+  unitsPerHour: real("units_per_hour").default(0),
+  hoursWorked: real("hours_worked").default(0),
+  revenueGenerated: numeric("revenue_generated", { precision: 12, scale: 2 }).notNull().default("0"),
+  revenueTarget: numeric("revenue_target", { precision: 12, scale: 2 }).default("0"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("provider_prod_user_week_idx").on(table.userId, table.locationId, table.weekStartDate),
+  index("provider_prod_location_idx").on(table.locationId),
+  index("provider_prod_week_idx").on(table.weekStartDate),
+]);
+
+export const financialAlerts = pgTable("financial_alerts", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  alertType: financialAlertTypeEnum("alert_type").notNull(),
+  threshold: real("threshold").notNull(),
+  actualValue: real("actual_value").notNull(),
+  message: text("message"),
+  triggeredAt: timestamp("triggered_at").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: varchar("acknowledged_by", { length: 36 }).references(() => users.id),
+}, (table) => [
+  index("fin_alert_location_idx").on(table.locationId),
+  index("fin_alert_triggered_idx").on(table.triggeredAt),
+  index("fin_alert_ack_idx").on(table.acknowledgedAt),
+]);
+
+export const financialTargets = pgTable("financial_targets", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
+  metricName: text("metric_name").notNull(),
+  targetValue: real("target_value").notNull(),
+  warningThreshold: real("warning_threshold"),
+  criticalThreshold: real("critical_threshold"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  uniqueIndex("fin_target_location_metric_idx").on(table.locationId, table.metricName),
+  index("fin_target_metric_idx").on(table.metricName),
+]);
+
 export const tieringWeights = pgTable("tiering_weights", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   revenueWeight: real("revenue_weight").default(0.4).notNull(),
@@ -451,6 +538,9 @@ export const apiKeys = pgTable("api_keys", {
   keyHash: text("key_hash").notNull(),
   keyPrefix: varchar("key_prefix", { length: 8 }).notNull(),
   scopes: json("scopes").$type<string[]>().default([]),
+  // Optional location scoping: if set, public API endpoints filter results to these location IDs.
+  // If null/empty, all data is returned (backward-compatible).
+  locationIds: json("location_ids").$type<string[]>().default([]),
   isActive: boolean("is_active").notNull().default(true),
   expiresAt: timestamp("expires_at"),
   lastUsedAt: timestamp("last_used_at"),
@@ -589,7 +679,143 @@ export type InsertInteractionTemplate = z.infer<typeof insertInteractionTemplate
 export type PhysicianStageHistory = typeof physicianStageHistory.$inferSelect;
 export type InsertPhysicianStageHistory = z.infer<typeof insertPhysicianStageHistorySchema>;
 
+// Unit Economics Insert Schemas and Types
+
+export const insertClinicFinancialSchema = createInsertSchema(clinicFinancials).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertProviderProductivitySchema = createInsertSchema(providerProductivity).omit({
+  id: true, createdAt: true,
+});
+export const insertFinancialAlertSchema = createInsertSchema(financialAlerts).omit({
+  id: true, triggeredAt: true,
+});
+export const insertFinancialTargetSchema = createInsertSchema(financialTargets).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export type ClinicFinancial = typeof clinicFinancials.$inferSelect;
+export type InsertClinicFinancial = z.infer<typeof insertClinicFinancialSchema>;
+export type ProviderProductivity = typeof providerProductivity.$inferSelect;
+export type InsertProviderProductivity = z.infer<typeof insertProviderProductivitySchema>;
+export type FinancialAlert = typeof financialAlerts.$inferSelect;
+export type InsertFinancialAlert = z.infer<typeof insertFinancialAlertSchema>;
+export type FinancialTarget = typeof financialTargets.$inferSelect;
+export type InsertFinancialTarget = z.infer<typeof insertFinancialTargetSchema>;
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+// --- Revenue Leakage Recovery Engine ---
+
+export const claimStatusEnum = pgEnum("claim_status", [
+  "SUBMITTED", "PAID", "PARTIAL", "DENIED", "APPEALED", "ADJUSTED", "VOID",
+]);
+
+export const appealStatusEnum = pgEnum("appeal_status", [
+  "DRAFTED", "SUBMITTED", "WON", "LOST", "WITHDRAWN",
+]);
+
+export const claims = pgTable("claims", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  claimNumber: varchar("claim_number", { length: 50 }).notNull(),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id),
+  providerId: varchar("provider_id", { length: 36 }), // user who provided service (therapist)
+  physicianId: varchar("physician_id", { length: 36 }).references(() => physicians.id), // referring physician
+  patientAccountNumber: varchar("patient_account_number", { length: 50 }),
+  dos: date("dos").notNull(), // date of service
+  cptCodes: text("cpt_codes"), // comma-separated CPT codes
+  units: integer("units").default(0),
+  payer: varchar("payer", { length: 100 }),
+  payerType: varchar("payer_type", { length: 50 }), // Commercial, Medicare, Medicaid, etc.
+  billedAmount: numeric("billed_amount", { precision: 12, scale: 2 }).default("0"),
+  expectedAmount: numeric("expected_amount", { precision: 12, scale: 2 }), // from rate schedule
+  paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }).default("0"),
+  adjustmentAmount: numeric("adjustment_amount", { precision: 12, scale: 2 }).default("0"),
+  patientResponsibility: numeric("patient_responsibility", { precision: 12, scale: 2 }).default("0"),
+  status: claimStatusEnum("status").default("SUBMITTED"),
+  submissionDate: date("submission_date"),
+  paymentDate: date("payment_date"),
+  denialCodes: text("denial_codes"), // comma-separated CARC codes
+  denialReason: text("denial_reason"),
+  isUnderpaid: boolean("is_underpaid").default(false),
+  underpaidAmount: numeric("underpaid_amount", { precision: 12, scale: 2 }),
+  source: varchar("source", { length: 50 }).default("import"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("claims_location_idx").on(table.locationId),
+  index("claims_dos_idx").on(table.dos),
+  index("claims_status_idx").on(table.status),
+  index("claims_payer_idx").on(table.payer),
+  index("claims_underpaid_idx").on(table.isUnderpaid),
+]);
+
+export const claimPayments = pgTable("claim_payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  claimId: uuid("claim_id").references(() => claims.id).notNull(),
+  paymentDate: date("payment_date").notNull(),
+  paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }).notNull(),
+  adjustmentAmount: numeric("adjustment_amount", { precision: 12, scale: 2 }).default("0"),
+  adjustmentCodes: text("adjustment_codes"), // CARC/RARC codes
+  checkNumber: varchar("check_number", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("claim_payments_claim_idx").on(table.claimId),
+]);
+
+export const payerRateSchedule = pgTable("payer_rate_schedule", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  payer: varchar("payer", { length: 100 }).notNull(),
+  payerType: varchar("payer_type", { length: 50 }),
+  cptCode: varchar("cpt_code", { length: 10 }).notNull(),
+  expectedRate: numeric("expected_rate", { precision: 10, scale: 2 }).notNull(),
+  effectiveDate: date("effective_date"),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id), // null = global default
+  source: varchar("source", { length: 50 }).default("manual"), // "manual" or "calculated"
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("payer_rate_payer_cpt_idx").on(table.payer, table.cptCode),
+]);
+
+export const appealTemplates = pgTable("appeal_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  denialCodePattern: varchar("denial_code_pattern", { length: 50 }), // matches denial codes
+  templateText: text("template_text").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const appeals = pgTable("appeals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  claimId: uuid("claim_id").references(() => claims.id).notNull(),
+  templateId: uuid("template_id").references(() => appealTemplates.id),
+  generatedText: text("generated_text").notNull(),
+  status: appealStatusEnum("status").default("DRAFTED"),
+  submittedDate: date("submitted_date"),
+  outcomeDate: date("outcome_date"),
+  outcomeNotes: text("outcome_notes"),
+  recoveredAmount: numeric("recovered_amount", { precision: 12, scale: 2 }),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("appeals_claim_idx").on(table.claimId),
+  index("appeals_status_idx").on(table.status),
+]);
+
+export type InsertClaim = typeof claims.$inferInsert;
+export type Claim = typeof claims.$inferSelect;
+export type InsertClaimPayment = typeof claimPayments.$inferInsert;
+export type ClaimPayment = typeof claimPayments.$inferSelect;
+export type InsertPayerRate = typeof payerRateSchedule.$inferInsert;
+export type PayerRate = typeof payerRateSchedule.$inferSelect;
+export type InsertAppealTemplate = typeof appealTemplates.$inferInsert;
+export type AppealTemplate = typeof appealTemplates.$inferSelect;
+export type InsertAppeal = typeof appeals.$inferInsert;
+export type Appeal = typeof appeals.$inferSelect;

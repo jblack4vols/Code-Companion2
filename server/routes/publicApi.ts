@@ -4,6 +4,17 @@ import { z } from "zod";
 import crypto from "crypto";
 import { requireRole, getClientIp } from "./shared";
 
+// Helper: retrieve location IDs for the API key that made the request.
+// Returns null if the key has no location restriction (all data allowed).
+async function getApiKeyLocationIds(req: Request): Promise<string[] | null> {
+  const apiKeyId = (req as any).apiKeyId as string | undefined;
+  if (!apiKeyId) return null;
+  const key = await storage.getApiKeyById(apiKeyId);
+  if (!key) return null;
+  const ids = (key.locationIds as string[] | null) || [];
+  return ids.length > 0 ? ids : null;
+}
+
 export function registerPublicApiRoutes(app: Express) {
   app.get("/api/api-keys", requireRole("OWNER"), async (req, res) => {
     try {
@@ -18,11 +29,12 @@ export function registerPublicApiRoutes(app: Express) {
     name: z.string().min(1).max(100),
     scopes: z.array(z.string()).min(1).default(["physicians:read", "referrals:read", "locations:read"]),
     expiresInDays: z.number().int().min(1).max(365).optional(),
+    locationIds: z.array(z.string()).optional().default([]),
   });
 
   app.post("/api/api-keys", requireRole("OWNER"), async (req, res) => {
     try {
-      const { name, scopes, expiresInDays } = createApiKeySchema.parse(req.body);
+      const { name, scopes, expiresInDays, locationIds } = createApiKeySchema.parse(req.body);
 
       const rawKey = `tsk_${crypto.randomBytes(32).toString("hex")}`;
       const keyHash = crypto.createHash("sha256").update(rawKey).digest("hex");
@@ -38,6 +50,7 @@ export function registerPublicApiRoutes(app: Express) {
         keyHash,
         keyPrefix,
         scopes: scopes || ["physicians:read", "referrals:read", "locations:read"],
+        locationIds: locationIds || [],
         createdBy: req.session.userId!,
         ...(expiresAt && { expiresAt }),
       });
@@ -120,9 +133,10 @@ export function registerPublicApiRoutes(app: Express) {
     next();
   };
 
-  app.get("/api/public/physicians", requireApiKey("physicians:read"), async (_req, res) => {
+  app.get("/api/public/physicians", requireApiKey("physicians:read"), async (req, res) => {
     try {
       const allPhysicians = await storage.getPhysicians();
+      // Physicians are not directly location-scoped, return all
       res.json({ data: allPhysicians, total: allPhysicians.length });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
@@ -139,28 +153,43 @@ export function registerPublicApiRoutes(app: Express) {
     }
   });
 
-  app.get("/api/public/referrals", requireApiKey("referrals:read"), async (_req, res) => {
+  app.get("/api/public/referrals", requireApiKey("referrals:read"), async (req, res) => {
     try {
+      const locationIds = await getApiKeyLocationIds(req);
       const allReferrals = await storage.getReferrals();
-      res.json({ data: allReferrals, total: allReferrals.length });
+      // Filter by key's location scope when set; otherwise return all (backward-compatible)
+      const data = locationIds
+        ? allReferrals.filter(r => locationIds.includes(r.locationId))
+        : allReferrals;
+      res.json({ data, total: data.length });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/public/locations", requireApiKey("locations:read"), async (_req, res) => {
+  app.get("/api/public/locations", requireApiKey("locations:read"), async (req, res) => {
     try {
+      const locationIds = await getApiKeyLocationIds(req);
       const allLocations = await storage.getLocations();
-      res.json({ data: allLocations, total: allLocations.length });
+      // Filter by key's location scope when set; otherwise return all (backward-compatible)
+      const data = locationIds
+        ? allLocations.filter(l => locationIds.includes(l.id))
+        : allLocations;
+      res.json({ data, total: data.length });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
   });
 
-  app.get("/api/public/interactions", requireApiKey("interactions:read"), async (_req, res) => {
+  app.get("/api/public/interactions", requireApiKey("interactions:read"), async (req, res) => {
     try {
+      const locationIds = await getApiKeyLocationIds(req);
       const allInteractions = await storage.getInteractions();
-      res.json({ data: allInteractions, total: allInteractions.length });
+      // Filter by key's location scope when set; otherwise return all (backward-compatible)
+      const data = locationIds
+        ? allInteractions.filter(i => i.locationId && locationIds.includes(i.locationId))
+        : allInteractions;
+      res.json({ data, total: data.length });
     } catch (err: any) {
       res.status(500).json({ error: err.message });
     }
@@ -170,16 +199,6 @@ export function registerPublicApiRoutes(app: Express) {
     try {
       const { event, data } = req.body;
       if (!event || !data) return res.status(400).json({ error: "event and data fields required" });
-
-      await storage.createAuditLog({
-        userId: "system",
-        action: "WEBHOOK_RECEIVED",
-        entity: "Webhook",
-        entityId: (req as any).apiKeyId,
-        detailJson: { event, dataKeys: Object.keys(data) },
-        ipAddress: getClientIp(req),
-        userAgent: req.headers["user-agent"] || null,
-      });
 
       res.json({ received: true, event });
     } catch (err: any) {

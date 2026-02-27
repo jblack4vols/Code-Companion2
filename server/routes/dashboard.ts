@@ -3,7 +3,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql, eq, and, gte, lt, lte, isNull, asc, desc } from "drizzle-orm";
 import { referrals as referralsTable, calendarEvents, tasks, interactions, physicians, locations } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
 
 export function registerDashboardRoutes(app: Express) {
   app.get("/api/tiering-weights", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
@@ -106,6 +106,12 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/dashboard/location/:locationId", requireAuth, async (req, res) => {
+    // Verify user has access to the requested location
+    const locationScope = await getUserLocationScope(req);
+    const locationId = String(req.params.locationId);
+    if (locationScope !== null && !locationScope.includes(locationId)) {
+      return res.status(403).json({ message: "Forbidden: no access to this location" });
+    }
     const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
     const summaries = await storage.getLocationMonthlySummaries({ locationId: req.params.locationId, month });
     const loc = await storage.getLocation(req.params.locationId);
@@ -139,7 +145,12 @@ export function registerDashboardRoutes(app: Express) {
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    res.json({ location: loc, summaries, month, topReferrers });
+    // Conversion metrics: scheduled → arrived
+    const totalScheduled = locationReferrals.reduce((sum, r) => sum + (r.scheduledVisits || 0), 0);
+    const totalArrived = locationReferrals.reduce((sum, r) => sum + (r.arrivedVisits || 0), 0);
+    const arrivalRate = totalScheduled > 0 ? Math.round((totalArrived / totalScheduled) * 1000) / 10 : 0;
+
+    res.json({ location: loc, summaries, month, topReferrers, conversionMetrics: { totalScheduled, totalArrived, arrivalRate } });
   });
 
   app.get("/api/physicians/:id/monthly", requireAuth, async (req, res) => {
@@ -242,10 +253,20 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    // If user requested a specific location, verify they have access to it
+    const requestedLocationId = req.query.locationId as string | undefined;
+    if (locationScope !== null && requestedLocationId && !locationScope.includes(requestedLocationId)) {
+      return res.status(403).json({ message: "Forbidden: no access to this location" });
+    }
+    // Determine the effective locationId for scoped users (if only one location, use it directly)
+    const effectiveLocationId = locationScope !== null && locationScope.length === 1
+      ? locationScope[0]
+      : requestedLocationId;
     const filters = {
       startDate: req.query.startDate as string | undefined,
       endDate: req.query.endDate as string | undefined,
-      locationId: req.query.locationId as string | undefined,
+      locationId: effectiveLocationId,
       territoryId: req.query.territoryId as string | undefined,
       physicianId: req.query.physicianId as string | undefined,
     };
@@ -358,6 +379,9 @@ export function registerDashboardRoutes(app: Express) {
       const start = new Date(startDate);
       const end = new Date(endDate);
 
+      const sessionUser = await storage.getUser(req.session.userId!);
+      const isPrivileged = sessionUser?.role === "OWNER" || sessionUser?.role === "DIRECTOR";
+
       const [events, taskList, followUps] = await Promise.all([
         db.select({
           id: calendarEvents.id,
@@ -378,7 +402,11 @@ export function registerDashboardRoutes(app: Express) {
           .from(calendarEvents)
           .leftJoin(locations, eq(calendarEvents.locationId, locations.id))
           .leftJoin(physicians, eq(calendarEvents.physicianId, physicians.id))
-          .where(and(gte(calendarEvents.startAt, start), lte(calendarEvents.startAt, end)))
+          .where(and(
+            gte(calendarEvents.startAt, start),
+            lte(calendarEvents.startAt, end),
+            isPrivileged ? undefined : eq(calendarEvents.organizerUserId, req.session.userId!),
+          ))
           .orderBy(asc(calendarEvents.startAt)),
 
         db.select({
@@ -393,7 +421,11 @@ export function registerDashboardRoutes(app: Express) {
         })
           .from(tasks)
           .leftJoin(physicians, eq(tasks.physicianId, physicians.id))
-          .where(and(gte(tasks.dueAt, start), lte(tasks.dueAt, end)))
+          .where(and(
+            gte(tasks.dueAt, start),
+            lte(tasks.dueAt, end),
+            isPrivileged ? undefined : eq(tasks.assignedToUserId, req.session.userId!),
+          ))
           .orderBy(asc(tasks.dueAt)),
 
         db.select({
@@ -413,6 +445,7 @@ export function registerDashboardRoutes(app: Express) {
             gte(interactions.followUpDueAt, start),
             lte(interactions.followUpDueAt, end),
             isNull(interactions.deletedAt),
+            isPrivileged ? undefined : eq(interactions.userId, req.session.userId!),
           ))
           .orderBy(asc(interactions.followUpDueAt)),
       ]);

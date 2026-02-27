@@ -539,6 +539,29 @@ export function registerIntegrationRoutes(app: Express) {
             const allLocations = await storage.getLocations();
             const defaultLocationId = allLocations.length > 0 ? allLocations[0].id : null;
 
+            // Preload all physicians once to avoid N+1 per-contact DB lookups
+            const allPhysiciansForSync = await storage.getPhysicians();
+            const physicianByNpi = new Map<string, typeof allPhysiciansForSync[0]>();
+            const physicianByName = new Map<string, typeof allPhysiciansForSync[0]>();
+            for (const p of allPhysiciansForSync) {
+              if (p.npi) physicianByNpi.set(p.npi.trim(), p);
+              const nameKey = `${p.firstName.toLowerCase().trim()}|${p.lastName.toLowerCase().trim()}`;
+              physicianByName.set(nameKey, p);
+            }
+
+            // Preload existing GHL-sourced referrals for dedup check (patient name + date)
+            const existingGhlReferrals = await db.select({
+              patientFullName: referralsTable.patientFullName,
+              referralDate: referralsTable.referralDate,
+            }).from(referralsTable)
+              .where(and(
+                eq(referralsTable.referralSource, "GoHighLevel"),
+                isNull(referralsTable.deletedAt)
+              ));
+            const existingGhlKeys = new Set(
+              existingGhlReferrals.map(r => `${r.patientFullName}|${r.referralDate}`)
+            );
+
             const classifyField = (keyOrId: string): string | null => {
               if (savedMappings[keyOrId]) return savedMappings[keyOrId];
               if (detectedFieldMappings[keyOrId]) return detectedFieldMappings[keyOrId];
@@ -624,18 +647,9 @@ export function registerIntegrationRoutes(app: Express) {
                 const contactDate = contact.dateAdded || contact.date_added || contact.createdAt || contact.created_at;
                 const referralDate = contactDate ? new Date(contactDate).toISOString().split("T")[0] : new Date().toISOString().split("T")[0];
 
-                const dedupeKey = `ghl-${ghlContactId || (patientName + "-" + referralDate)}`;
-                const existingReferrals = await db.select({ id: referralsTable.id })
-                  .from(referralsTable)
-                  .where(and(
-                    eq(referralsTable.patientFullName, patientName),
-                    eq(referralsTable.referralSource, "GoHighLevel"),
-                    eq(referralsTable.referralDate, referralDate),
-                    isNull(referralsTable.deletedAt)
-                  ))
-                  .limit(1);
-
-                if (existingReferrals.length > 0) {
+                // Dedup check using preloaded set (avoids per-contact DB query)
+                const dedupeKey = `${patientName}|${referralDate}`;
+                if (existingGhlKeys.has(dedupeKey)) {
                   skipped++;
                   results.push({ patient: patientName, physician: "", action: "already imported" });
                   continue;
@@ -665,7 +679,10 @@ export function registerIntegrationRoutes(app: Express) {
                     }
                   }
 
-                  const existing = await storage.findPhysicianByNameAndNpi(physFirst, physLast, refNpi || null);
+                  // In-memory lookup to avoid per-contact DB query (N+1 fix)
+                  const npiLookup = refNpi ? physicianByNpi.get(refNpi.trim()) : undefined;
+                  const nameLookup = physicianByName.get(`${physFirst.toLowerCase().trim()}|${physLast.toLowerCase().trim()}`);
+                  const existing = npiLookup || nameLookup;
 
                   if (existing) {
                     physicianId = existing.id;
@@ -687,6 +704,9 @@ export function registerIntegrationRoutes(app: Express) {
                     physicianId = newPhys.id;
                     physicianLabel = `${physFirst} ${physLast} (new)`;
                     providersCreated++;
+                    // Add to in-memory maps so later contacts in this batch can find the new physician
+                    if (newPhys.npi) physicianByNpi.set(newPhys.npi.trim(), newPhys);
+                    physicianByName.set(`${newPhys.firstName.toLowerCase().trim()}|${newPhys.lastName.toLowerCase().trim()}`, newPhys);
                   }
                 }
 
@@ -717,6 +737,8 @@ export function registerIntegrationRoutes(app: Express) {
                   status: "RECEIVED",
                 });
 
+                // Track in-memory so within-batch duplicates are also caught
+                existingGhlKeys.add(dedupeKey);
                 referralsCreated++;
                 results.push({
                   patient: patientName,

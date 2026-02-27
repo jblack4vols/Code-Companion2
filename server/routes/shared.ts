@@ -1,6 +1,19 @@
 import type { Request, Response, NextFunction } from "express";
 import { storage } from "../storage";
 
+/**
+ * Returns null for OWNER/DIRECTOR (bypass — see all locations).
+ * Returns string[] of locationIds for scoped roles.
+ * Empty array means user has no location assignments — see nothing.
+ */
+export async function getUserLocationScope(req: Request): Promise<string[] | null> {
+  if (!req.session.userId) return [];
+  const user = await storage.getUser(req.session.userId);
+  if (!user) return [];
+  if (user.role === "OWNER" || user.role === "DIRECTOR") return null;
+  return storage.getUserLocationIds(req.session.userId);
+}
+
 declare module "express-session" {
   interface SessionData {
     userId: string;

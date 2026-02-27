@@ -160,18 +160,18 @@ export default function ExecutiveDashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-executive-dashboard-title">Executive Dashboard</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-xs sm:text-sm text-muted-foreground">High-level referral performance overview</p>
+          <h1 data-testid="text-executive-dashboard-title">Executive Dashboard</h1>
+          <p className="page-subtitle flex items-center gap-2">
+            High-level referral performance overview
             {dataUpdatedAt > 0 && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1" data-testid="text-last-updated">
+              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1" data-testid="text-last-updated">
                 <Clock className="w-3 h-3" />
                 Updated {format(new Date(dataUpdatedAt), "h:mm a")}
               </span>
             )}
-          </div>
+          </p>
         </div>
         <Select value={selectedMonth} onValueChange={setSelectedMonth}>
           <SelectTrigger className="w-[200px]" data-testid="select-month-filter">

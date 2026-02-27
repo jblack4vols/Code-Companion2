@@ -5,7 +5,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2, ShieldCheck, ShieldX, Shield } from "lucide-react";
+import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2, ShieldCheck, ShieldX, Shield, Sparkles } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 
 function getCsrfToken(): string | null {
@@ -141,11 +142,12 @@ export default function ImportPage() {
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [customFieldMappings, setCustomFieldMappings] = useState<{ csvHeader: string; label: string }[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showEnrichmentStats, setShowEnrichmentStats] = useState(true);
   const [result, setResult] = useState<{
     inserted: number; updated: number; errors: string[];
     totalRows?: number; unmatchedFacilityCount?: number; unmatchedDoctorCount?: number;
     invalidDateCount?: number; unmatchedFacilities?: string[]; unmatchedDoctors?: string[];
-    unlinkedCount?: number;
+    unlinkedCount?: number; enriched?: number; enrichmentFailed?: number;
   } | null>(null);
   const [npiVerifying, setNpiVerifying] = useState(false);
   const [npiResults, setNpiResults] = useState<{
@@ -556,6 +558,24 @@ export default function ImportPage() {
               </Card>
             )}
 
+            {importType === "physicians" && mapping["npi"] && (
+              <Card>
+                <CardContent className="py-3 px-4 flex items-center gap-3">
+                  <Sparkles className="w-4 h-4 text-primary shrink-0" />
+                  <div className="flex-1">
+                    <p className="text-sm font-medium">Auto-enrich with NPI Registry</p>
+                    <p className="text-xs text-muted-foreground">Fill missing fields (specialty, address, credentials) using NPPES data during import</p>
+                  </div>
+                  <Checkbox
+                    id="enrichment-toggle"
+                    checked={showEnrichmentStats}
+                    onCheckedChange={(v) => setShowEnrichmentStats(!!v)}
+                    data-testid="checkbox-enrich-npi"
+                  />
+                </CardContent>
+              </Card>
+            )}
+
             {(mapping["npi"] || mapping["referringDoctorNpi"]) && (
               <Card>
                 <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
@@ -730,6 +750,19 @@ export default function ImportPage() {
                   </Card>
                 )}
               </div>
+
+              {showEnrichmentStats && result.enriched != null && result.enriched > 0 && (
+                <div className="rounded-md border border-primary/20 bg-primary/5 p-3 flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 text-primary shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-sm font-medium text-primary">NPI Registry Enrichment</p>
+                    <p className="text-xs text-muted-foreground">
+                      {result.enriched} provider{result.enriched !== 1 ? "s" : ""} enriched with NPPES data
+                      {result.enrichmentFailed ? ` · ${result.enrichmentFailed} failed` : ""}
+                    </p>
+                  </div>
+                </div>
+              )}
 
               {((result.unmatchedFacilities && result.unmatchedFacilities.length > 0) || (result.unmatchedDoctors && result.unmatchedDoctors.length > 0)) && (
                 <div className="space-y-3">

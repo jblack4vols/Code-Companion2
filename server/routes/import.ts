@@ -1,12 +1,16 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { Readable } from "stream";
 import { requireRole, getClientIp } from "./shared";
+import os from "os";
+import path from "path";
+import fs from "fs";
 
 export async function registerImportRoutes(app: Express) {
   const multer = (await import("multer")).default;
   const ExcelJS = (await import("exceljs")).default;
-  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+  const uploadDir = path.join(os.tmpdir(), "crm-uploads");
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
 
   function excelSerialToDate(serial: number): Date {
     const utcDays = Math.floor(serial - 25569);
@@ -46,15 +50,25 @@ export async function registerImportRoutes(app: Express) {
     return rows;
   }
 
+  // Read uploaded file from disk into ExcelJS workbook, then clean up temp file
+  async function loadWorkbook(file: Express.Multer.File): Promise<InstanceType<typeof ExcelJS.Workbook>> {
+    const workbook = new ExcelJS.Workbook();
+    try {
+      if (file.originalname.endsWith(".csv")) {
+        await workbook.csv.readFile(file.path);
+      } else {
+        await workbook.xlsx.readFile(file.path);
+      }
+    } finally {
+      fs.unlink(file.path, () => {});
+    }
+    return workbook;
+  }
+
   app.post("/api/import/preview", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
-      const workbook = new ExcelJS.Workbook();
-      if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(Readable.from(req.file.buffer));
-      } else {
-        await workbook.xlsx.load(req.file.buffer);
-      }
+      const workbook = await loadWorkbook(req.file);
       const worksheet = workbook.worksheets[0];
       const sheetName = worksheet.name;
       const rows = worksheetToArrays(worksheet);
@@ -72,12 +86,7 @@ export async function registerImportRoutes(app: Express) {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
-      const workbook = new ExcelJS.Workbook();
-      if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(Readable.from(req.file.buffer));
-      } else {
-        await workbook.xlsx.load(req.file.buffer);
-      }
+      const workbook = await loadWorkbook(req.file);
       const rows = worksheetToJson(workbook.worksheets[0]);
 
       const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
@@ -123,17 +132,69 @@ export async function registerImportRoutes(app: Express) {
         };
       }).filter(r => r.firstName && r.lastName);
 
+      // Enrich physicians that have an NPI with data from NPPES registry
+      const enrichmentStats = { enriched: 0, failed: 0 };
+      const NPI_BATCH_SIZE = 10;
+      for (let i = 0; i < mapped.length; i += NPI_BATCH_SIZE) {
+        const batch = mapped.slice(i, i + NPI_BATCH_SIZE);
+        const enrichPromises = batch.map(async (physician) => {
+          if (!physician.npi) return;
+          try {
+            const response = await fetch(
+              `https://npiregistry.cms.hhs.gov/api/?number=${encodeURIComponent(physician.npi)}&version=2.1`
+            );
+            if (!response.ok) return;
+            const data = await response.json() as any;
+            if (data.result_count === 0) return;
+
+            const result = data.results[0];
+            const basic = result.basic || {};
+            const addr = result.addresses?.find((a: any) => a.address_purpose === "LOCATION") || result.addresses?.[0] || {};
+            const taxonomy = result.taxonomies?.find((t: any) => t.primary) || result.taxonomies?.[0];
+
+            // Only fill MISSING fields — don't overwrite CSV data
+            if (!physician.firstName && basic.first_name) physician.firstName = basic.first_name;
+            if (!physician.lastName && basic.last_name) physician.lastName = basic.last_name;
+            if (!physician.credentials && basic.credential) physician.credentials = basic.credential;
+            if (!physician.specialty && taxonomy?.desc) physician.specialty = taxonomy.desc;
+            if (!physician.primaryOfficeAddress && addr.address_1) {
+              physician.primaryOfficeAddress = [addr.address_1, addr.address_2].filter(Boolean).join(", ");
+            }
+            if (!physician.city && addr.city) physician.city = addr.city;
+            if (!physician.state && addr.state) physician.state = addr.state;
+            if (!physician.zip && addr.postal_code) physician.zip = addr.postal_code.slice(0, 5);
+            if (!physician.phone && addr.telephone_number) physician.phone = addr.telephone_number;
+            if (!physician.fax && addr.fax_number) physician.fax = addr.fax_number;
+
+            enrichmentStats.enriched++;
+          } catch {
+            enrichmentStats.failed++;
+          }
+        });
+        await Promise.all(enrichPromises);
+        // Rate-limit: 100ms delay between batches
+        if (i + NPI_BATCH_SIZE < mapped.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
       const result = await storage.bulkUpsertPhysicians(mapped);
       await storage.createAuditLog({
         userId: req.session.userId!,
         action: "IMPORT",
         entity: "physician",
         entityId: "bulk",
-        detailJson: { inserted: result.inserted, updated: result.updated, total: mapped.length },
+        detailJson: {
+          inserted: result.inserted,
+          updated: result.updated,
+          total: mapped.length,
+          enriched: enrichmentStats.enriched,
+          enrichmentFailed: enrichmentStats.failed,
+        },
         ipAddress: getClientIp(req),
         userAgent: req.headers["user-agent"] || null,
       });
-      res.json(result);
+      res.json({ ...result, enriched: enrichmentStats.enriched, enrichmentFailed: enrichmentStats.failed });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }
@@ -143,12 +204,7 @@ export async function registerImportRoutes(app: Express) {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });
       const mapping = JSON.parse(req.body.mapping || "{}");
-      const workbook = new ExcelJS.Workbook();
-      if (req.file.originalname.endsWith(".csv")) {
-        await workbook.csv.read(Readable.from(req.file.buffer));
-      } else {
-        await workbook.xlsx.load(req.file.buffer);
-      }
+      const workbook = await loadWorkbook(req.file);
       const rows = worksheetToJson(workbook.worksheets[0]);
 
       const allLocations = await storage.getLocations();
@@ -327,6 +383,76 @@ export async function registerImportRoutes(app: Express) {
         userAgent: req.headers["user-agent"] || null,
       });
       res.json(summary);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/import/enrich-npis", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      // Fetch physicians that have an NPI but are missing at least one key field
+      const allPhysicians = await storage.getPhysicians();
+      const candidates = allPhysicians.filter(p =>
+        p.npi && (!p.specialty || !p.city || !p.state || !p.zip || !p.credentials)
+      );
+
+      const stats = { total: candidates.length, enriched: 0, alreadyComplete: allPhysicians.length - candidates.length, failed: 0 };
+
+      const NPI_BATCH_SIZE = 10;
+      for (let i = 0; i < candidates.length; i += NPI_BATCH_SIZE) {
+        const batch = candidates.slice(i, i + NPI_BATCH_SIZE);
+        const enrichPromises = batch.map(async (physician) => {
+          try {
+            const response = await fetch(
+              `https://npiregistry.cms.hhs.gov/api/?number=${encodeURIComponent(physician.npi!)}&version=2.1`
+            );
+            if (!response.ok) { stats.failed++; return; }
+            const data = await response.json() as any;
+            if (data.result_count === 0) { stats.failed++; return; }
+
+            const result = data.results[0];
+            const basic = result.basic || {};
+            const addr = result.addresses?.find((a: any) => a.address_purpose === "LOCATION") || result.addresses?.[0] || {};
+            const taxonomy = result.taxonomies?.find((t: any) => t.primary) || result.taxonomies?.[0];
+
+            // Build update with only missing fields
+            const updates: Record<string, string> = {};
+            if (!physician.credentials && basic.credential) updates.credentials = basic.credential;
+            if (!physician.specialty && taxonomy?.desc) updates.specialty = taxonomy.desc;
+            if (!physician.primaryOfficeAddress && addr.address_1) {
+              updates.primaryOfficeAddress = [addr.address_1, addr.address_2].filter(Boolean).join(", ");
+            }
+            if (!physician.city && addr.city) updates.city = addr.city;
+            if (!physician.state && addr.state) updates.state = addr.state;
+            if (!physician.zip && addr.postal_code) updates.zip = addr.postal_code.slice(0, 5);
+            if (!physician.phone && addr.telephone_number) updates.phone = addr.telephone_number;
+            if (!physician.fax && addr.fax_number) updates.fax = addr.fax_number;
+
+            if (Object.keys(updates).length > 0) {
+              await storage.updatePhysician(physician.id, updates as any);
+              stats.enriched++;
+            }
+          } catch {
+            stats.failed++;
+          }
+        });
+        await Promise.all(enrichPromises);
+        if (i + NPI_BATCH_SIZE < candidates.length) {
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+      }
+
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "IMPORT",
+        entity: "physician",
+        entityId: "bulk",
+        detailJson: { action: "enrich-npis", ...stats },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
+      });
+
+      res.json(stats);
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

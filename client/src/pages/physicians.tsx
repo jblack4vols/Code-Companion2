@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star, Trash2 } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star, Trash2, Sparkles } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -82,6 +82,8 @@ export default function PhysiciansPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mergeNpi, setMergeNpi] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [showEnrichDialog, setShowEnrichDialog] = useState(false);
+  const [enrichResult, setEnrichResult] = useState<{ total: number; enriched: number; alreadyComplete: number; failed: number } | null>(null);
   const pageSize = 50;
 
   const { data: favoriteIds = [] } = useQuery<string[]>({
@@ -233,6 +235,19 @@ export default function PhysiciansPage() {
     onError: (err: any) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
   });
 
+  const enrichAllMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/import/enrich-npis", {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setEnrichResult(data);
+      setShowEnrichDialog(true);
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+    },
+    onError: (err: any) => toast({ title: "Enrichment failed", description: err.message, variant: "destructive" }),
+  });
+
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -294,10 +309,10 @@ export default function PhysiciansPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-physicians-title">Referring Providers</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">{total} referring providers</p>
+          <h1 data-testid="text-physicians-title">Referring Providers</h1>
+          <p className="page-subtitle">{total} referring providers</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -316,6 +331,55 @@ export default function PhysiciansPage() {
           >
             <Download className="w-4 h-4 mr-1.5" />Export CSV
           </Button>
+          {canBulkAction && (
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => enrichAllMutation.mutate()}
+                disabled={enrichAllMutation.isPending}
+                data-testid="button-enrich-all-npis"
+              >
+                {enrichAllMutation.isPending ? (
+                  <span className="w-4 h-4 mr-1.5 animate-spin inline-block border-2 border-current border-t-transparent rounded-full" />
+                ) : (
+                  <Sparkles className="w-4 h-4 mr-1.5" />
+                )}
+                Enrich All NPIs
+              </Button>
+              <Dialog open={showEnrichDialog} onOpenChange={setShowEnrichDialog}>
+                <DialogContent className="max-w-sm">
+                  <DialogHeader>
+                    <DialogTitle>NPI Enrichment Complete</DialogTitle>
+                    <DialogDescription>Results from enriching provider records using the NPPES registry</DialogDescription>
+                  </DialogHeader>
+                  {enrichResult && (
+                    <div className="grid grid-cols-2 gap-3 py-2">
+                      <div className="rounded-md bg-muted p-3 text-center">
+                        <div className="text-2xl font-bold">{enrichResult.total}</div>
+                        <div className="text-xs text-muted-foreground">Candidates</div>
+                      </div>
+                      <div className="rounded-md bg-chart-2/10 p-3 text-center">
+                        <div className="text-2xl font-bold text-chart-2">{enrichResult.enriched}</div>
+                        <div className="text-xs text-muted-foreground">Enriched</div>
+                      </div>
+                      <div className="rounded-md bg-muted p-3 text-center">
+                        <div className="text-2xl font-bold text-muted-foreground">{enrichResult.alreadyComplete}</div>
+                        <div className="text-xs text-muted-foreground">Already Complete</div>
+                      </div>
+                      <div className="rounded-md bg-chart-5/10 p-3 text-center">
+                        <div className="text-2xl font-bold text-chart-5">{enrichResult.failed}</div>
+                        <div className="text-xs text-muted-foreground">Failed</div>
+                      </div>
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <Button onClick={() => setShowEnrichDialog(false)}>Done</Button>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </>
+          )}
           {canBulkAction && (
             <Dialog open={showMerge} onOpenChange={setShowMerge}>
               <DialogTrigger asChild>

@@ -179,6 +179,77 @@
   body {
     @apply font-sans antialiased bg-background text-foreground;
   }
+
+  /* ---------------------------------------------------------------------------
+   * Table enhancements — zebra striping and sticky header contrast
+   * Applied globally via the shadcn <Table> markup structure.
+   * --------------------------------------------------------------------------- */
+  tbody tr:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.35);
+  }
+  .dark tbody tr:nth-child(even) {
+    background-color: hsl(var(--muted) / 0.25);
+  }
+
+  thead th {
+    font-size: 0.75rem;          /* 12px — compact header text */
+    letter-spacing: 0.025em;
+    text-transform: uppercase;
+    color: hsl(var(--muted-foreground));
+    background-color: hsl(var(--muted) / 0.5);
+  }
+  .dark thead th {
+    background-color: hsl(var(--muted) / 0.4);
+  }
+
+  /* ---------------------------------------------------------------------------
+   * Page header utility — standardised title/subtitle block
+   * Usage: <div className="page-header"> ... </div>
+   * --------------------------------------------------------------------------- */
+  .page-header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.75rem;
+  }
+  .page-header h1 {
+    font-size: 1.25rem;        /* text-xl on mobile */
+    font-weight: 700;
+    line-height: 1.3;
+  }
+  @media (min-width: 640px) {
+    .page-header h1 {
+      font-size: 1.5rem;      /* text-2xl on sm+ */
+    }
+  }
+  .page-header .page-subtitle {
+    font-size: 0.8125rem;      /* ~13px */
+    color: hsl(var(--muted-foreground));
+    margin-top: 0.125rem;
+  }
+
+  /* ---------------------------------------------------------------------------
+   * Scrollbar styling — thin, muted for data-dense tables
+   * --------------------------------------------------------------------------- */
+  .overflow-x-auto::-webkit-scrollbar,
+  .overflow-auto::-webkit-scrollbar {
+    height: 6px;
+    width: 6px;
+  }
+  .overflow-x-auto::-webkit-scrollbar-track,
+  .overflow-auto::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .overflow-x-auto::-webkit-scrollbar-thumb,
+  .overflow-auto::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.2);
+    border-radius: 3px;
+  }
+  .overflow-x-auto::-webkit-scrollbar-thumb:hover,
+  .overflow-auto::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
 }
 
 /**

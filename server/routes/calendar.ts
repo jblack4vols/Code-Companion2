@@ -37,6 +37,12 @@ export function registerCalendarRoutes(app: Express) {
 
   app.patch("/api/calendar-events/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
+      const existing = await storage.getCalendarEvent(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && existing.organizerUserId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden: you can only edit events you organized" });
+      }
       const body = { ...req.body };
       if (typeof body.startAt === "string") body.startAt = new Date(body.startAt);
       if (typeof body.endAt === "string") body.endAt = new Date(body.endAt);
@@ -52,6 +58,12 @@ export function registerCalendarRoutes(app: Express) {
 
   app.delete("/api/calendar-events/:id", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
     try {
+      const existing = await storage.getCalendarEvent(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const user = await storage.getUser(req.session.userId!);
+      if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && existing.organizerUserId !== req.session.userId) {
+        return res.status(403).json({ message: "Forbidden: you can only delete events you organized" });
+      }
       await storage.deleteCalendarEvent(req.params.id);
       await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "CalendarEvent", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });

@@ -1,0 +1,225 @@
+# Data Model
+
+Schema source: `shared/schema.ts` | ORM: Drizzle 0.39 | Dialect: PostgreSQL
+Migrations: `drizzle-kit push` (no migration files — schema applied directly).
+
+## Enums
+
+| Enum | Values |
+|---|---|
+| `user_role` | OWNER, DIRECTOR, MARKETER, FRONT_DESK, ANALYST |
+| `approval_status` | PENDING, APPROVED, REJECTED |
+| `physician_status` | PROSPECT, ACTIVE, INACTIVE |
+| `relationship_stage` | NEW, DEVELOPING, STRONG, AT_RISK |
+| `priority` | LOW, MEDIUM, HIGH |
+| `interaction_type` | VISIT, CALL, EMAIL, EVENT, LUNCH, OTHER |
+| `referral_status` | RECEIVED, SCHEDULED, EVAL_COMPLETED, DISCHARGED, LOST |
+| `payer_type` | COMMERCIAL, MEDICARE, MEDICAID, CASH, OTHER |
+| `task_status` | OPEN, DONE |
+| `event_type` | MEETING, LUNCH, OFFICE_VISIT, CALL, CONFERENCE, OTHER |
+| `tier_label` | A, B, C, D |
+| `integration_type` | GOHIGHLEVEL, CUSTOM_API, MICROSOFT |
+| `integration_status` | DISCONNECTED, CONNECTED, ERROR |
+| `goal_scope` | TERRITORY, LOCATION |
+
+## Core Entities
+
+### users
+Primary identity table. UUIDs, bcrypt passwords, role-based access.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | `gen_random_uuid()` |
+| name, email | text | email UNIQUE |
+| password | text | bcrypt hash |
+| role | user_role | default MARKETER |
+| approvalStatus | approval_status | default APPROVED |
+| failedLoginAttempts | integer | lockout after 10 |
+| lockedUntil | timestamp? | 5 min lockout |
+| forcePasswordChange | boolean | default true |
+| passwordResetToken/Expires | text/timestamp? | token-based reset |
+| lastLoginAt, passwordChangedAt | timestamp? | |
+| createdAt, updatedAt | timestamp | |
+
+### locations
+Physical clinic sites (8 locations for TriStar PT).
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| name, address, city, state | text | |
+| phone | text? | |
+| isActive | boolean | default true |
+
+### territories
+Geographic sales territories assigned to reps.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| name | text | |
+| repUserId | varchar(36)? | FK → users.id |
+
+### physicians
+Referring provider records — the central CRM entity.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| firstName, lastName | text | NOT NULL |
+| credentials, specialty, npi | text? | |
+| practiceName, primaryOfficeAddress, city, state, zip | text? | |
+| phone, fax, email | text? | |
+| latitude, longitude | real? | for map view |
+| status | physician_status | default PROSPECT |
+| relationshipStage | relationship_stage | default NEW |
+| priority | priority | default MEDIUM |
+| territoryId | varchar(36)? | **No FK constraint** — app-level only |
+| assignedOwnerId | varchar(36)? | FK → users.id |
+| lastInteractionAt, nextFollowUpAt | timestamp? | |
+| notes | text? | |
+| tags | text[]? | |
+| customFields | jsonb? | Record<string,string> |
+| **deletedAt** | timestamp? | **soft delete** |
+
+### referrals
+Patient referral records tied to physicians and locations.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| physicianId | varchar(36)? | FK → physicians (nullable = unlinked referrals) |
+| locationId | varchar(36) | FK → locations |
+| referringProviderName/Npi | text? | denormalized provider info |
+| referralDate | date | |
+| patientAccountNumber | text? | |
+| patientFullName, patientDob, patientPhone | text?/date? | PHI fields |
+| caseTitle, caseTherapist, discipline | text? | clinical context |
+| status | referral_status | default RECEIVED |
+| scheduledVisits, arrivedVisits | integer | default 0 |
+| valueEstimate | real? | estimated revenue |
+| payerType | payer_type? | |
+| customFields | jsonb? | |
+| **deletedAt** | timestamp? | **soft delete** |
+
+### interactions
+Activity log of rep-physician touchpoints.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| physicianId | varchar(36) | FK → physicians |
+| locationId | varchar(36)? | FK → locations |
+| userId | varchar(36) | FK → users (who logged it) |
+| type | interaction_type | |
+| occurredAt | timestamp | |
+| summary | text | |
+| nextStep | text? | |
+| followUpDueAt | timestamp? | |
+| **deletedAt** | timestamp? | **soft delete** |
+
+### tasks
+Follow-up actions assigned to users for specific physicians.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| physicianId | varchar(36) | FK → physicians |
+| assignedToUserId | varchar(36) | FK → users |
+| dueAt | timestamp | |
+| priority | priority | |
+| status | task_status | default OPEN |
+| description | text | |
+
+### calendar_events
+Scheduling for meetings, lunches, office visits.
+
+| Column | Type | Notes |
+|---|---|---|
+| id | varchar(36) PK | |
+| title | text | |
+| eventType | event_type | default MEETING |
+| startAt, endAt | timestamp | |
+| locationId, physicianId | varchar(36)? | FKs |
+| organizerUserId | varchar(36) | FK → users |
+| outlookEventId | text? | Outlook sync |
+| allDay, completed | boolean | |
+
+## Supporting Entities
+
+| Table | Purpose |
+|---|---|
+| `collections` | Revenue collection records by physician/location/date |
+| `physician_monthly_summary` | ETL-computed monthly KPIs per physician (tier scores, arrival rates) |
+| `territory_monthly_summary` | ETL-computed monthly KPIs per territory |
+| `location_monthly_summary` | ETL-computed monthly KPIs per location |
+| `tiering_weights` | Singleton config for tier scoring formula |
+| `goals` | Monthly referral/revenue targets scoped to territory or location |
+| `audit_logs` | User action audit trail (userId nullable on delete) |
+| `physician_comments` | Threaded comments on physician records |
+| `physician_favorites` | User bookmark of physicians (unique per user+physician) |
+| `physician_stage_history` | Tracks stage transitions with reason/timestamp |
+| `interaction_templates` | Reusable interaction summary templates |
+| `integration_configs` | Third-party integration settings (GoHighLevel, Microsoft) |
+| `integration_sync_logs` | Per-integration sync history |
+| `api_keys` | Public API key management (hashed, scoped, expiring) |
+| `scheduled_reports` | Cron-based CSV report delivery config |
+| `sharepoint_sync_status` | SharePoint per-entity sync tracking |
+| `app_settings` | Key-value store for runtime config (ETL schedule, etc.) |
+
+## Junction Tables
+
+| Table | Relationship |
+|---|---|
+| `user_location_access` | users ↔ locations (M2M) — **exists in schema but unenforced** |
+| `physician_favorites` | users ↔ physicians (M2M) |
+
+## Relationship Diagram
+
+```
+users ─────┬── 1:N ──→ interactions
+            ├── 1:N ──→ tasks
+            ├── 1:N ──→ calendar_events
+            ├── 1:N ──→ physician_comments
+            ├── 1:N ──→ audit_logs
+            ├── 0:1 ──→ territories (rep)
+            ├── 1:N ──→ physicians (assigned owner)
+            └── M:N ──→ locations (via user_location_access — unenforced)
+
+physicians ─┬── 1:N ──→ interactions
+             ├── 1:N ──→ referrals
+             ├── 1:N ──→ tasks
+             ├── 1:N ──→ collections
+             ├── 1:N ──→ physician_monthly_summary
+             ├── 1:N ──→ physician_comments
+             ├── 1:N ──→ physician_stage_history
+             └── N:1 ──→ territories (no FK constraint)
+
+locations ──┬── 1:N ──→ referrals
+             ├── 1:N ──→ interactions
+             ├── 1:N ──→ calendar_events
+             ├── 1:N ──→ collections
+             └── 1:N ──→ location_monthly_summary
+
+territories ── 1:N ──→ territory_monthly_summary
+```
+
+## Indexes
+
+**Trigram (GIN, pg_trgm):** physicians.first_name, last_name, practice_name, city; referrals.referring_provider_name, patient_full_name
+**B-tree:** Most FK columns, status/stage enums, date columns
+**Partial:** physicians/referrals/interactions WHERE deleted_at IS NULL; physicians.npi WHERE NOT NULL; users.password_reset_token WHERE NOT NULL
+**Composite unique:** physician_monthly_summary(physician_id, month); territory/location summaries similar; goals(month, scope_type, scope_id); physician_favorites(user_id, physician_id)
+
+## Soft Delete
+
+Three tables use `deletedAt` column: **physicians**, **referrals**, **interactions**.
+All queries default-filter `WHERE deleted_at IS NULL`. Restore operations available for OWNER/DIRECTOR.
+
+## Notable Patterns
+
+- All PKs are `varchar(36)` UUIDs via `gen_random_uuid()` (except `app_settings` which uses text key as PK)
+- `physicians.territoryId` has no FK constraint — enforced at app level only
+- `goals.scopeId` is polymorphic (no FK) — references territory.id or location.id based on `scopeType`
+- `referrals.physicianId` is nullable to support "unlinked referrals" workflow
+- User delete cascades via application code: nullifies audit_logs.userId, physicians.assignedOwnerId, territories.repUserId

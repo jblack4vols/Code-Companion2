@@ -4,6 +4,7 @@ import {
   users, locations, physicians, interactions, referrals, tasks, auditLogs, calendarEvents, userLocationAccess,
   territories, collections, physicianMonthlySummary, territoryMonthlySummary, locationMonthlySummary, tieringWeights,
   integrationConfigs, apiKeys, integrationSyncLogs, physicianComments, scheduledReports, physicianFavorites,
+  interactionTemplates, physicianStageHistory,
   type User, type InsertUser,
   type Location, type InsertLocation,
   type Physician, type InsertPhysician,
@@ -24,7 +25,37 @@ import {
   type PhysicianComment, type InsertPhysicianComment,
   type ScheduledReport, type InsertScheduledReport,
   type PhysicianFavorite,
+  type InteractionTemplate, type InsertInteractionTemplate,
+  type PhysicianStageHistory,
+  type ClinicFinancial, type InsertClinicFinancial,
+  type ProviderProductivity, type InsertProviderProductivity,
+  type FinancialAlert, type InsertFinancialAlert,
+  type FinancialTarget, type InsertFinancialTarget,
+  type Claim, type InsertClaim,
+  type ClaimPayment, type InsertClaimPayment,
+  type PayerRate, type InsertPayerRate,
+  type AppealTemplate, type InsertAppealTemplate,
+  type Appeal, type InsertAppeal,
 } from "@shared/schema";
+import * as unitEconomicsStorage from "./storage-unit-economics";
+import * as revenueRecoveryStorage from "./storage-revenue-recovery";
+import * as denialIntelligenceStorage from "./storage-denial-intelligence";
+export type {
+  UnitEconomicsLocationSummary,
+  UnitEconomicsLocationDetail,
+  ProviderProductivityEntry,
+  ForecastEntry,
+} from "./storage-unit-economics";
+export type {
+  UnderpaidClaim,
+  ReimbursementSummary,
+} from "./storage-revenue-recovery";
+export type {
+  DenialSummary,
+  DenialCodeStat,
+  ProviderDenialOutlier,
+  DenialTrend,
+} from "./storage-denial-intelligence";
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -62,6 +93,8 @@ export interface ReferralFilters {
   search?: string;
   status?: string;
   locationId?: string;
+  /** Server-side location scope enforcement: list of allowed location IDs for non-admin users */
+  locationIds?: string[];
   discipline?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -70,6 +103,35 @@ export interface ReferralFilters {
   sortDir?: string;
   page?: number;
   pageSize?: number;
+}
+
+export interface PracticeSummary {
+  practiceName: string;
+  physicianCount: number;
+  totalReferrals: number;
+  totalRevenue: number;
+  arrivalRate: number;
+  lastInteractionAt: string | null;
+  city: string | null;
+  state: string | null;
+}
+
+export interface PracticeDetail {
+  practice: PracticeSummary;
+  physicians: Array<{
+    id: string;
+    firstName: string;
+    lastName: string;
+    credentials: string | null;
+    specialty: string | null;
+    status: string;
+    relationshipStage: string;
+    referralCount: number;
+    revenueGenerated: number;
+    arrivalRate: number;
+    lastInteractionAt: string | null;
+    interactionCount: number;
+  }>;
 }
 
 export interface IStorage {
@@ -95,16 +157,18 @@ export interface IStorage {
   createPhysician(phys: InsertPhysician): Promise<Physician>;
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
 
+  getInteraction(id: string): Promise<Interaction | undefined>;
   getInteractions(physicianId?: string, includeDeleted?: boolean): Promise<Interaction[]>;
   getInteractionsPaginated(filters: InteractionFilters): Promise<PaginatedResult<any>>;
   createInteraction(inter: InsertInteraction): Promise<Interaction>;
   updateInteraction(id: string, data: Partial<InsertInteraction>): Promise<Interaction | undefined>;
 
-  getReferrals(physicianId?: string): Promise<Referral[]>;
+  getReferrals(physicianId?: string, locationIds?: string[]): Promise<Referral[]>;
   getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>>;
   createReferral(ref: InsertReferral): Promise<Referral>;
   updateReferral(id: string, data: Partial<InsertReferral>): Promise<Referral | undefined>;
 
+  getTask(id: string): Promise<Task | undefined>;
   getTasks(physicianId?: string): Promise<Task[]>;
   createTask(task: InsertTask): Promise<Task>;
   updateTask(id: string, data: Partial<InsertTask & { status: string }>): Promise<Task | undefined>;
@@ -154,7 +218,7 @@ export interface IStorage {
   updateTerritory(id: string, data: Partial<InsertTerritory>): Promise<Territory | undefined>;
   deleteTerritory(id: string): Promise<boolean>;
 
-  getCollections(filters?: { physicianId?: string; locationId?: string; dateFrom?: string; dateTo?: string }): Promise<Collection[]>;
+  getCollections(filters?: { physicianId?: string; locationId?: string; locationIds?: string[]; dateFrom?: string; dateTo?: string }): Promise<Collection[]>;
   createCollection(col: InsertCollection): Promise<Collection>;
 
   getTieringWeights(): Promise<TieringWeights | undefined>;
@@ -209,6 +273,77 @@ export interface IStorage {
 
   // At-risk referral sources
   getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<AtRiskResult>;
+
+  // Location scoping
+  getUserLocationIds(userId: string): Promise<string[]>;
+
+  // Interaction templates
+  getInteractionTemplates(): Promise<InteractionTemplate[]>;
+  createInteractionTemplate(template: InsertInteractionTemplate): Promise<InteractionTemplate>;
+  updateInteractionTemplate(id: string, data: Partial<InsertInteractionTemplate>): Promise<InteractionTemplate | undefined>;
+  deleteInteractionTemplate(id: string): Promise<boolean>;
+
+  // Physician stage history
+  getPhysicianStageHistory(physicianId: string): Promise<PhysicianStageHistory[]>;
+
+  // Practice Intelligence
+  getPractices(filters: {
+    search?: string;
+    sortBy?: string;
+    sortOrder?: string;
+    page?: number;
+    pageSize?: number;
+  }): Promise<PaginatedResult<PracticeSummary>>;
+  getPracticeDetail(practiceName: string): Promise<PracticeDetail | null>;
+
+  // Unit Economics - Clinic Financials
+  getClinicFinancials(filters: { locationId?: string; periodType?: string; dateFrom?: string; dateTo?: string }): Promise<ClinicFinancial[]>;
+  upsertClinicFinancial(data: InsertClinicFinancial): Promise<ClinicFinancial>;
+  bulkUpsertClinicFinancials(rows: InsertClinicFinancial[]): Promise<{ inserted: number; updated: number }>;
+
+  // Unit Economics - Provider Productivity
+  getProviderProductivity(filters: { userId?: string; locationId?: string; dateFrom?: string; dateTo?: string }): Promise<ProviderProductivity[]>;
+  upsertProviderProductivity(data: InsertProviderProductivity): Promise<ProviderProductivity>;
+  bulkUpsertProviderProductivity(rows: InsertProviderProductivity[]): Promise<{ inserted: number; updated: number }>;
+
+  // Unit Economics - Financial Alerts
+  getFinancialAlerts(filters: { locationId?: string; acknowledged?: boolean }): Promise<FinancialAlert[]>;
+  createFinancialAlert(alert: InsertFinancialAlert): Promise<FinancialAlert>;
+  acknowledgeFinancialAlert(id: string, userId: string): Promise<FinancialAlert | undefined>;
+
+  // Unit Economics - Financial Targets
+  getFinancialTargets(locationId?: string): Promise<FinancialTarget[]>;
+  upsertFinancialTarget(data: InsertFinancialTarget): Promise<FinancialTarget>;
+
+  // Unit Economics - Aggregation
+  getUnitEconomicsDashboard(locationIds?: string[]): Promise<unitEconomicsStorage.UnitEconomicsLocationSummary[]>;
+  getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string): Promise<unitEconomicsStorage.UnitEconomicsLocationDetail>;
+  getProviderProductivityLeaderboard(dateFrom?: string, dateTo?: string, locationId?: string): Promise<unitEconomicsStorage.ProviderProductivityEntry[]>;
+  getUnitEconomicsForecast(locationId?: string): Promise<unitEconomicsStorage.ForecastEntry[]>;
+
+  // Revenue Recovery - Claims
+  getClaims(filters: { locationId?: string; payer?: string; status?: string; dateFrom?: string; dateTo?: string; isUnderpaid?: boolean; page?: number; pageSize?: number }): Promise<{ data: Claim[]; total: number }>;
+  getClaim(id: string): Promise<Claim | undefined>;
+  upsertClaim(data: InsertClaim): Promise<Claim>;
+  bulkUpsertClaims(data: InsertClaim[]): Promise<{ inserted: number; updated: number }>;
+
+  // Revenue Recovery - Reimbursement Analysis
+  getUnderpaidClaims(filters: { locationId?: string; payer?: string; dateFrom?: string; dateTo?: string; minVariance?: number }): Promise<revenueRecoveryStorage.UnderpaidClaim[]>;
+  getReimbursementSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }): Promise<revenueRecoveryStorage.ReimbursementSummary[]>;
+  calculateExpectedAmount(claimId: string): Promise<number>;
+  flagUnderpaidClaims(filters?: { locationId?: string }): Promise<number>;
+
+  // Revenue Recovery - Payer Rate Schedule
+  getPayerRates(payer?: string, cptCode?: string): Promise<PayerRate[]>;
+  upsertPayerRate(data: InsertPayerRate): Promise<PayerRate>;
+  bulkUpsertPayerRates(data: InsertPayerRate[]): Promise<{ inserted: number; updated: number }>;
+  buildRatesFromHistory(payer?: string): Promise<number>;
+
+  // Denial Intelligence
+  getDenialSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }): Promise<denialIntelligenceStorage.DenialSummary>;
+  getTopDenialCodes(filters: { locationId?: string; limit?: number }): Promise<denialIntelligenceStorage.DenialCodeStat[]>;
+  getProviderDenialOutliers(filters: { dateFrom?: string; dateTo?: string }): Promise<denialIntelligenceStorage.ProviderDenialOutlier[]>;
+  getDenialTrends(filters: { locationId?: string; months?: number }): Promise<denialIntelligenceStorage.DenialTrend[]>;
 }
 
 export interface AtRiskSourceEntry {
@@ -458,6 +593,11 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async getInteraction(id: string) {
+    const [interaction] = await db.select().from(interactions).where(eq(interactions.id, id));
+    return interaction;
+  }
+
   async getInteractions(physicianId?: string, includeDeleted?: boolean) {
     const conditions: any[] = [];
     if (physicianId) conditions.push(eq(interactions.physicianId, physicianId));
@@ -475,13 +615,13 @@ export class DatabaseStorage implements IStorage {
     return created;
   }
 
-  async getReferrals(physicianId?: string) {
-    if (physicianId) {
-      return db.select().from(referrals)
-        .where(and(eq(referrals.physicianId, physicianId), isNull(referrals.deletedAt)))
-        .orderBy(desc(referrals.referralDate));
-    }
-    return db.select().from(referrals).where(isNull(referrals.deletedAt)).orderBy(desc(referrals.referralDate));
+  async getReferrals(physicianId?: string, locationIds?: string[]) {
+    const conditions: any[] = [isNull(referrals.deletedAt)];
+    if (physicianId) conditions.push(eq(referrals.physicianId, physicianId));
+    if (locationIds && locationIds.length > 0) conditions.push(inArray(referrals.locationId, locationIds));
+    return db.select().from(referrals)
+      .where(and(...conditions))
+      .orderBy(desc(referrals.referralDate));
   }
 
   async getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>> {
@@ -491,6 +631,8 @@ export class DatabaseStorage implements IStorage {
 
     if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
     if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
+    // Server-side scope: restrict to user's allowed locations (non-admin)
+    if (filters.locationIds && filters.locationIds.length > 0) conditions.push(inArray(referrals.locationId, filters.locationIds));
     if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
     if (filters.physicianId) conditions.push(eq(referrals.physicianId, filters.physicianId));
     if (filters.dateFrom) conditions.push(gte(referrals.referralDate, filters.dateFrom));
@@ -605,6 +747,11 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(referrals.id, id), isNull(referrals.deletedAt)))
       .returning();
     return updated;
+  }
+
+  async getTask(id: string) {
+    const [task] = await db.select().from(tasks).where(eq(tasks.id, id));
+    return task;
   }
 
   async getTasks(physicianId?: string) {
@@ -1515,10 +1662,12 @@ export class DatabaseStorage implements IStorage {
     return true;
   }
 
-  async getCollections(filters?: { physicianId?: string; locationId?: string; dateFrom?: string; dateTo?: string }) {
+  async getCollections(filters?: { physicianId?: string; locationId?: string; locationIds?: string[]; dateFrom?: string; dateTo?: string }) {
     const conditions = [];
     if (filters?.physicianId) conditions.push(eq(collections.physicianId, filters.physicianId));
     if (filters?.locationId) conditions.push(eq(collections.locationId, filters.locationId));
+    // Server-side scope: restrict to user's allowed locations (non-admin)
+    if (filters?.locationIds && filters.locationIds.length > 0) conditions.push(inArray(collections.locationId, filters.locationIds));
     if (filters?.dateFrom) conditions.push(gte(collections.collectionDate, filters.dateFrom));
     if (filters?.dateTo) conditions.push(lte(collections.collectionDate, filters.dateTo));
     if (conditions.length > 0) {
@@ -1824,6 +1973,46 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
+  async getUserLocationIds(userId: string): Promise<string[]> {
+    const rows = await db.select({ locationId: userLocationAccess.locationId })
+      .from(userLocationAccess)
+      .where(eq(userLocationAccess.userId, userId));
+    return rows.map(r => r.locationId);
+  }
+
+  async getInteractionTemplates(): Promise<InteractionTemplate[]> {
+    return db.select().from(interactionTemplates)
+      .where(eq(interactionTemplates.isActive, true))
+      .orderBy(asc(interactionTemplates.name));
+  }
+
+  async createInteractionTemplate(template: InsertInteractionTemplate): Promise<InteractionTemplate> {
+    const [created] = await db.insert(interactionTemplates).values(template).returning();
+    return created;
+  }
+
+  async updateInteractionTemplate(id: string, data: Partial<InsertInteractionTemplate>): Promise<InteractionTemplate | undefined> {
+    const [updated] = await db.update(interactionTemplates)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(interactionTemplates.id, id))
+      .returning();
+    return updated;
+  }
+
+  async deleteInteractionTemplate(id: string): Promise<boolean> {
+    const [updated] = await db.update(interactionTemplates)
+      .set({ isActive: false, updatedAt: new Date() })
+      .where(eq(interactionTemplates.id, id))
+      .returning();
+    return !!updated;
+  }
+
+  async getPhysicianStageHistory(physicianId: string): Promise<PhysicianStageHistory[]> {
+    return db.select().from(physicianStageHistory)
+      .where(eq(physicianStageHistory.physicianId, physicianId))
+      .orderBy(desc(physicianStageHistory.changedAt));
+  }
+
   async getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<AtRiskResult> {
     const now = new Date();
     // Use exclusive upper bound [start, end) for consistent date boundaries
@@ -1982,6 +2171,270 @@ export class DatabaseStorage implements IStorage {
       total: result.length,
       period: { currentStart: currentStartStr, currentEnd: currentEndStr, priorStart: priorStartStr, priorEnd: priorEndStr },
     };
+  }
+
+  async getPractices(filters: {
+    search?: string; sortBy?: string; sortOrder?: string;
+    page?: number; pageSize?: number;
+  }): Promise<PaginatedResult<PracticeSummary>> {
+    const page = filters.page || 1;
+    const pageSize = filters.pageSize || 50;
+    const offset = (page - 1) * pageSize;
+    const searchPattern = filters.search ? `%${filters.search}%` : null;
+
+    // Valid sort column mapping to prevent SQL injection
+    const sortMap: Record<string, string> = {
+      practiceName: "practice_name",
+      physicianCount: "physician_count",
+      totalReferrals: "total_referrals",
+      totalRevenue: "total_revenue",
+      arrivalRate: "arrival_rate",
+      lastInteractionAt: "last_interaction",
+    };
+    const sortCol = sortMap[filters.sortBy || "totalReferrals"] || "total_referrals";
+    const sortDir = filters.sortOrder === "asc" ? "ASC" : "DESC";
+
+    const searchCond = searchPattern
+      ? sql`AND (p.practice_name ILIKE ${searchPattern} OR p.city ILIKE ${searchPattern})`
+      : sql``;
+
+    const countResult = await db.execute(sql`
+      SELECT COUNT(DISTINCT TRIM(p.practice_name)) as total
+      FROM physicians p
+      WHERE p.deleted_at IS NULL
+        AND p.practice_name IS NOT NULL
+        AND TRIM(p.practice_name) != ''
+        ${searchCond}
+    `);
+    const total = parseInt((countResult.rows[0] as any)?.total || "0");
+
+    const dataResult = await db.execute(sql.raw(`
+      SELECT
+        TRIM(p.practice_name) as practice_name,
+        COUNT(DISTINCT p.id)::int as physician_count,
+        COALESCE(SUM(ref_agg.ref_count), 0)::int as total_referrals,
+        COALESCE(SUM(rev_agg.total_rev), 0)::numeric as total_revenue,
+        CASE
+          WHEN COALESCE(SUM(ref_agg.scheduled), 0) > 0
+          THEN ROUND(SUM(ref_agg.arrived)::numeric / SUM(ref_agg.scheduled)::numeric * 100, 1)
+          ELSE 0
+        END as arrival_rate,
+        MAX(p.last_interaction_at) as last_interaction,
+        MIN(p.city) as city,
+        MIN(p.state) as state
+      FROM physicians p
+      LEFT JOIN (
+        SELECT physician_id,
+          COUNT(*) as ref_count,
+          SUM(COALESCE(scheduled_visits, 0)) as scheduled,
+          SUM(COALESCE(arrived_visits, 0)) as arrived
+        FROM referrals WHERE deleted_at IS NULL
+        GROUP BY physician_id
+      ) ref_agg ON ref_agg.physician_id = p.id
+      LEFT JOIN (
+        SELECT physician_id, SUM(COALESCE(revenue_generated, 0)::numeric) as total_rev
+        FROM physician_monthly_summary
+        GROUP BY physician_id
+      ) rev_agg ON rev_agg.physician_id = p.id
+      WHERE p.deleted_at IS NULL
+        AND p.practice_name IS NOT NULL
+        AND TRIM(p.practice_name) != ''
+        ${searchPattern ? `AND (p.practice_name ILIKE '${searchPattern.replace(/'/g, "''")}' OR p.city ILIKE '${searchPattern.replace(/'/g, "''")}')` : ''}
+      GROUP BY TRIM(p.practice_name)
+      ORDER BY ${sortCol} ${sortDir}
+      LIMIT ${pageSize} OFFSET ${offset}
+    `));
+
+    const data: PracticeSummary[] = (dataResult.rows as any[]).map(r => ({
+      practiceName: r.practice_name,
+      physicianCount: r.physician_count,
+      totalReferrals: r.total_referrals,
+      totalRevenue: parseFloat(r.total_revenue || "0"),
+      arrivalRate: parseFloat(r.arrival_rate || "0"),
+      lastInteractionAt: r.last_interaction ? new Date(r.last_interaction).toISOString() : null,
+      city: r.city,
+      state: r.state,
+    }));
+
+    return { data, total, page, pageSize, totalPages: Math.ceil(total / pageSize) };
+  }
+
+  async getPracticeDetail(practiceName: string): Promise<PracticeDetail | null> {
+    const trimmedName = practiceName.trim();
+    if (!trimmedName) return null;
+
+    const physResult = await db.execute(sql`
+      SELECT p.*,
+        COALESCE(ref_agg.ref_count, 0)::int as referral_count,
+        COALESCE(ref_agg.scheduled, 0)::int as total_scheduled,
+        COALESCE(ref_agg.arrived, 0)::int as total_arrived,
+        COALESCE(rev_agg.total_rev, 0)::numeric as revenue_generated,
+        COALESCE(int_agg.int_count, 0)::int as interaction_count
+      FROM physicians p
+      LEFT JOIN (
+        SELECT physician_id,
+          COUNT(*) as ref_count,
+          SUM(COALESCE(scheduled_visits, 0)) as scheduled,
+          SUM(COALESCE(arrived_visits, 0)) as arrived
+        FROM referrals WHERE deleted_at IS NULL
+        GROUP BY physician_id
+      ) ref_agg ON ref_agg.physician_id = p.id
+      LEFT JOIN (
+        SELECT physician_id, SUM(COALESCE(revenue_generated, 0)::numeric) as total_rev
+        FROM physician_monthly_summary
+        GROUP BY physician_id
+      ) rev_agg ON rev_agg.physician_id = p.id
+      LEFT JOIN (
+        SELECT physician_id, COUNT(*) as int_count
+        FROM interactions WHERE deleted_at IS NULL
+        GROUP BY physician_id
+      ) int_agg ON int_agg.physician_id = p.id
+      WHERE p.deleted_at IS NULL
+        AND TRIM(p.practice_name) = ${trimmedName}
+      ORDER BY revenue_generated DESC
+    `);
+
+    if (physResult.rows.length === 0) return null;
+
+    const physicians = (physResult.rows as any[]).map(r => {
+      const scheduled = r.total_scheduled || 0;
+      const arrived = r.total_arrived || 0;
+      return {
+        id: r.id,
+        firstName: r.first_name,
+        lastName: r.last_name,
+        credentials: r.credentials,
+        specialty: r.specialty,
+        status: r.status,
+        relationshipStage: r.relationship_stage,
+        referralCount: r.referral_count,
+        revenueGenerated: parseFloat(r.revenue_generated || "0"),
+        arrivalRate: scheduled > 0 ? Math.round((arrived / scheduled) * 1000) / 10 : 0,
+        lastInteractionAt: r.last_interaction_at ? new Date(r.last_interaction_at).toISOString() : null,
+        interactionCount: r.interaction_count,
+      };
+    });
+
+    const rows = physResult.rows as any[];
+    const totalSched = rows.reduce((s, r) => s + (r.total_scheduled || 0), 0);
+    const totalArr = rows.reduce((s, r) => s + (r.total_arrived || 0), 0);
+
+    const practice: PracticeSummary = {
+      practiceName: trimmedName,
+      physicianCount: physicians.length,
+      totalReferrals: physicians.reduce((s, p) => s + p.referralCount, 0),
+      totalRevenue: physicians.reduce((s, p) => s + p.revenueGenerated, 0),
+      arrivalRate: totalSched > 0 ? Math.round((totalArr / totalSched) * 1000) / 10 : 0,
+      lastInteractionAt: physicians.reduce((latest: string | null, p) => {
+        if (!p.lastInteractionAt) return latest;
+        if (!latest) return p.lastInteractionAt;
+        return p.lastInteractionAt > latest ? p.lastInteractionAt : latest;
+      }, null),
+      city: rows[0]?.city || null,
+      state: rows[0]?.state || null,
+    };
+
+    return { practice, physicians };
+  }
+
+  // Unit Economics — delegate to storage-unit-economics module
+
+  async getClinicFinancials(filters: { locationId?: string; periodType?: string; dateFrom?: string; dateTo?: string }) {
+    return unitEconomicsStorage.getClinicFinancials(filters);
+  }
+  async upsertClinicFinancial(data: InsertClinicFinancial) {
+    return unitEconomicsStorage.upsertClinicFinancial(data);
+  }
+  async bulkUpsertClinicFinancials(rows: InsertClinicFinancial[]) {
+    return unitEconomicsStorage.bulkUpsertClinicFinancials(rows);
+  }
+  async getProviderProductivity(filters: { userId?: string; locationId?: string; dateFrom?: string; dateTo?: string }) {
+    return unitEconomicsStorage.getProviderProductivity(filters);
+  }
+  async upsertProviderProductivity(data: InsertProviderProductivity) {
+    return unitEconomicsStorage.upsertProviderProductivity(data);
+  }
+  async bulkUpsertProviderProductivity(rows: InsertProviderProductivity[]) {
+    return unitEconomicsStorage.bulkUpsertProviderProductivity(rows);
+  }
+  async getFinancialAlerts(filters: { locationId?: string; acknowledged?: boolean }) {
+    return unitEconomicsStorage.getFinancialAlerts(filters);
+  }
+  async createFinancialAlert(alert: InsertFinancialAlert) {
+    return unitEconomicsStorage.createFinancialAlert(alert);
+  }
+  async acknowledgeFinancialAlert(id: string, userId: string) {
+    return unitEconomicsStorage.acknowledgeFinancialAlert(id, userId);
+  }
+  async getFinancialTargets(locationId?: string) {
+    return unitEconomicsStorage.getFinancialTargets(locationId);
+  }
+  async upsertFinancialTarget(data: InsertFinancialTarget) {
+    return unitEconomicsStorage.upsertFinancialTarget(data);
+  }
+  async getUnitEconomicsDashboard(locationIds?: string[]) {
+    return unitEconomicsStorage.getUnitEconomicsDashboard(locationIds);
+  }
+  async getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string) {
+    return unitEconomicsStorage.getUnitEconomicsLocationDetail(locationId, dateFrom, dateTo);
+  }
+  async getProviderProductivityLeaderboard(dateFrom?: string, dateTo?: string, locationId?: string) {
+    return unitEconomicsStorage.getProviderProductivityLeaderboard(dateFrom, dateTo, locationId);
+  }
+  async getUnitEconomicsForecast(locationId?: string) {
+    return unitEconomicsStorage.getUnitEconomicsForecast(locationId);
+  }
+
+  // Revenue Recovery — delegate to storage-revenue-recovery module
+  async getClaims(filters: { locationId?: string; payer?: string; status?: string; dateFrom?: string; dateTo?: string; isUnderpaid?: boolean; page?: number; pageSize?: number }) {
+    return revenueRecoveryStorage.getClaims(filters);
+  }
+  async getClaim(id: string) {
+    return revenueRecoveryStorage.getClaim(id);
+  }
+  async upsertClaim(data: InsertClaim) {
+    return revenueRecoveryStorage.upsertClaim(data);
+  }
+  async bulkUpsertClaims(data: InsertClaim[]) {
+    return revenueRecoveryStorage.bulkUpsertClaims(data);
+  }
+  async getUnderpaidClaims(filters: { locationId?: string; payer?: string; dateFrom?: string; dateTo?: string; minVariance?: number }) {
+    return revenueRecoveryStorage.getUnderpaidClaims(filters);
+  }
+  async getReimbursementSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }) {
+    return revenueRecoveryStorage.getReimbursementSummary(filters);
+  }
+  async calculateExpectedAmount(claimId: string) {
+    return revenueRecoveryStorage.calculateExpectedAmount(claimId);
+  }
+  async flagUnderpaidClaims(filters?: { locationId?: string }) {
+    return revenueRecoveryStorage.flagUnderpaidClaims(filters);
+  }
+  async getPayerRates(payer?: string, cptCode?: string) {
+    return revenueRecoveryStorage.getPayerRates(payer, cptCode);
+  }
+  async upsertPayerRate(data: InsertPayerRate) {
+    return revenueRecoveryStorage.upsertPayerRate(data);
+  }
+  async bulkUpsertPayerRates(data: InsertPayerRate[]) {
+    return revenueRecoveryStorage.bulkUpsertPayerRates(data);
+  }
+  async buildRatesFromHistory(payer?: string) {
+    return revenueRecoveryStorage.buildRatesFromHistory(payer);
+  }
+
+  // Denial Intelligence — delegate to storage-denial-intelligence module
+  async getDenialSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }) {
+    return denialIntelligenceStorage.getDenialSummary(filters);
+  }
+  async getTopDenialCodes(filters: { locationId?: string; limit?: number }) {
+    return denialIntelligenceStorage.getTopDenialCodes(filters);
+  }
+  async getProviderDenialOutliers(filters: { dateFrom?: string; dateTo?: string }) {
+    return denialIntelligenceStorage.getProviderDenialOutliers(filters);
+  }
+  async getDenialTrends(filters: { locationId?: string; months?: number }) {
+    return denialIntelligenceStorage.getDenialTrends(filters);
   }
 }
 

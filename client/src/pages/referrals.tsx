@@ -357,10 +357,10 @@ export default function ReferralsPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-4 max-w-7xl mx-auto">
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-referrals-title">Patients</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground">{total} total cases &middot; {activeCount} active &middot; {dischargedCount} discharged</p>
+          <h1 data-testid="text-referrals-title">Patients</h1>
+          <p className="page-subtitle">{total} total cases &middot; {activeCount} active &middot; {dischargedCount} discharged</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isOwner && selectedIds.size > 0 && (

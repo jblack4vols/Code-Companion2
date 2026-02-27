@@ -187,7 +187,8 @@ export default function DashboardPage() {
 
   if (loadingStats) {
     return (
-      <div className="p-4 sm:p-6 space-y-6">
+      <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
+        <Skeleton className="h-8 w-40" />
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           {[1,2,3,4,5,6,7,8].map(i => (
             <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>
@@ -219,18 +220,18 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-start justify-between gap-4 flex-wrap">
+      <div className="page-header">
         <div>
-          <h1 className="text-xl sm:text-2xl font-bold" data-testid="text-dashboard-title">Dashboard</h1>
-          <div className="flex items-center gap-2 mt-1">
-            <p className="text-xs sm:text-sm text-muted-foreground">Overview of your referring provider pipeline</p>
+          <h1 data-testid="text-dashboard-title">Dashboard</h1>
+          <p className="page-subtitle flex items-center gap-2">
+            Overview of your referring provider pipeline
             {dataUpdatedAt > 0 && (
-              <span className="text-[10px] text-muted-foreground flex items-center gap-1" data-testid="text-last-updated">
+              <span className="text-[10px] text-muted-foreground/70 flex items-center gap-1" data-testid="text-last-updated">
                 <Clock className="w-3 h-3" />
                 Updated {format(new Date(dataUpdatedAt), "h:mm a")}
               </span>
             )}
-          </div>
+          </p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="flex items-center gap-1 border rounded-md p-0.5" data-testid="group-date-presets">

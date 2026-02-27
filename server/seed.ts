@@ -41,6 +41,14 @@ export async function seed() {
     const usersData = await loadJsonData("users.json");
     if (usersData.length > 0) {
       const bcrypt = await import("bcryptjs");
+      if (process.env.NODE_ENV === "production") {
+        if (!process.env.SEED_OWNER_PASSWORD) {
+          console.warn("[seed] WARNING: SEED_OWNER_PASSWORD env var is not set. Using weak default password in production!");
+        }
+        if (!process.env.SEED_USER_PASSWORD) {
+          console.warn("[seed] WARNING: SEED_USER_PASSWORD env var is not set. Using weak default password in production!");
+        }
+      }
       const seedOwnerPw = process.env.SEED_OWNER_PASSWORD || "change_me_owner";
       const seedUserPw = process.env.SEED_USER_PASSWORD || "change_me_user";
       const ownerHash = await bcrypt.hash(seedOwnerPw, 10);
