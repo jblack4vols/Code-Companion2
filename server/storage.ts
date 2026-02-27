@@ -206,6 +206,9 @@ export interface IStorage {
   linkReferralToPhysician(referralId: string, physicianId: string): Promise<Referral | undefined>;
   bulkLinkReferralsByProviderName(providerName: string, physicianId: string, excludeId: string): Promise<number>;
   categorizeReferralAsSelfReferral(referralId: string): Promise<Referral | undefined>;
+
+  // At-risk referral sources
+  getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1799,6 +1802,162 @@ export class DatabaseStorage implements IStorage {
       updatedAt: new Date(),
     }).where(eq(referrals.id, referralId)).returning();
     return updated;
+  }
+
+  async getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }) {
+    const now = new Date();
+    const currentMonthEnd = now.toISOString().slice(0, 10);
+    const currentMonthStart = new Date(now);
+    currentMonthStart.setDate(currentMonthStart.getDate() - 30);
+    const currentStartStr = currentMonthStart.toISOString().slice(0, 10);
+
+    const priorMonthEnd = currentStartStr;
+    const priorMonthStart = new Date(currentMonthStart);
+    priorMonthStart.setDate(priorMonthStart.getDate() - 30);
+    const priorStartStr = priorMonthStart.toISOString().slice(0, 10);
+
+    const touchpointCutoff = new Date(now);
+    touchpointCutoff.setDate(touchpointCutoff.getDate() - 30);
+
+    // Build physician filter conditions for location/territory
+    const physConditions: any[] = [isNull(physicians.deletedAt)];
+    if (filters?.locationId) {
+      physConditions.push(sql`${physicians.id} IN (
+        SELECT DISTINCT physician_id FROM referrals
+        WHERE location_id = ${filters.locationId} AND deleted_at IS NULL
+      )`);
+    }
+    if (filters?.territoryId) {
+      physConditions.push(eq(physicians.territoryId, filters.territoryId));
+    }
+
+    // Get eligible physician IDs
+    const eligiblePhysicians = await db.select({ id: physicians.id })
+      .from(physicians)
+      .where(and(...physConditions));
+    const eligibleIds = eligiblePhysicians.map(p => p.id);
+    if (eligibleIds.length === 0) {
+      return { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd } };
+    }
+
+    // Query A: referrals in current 30-day window
+    const currentCounts = await db.select({
+      physicianId: referrals.physicianId,
+      count: sql<number>`count(*)`,
+    }).from(referrals)
+      .where(and(
+        isNull(referrals.deletedAt),
+        isNotNull(referrals.physicianId),
+        sql`${referrals.referralDate} >= ${currentStartStr}`,
+        sql`${referrals.referralDate} <= ${currentMonthEnd}`,
+      ))
+      .groupBy(referrals.physicianId);
+
+    // Query B: referrals in prior 30-day window
+    const priorCounts = await db.select({
+      physicianId: referrals.physicianId,
+      count: sql<number>`count(*)`,
+    }).from(referrals)
+      .where(and(
+        isNull(referrals.deletedAt),
+        isNotNull(referrals.physicianId),
+        sql`${referrals.referralDate} >= ${priorStartStr}`,
+        sql`${referrals.referralDate} < ${priorMonthEnd}`,
+      ))
+      .groupBy(referrals.physicianId);
+
+    const currentMap = new Map(currentCounts.map(c => [c.physicianId, Number(c.count)]));
+    const priorMap = new Map(priorCounts.map(c => [c.physicianId, Number(c.count)]));
+
+    // Compute decline: >20% drop, only for physicians with prior referrals
+    const declining: { physicianId: string; currentCount: number; priorCount: number; changePercent: number }[] = [];
+    const eligibleSet = new Set(eligibleIds);
+
+    const priorEntries = Array.from(priorMap.entries());
+    for (let i = 0; i < priorEntries.length; i++) {
+      const [physId, priorCount] = priorEntries[i];
+      if (!physId || priorCount === 0 || !eligibleSet.has(physId)) continue;
+      const currentCount = currentMap.get(physId) || 0;
+      const changePercent = Math.round(((currentCount - priorCount) / priorCount) * 100);
+      if (changePercent <= -20) {
+        declining.push({ physicianId: physId, currentCount, priorCount, changePercent });
+      }
+    }
+
+    if (declining.length === 0) {
+      return { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd } };
+    }
+
+    const decliningIds = declining.map(d => d.physicianId);
+
+    // Query C: physicians with no recent touchpoint
+    const noTouchpoint = await db.select({ id: physicians.id })
+      .from(physicians)
+      .where(and(
+        sql`${physicians.id} IN (${sql.join(decliningIds.map(id => sql`${id}`), sql`, `)})`,
+        or(
+          isNull(physicians.lastInteractionAt),
+          sql`${physicians.lastInteractionAt} < ${touchpointCutoff.toISOString()}`,
+        ),
+      ));
+    const noTouchpointSet = new Set(noTouchpoint.map(p => p.id));
+
+    // Query D: physicians with overdue open tasks
+    const overdueTasks = await db.select({
+      physicianId: tasks.physicianId,
+    }).from(tasks)
+      .where(and(
+        sql`${tasks.physicianId} IN (${sql.join(decliningIds.map(id => sql`${id}`), sql`, `)})`,
+        eq(tasks.status, "OPEN"),
+        sql`${tasks.dueAt} < ${now.toISOString()}`,
+      ))
+      .groupBy(tasks.physicianId);
+    const overdueSet = new Set(overdueTasks.map(t => t.physicianId));
+
+    // Intersect: decline AND (no-touchpoint OR overdue-task)
+    const atRisk = declining.filter(d =>
+      noTouchpointSet.has(d.physicianId) || overdueSet.has(d.physicianId)
+    );
+
+    if (atRisk.length === 0) {
+      return { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd } };
+    }
+
+    // Hydrate physician details
+    const atRiskIds = atRisk.map(d => d.physicianId);
+    const physicianDetails = await db.select({
+      id: physicians.id,
+      firstName: physicians.firstName,
+      lastName: physicians.lastName,
+      credentials: physicians.credentials,
+      specialty: physicians.specialty,
+      practiceName: physicians.practiceName,
+      relationshipStage: physicians.relationshipStage,
+      assignedOwnerId: physicians.assignedOwnerId,
+      territoryId: physicians.territoryId,
+      lastInteractionAt: physicians.lastInteractionAt,
+    }).from(physicians)
+      .where(sql`${physicians.id} IN (${sql.join(atRiskIds.map(id => sql`${id}`), sql`, `)})`);
+
+    const physMap = new Map(physicianDetails.map(p => [p.id, p]));
+
+    const result = atRisk.map(d => ({
+      ...d,
+      physician: physMap.get(d.physicianId) || null,
+      riskSignal: noTouchpointSet.has(d.physicianId) ? "no_contact" : "overdue_task",
+      daysSinceContact: (() => {
+        const phys = physMap.get(d.physicianId);
+        if (!phys?.lastInteractionAt) return null;
+        return Math.floor((now.getTime() - new Date(phys.lastInteractionAt).getTime()) / (1000 * 60 * 60 * 24));
+      })(),
+    })).filter(d => d.physician !== null)
+      .sort((a, b) => a.changePercent - b.changePercent);
+
+    return {
+      data: result,
+      total: result.length,
+      period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd },
+    };
   }
 }
 

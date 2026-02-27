@@ -552,37 +552,7 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        <Card className="lg:col-span-2">
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <div>
-              <h3 className="text-sm font-semibold">At-Risk Referring Providers</h3>
-              <p className="text-xs text-muted-foreground">Need attention</p>
-            </div>
-            <AlertTriangle className="w-4 h-4 text-chart-5" />
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {physicians?.filter(p => p.relationshipStage === "AT_RISK").length ? (
-              <div className="space-y-2">
-                {physicians.filter(p => p.relationshipStage === "AT_RISK").slice(0, 5).map(p => (
-                  <div key={p.id} className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer" onClick={() => navigate(`/physicians/${p.id}`)} data-testid={`card-at-risk-${p.id}`}>
-                    <div className="w-8 h-8 rounded-md bg-chart-5/15 flex items-center justify-center text-chart-5 text-xs font-medium shrink-0">
-                      {p.firstName[0]}{p.lastName[0]}
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">Dr. {p.firstName} {p.lastName}</p>
-                      <p className="text-xs text-muted-foreground truncate">{p.practiceName}</p>
-                    </div>
-                    <Badge variant="outline" className="bg-chart-5/10 text-chart-5 text-[10px]">At Risk</Badge>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-                No at-risk referring providers
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <AtRiskReferralSourcesCard locationId={locationId} territoryId={territoryId} navigate={navigate} />
       </div>
 
       <Card>
@@ -600,6 +570,86 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { locationId: string; territoryId: string; navigate: (to: string) => void }) {
+  const atRiskParams = new URLSearchParams();
+  if (locationId) atRiskParams.set("locationId", locationId);
+  if (territoryId) atRiskParams.set("territoryId", territoryId);
+  const atRiskQs = atRiskParams.toString();
+  const atRiskUrl = atRiskQs ? `/api/at-risk-sources?${atRiskQs}` : "/api/at-risk-sources";
+
+  const { data: atRiskData } = useQuery<any>({
+    queryKey: [atRiskUrl],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const items = atRiskData?.data || [];
+  const total = atRiskData?.total || 0;
+
+  return (
+    <Card className="lg:col-span-2">
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <div>
+          <h3 className="text-sm font-semibold" data-testid="text-at-risk-title">At-Risk Referral Sources</h3>
+          <p className="text-xs text-muted-foreground">
+            {total > 0 ? `${total} provider${total !== 1 ? "s" : ""} need attention` : "No at-risk providers detected"}
+          </p>
+        </div>
+        <AlertTriangle className="w-4 h-4 text-chart-5" />
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        {items.length > 0 ? (
+          <div className="space-y-2">
+            {items.slice(0, 10).map((item: any) => {
+              const phys = item.physician;
+              if (!phys) return null;
+              return (
+                <div
+                  key={phys.id}
+                  className="flex items-center gap-3 p-2 rounded-md hover-elevate cursor-pointer"
+                  onClick={() => navigate(`/physicians/${phys.id}`)}
+                  data-testid={`card-at-risk-${phys.id}`}
+                >
+                  <div className="w-8 h-8 rounded-md bg-chart-5/15 flex items-center justify-center text-chart-5 text-xs font-medium shrink-0">
+                    {phys.firstName?.[0]}{phys.lastName?.[0]}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium truncate">Dr. {phys.firstName} {phys.lastName}</p>
+                    <p className="text-xs text-muted-foreground truncate">{phys.practiceName}</p>
+                  </div>
+                  <Badge variant="outline" className="bg-red-500/10 text-red-600 dark:text-red-400 text-[10px] shrink-0">
+                    {item.changePercent}%
+                  </Badge>
+                  <Badge variant="outline" className="bg-chart-5/10 text-chart-5 text-[10px] shrink-0">
+                    {item.riskSignal === "no_contact"
+                      ? `No contact ${item.daysSinceContact ? `${item.daysSinceContact}d` : ""}`
+                      : "Overdue task"}
+                  </Badge>
+                </div>
+              );
+            })}
+            {total > 10 && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="w-full text-xs"
+                onClick={() => navigate("/physicians?stage=AT_RISK")}
+                data-testid="button-view-all-at-risk"
+              >
+                View all {total} at-risk sources
+                <ChevronRight className="w-3 h-3 ml-1" />
+              </Button>
+            )}
+          </div>
+        ) : (
+          <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+            No at-risk referral sources detected
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

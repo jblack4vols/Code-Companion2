@@ -6,9 +6,23 @@ import {
   physicianStageHistory, users, locations, territories,
   territoryMonthlySummary,
 } from "@shared/schema";
-import { requireAuth, requireRole } from "./shared";
+import { requireAuth, requireRole, qstr } from "./shared";
+import { storage } from "../storage";
 
 export function registerFeatureRoutes(app: Express) {
+  app.get("/api/at-risk-sources", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
+    try {
+      const filters: { locationId?: string; territoryId?: string } = {};
+      const locationId = qstr(req.query.locationId as string);
+      const territoryId = qstr(req.query.territoryId as string);
+      if (locationId) filters.locationId = locationId;
+      if (territoryId) filters.territoryId = territoryId;
+      const result = await storage.getAtRiskReferralSources(filters);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
   app.get("/api/physicians/:id/scorecard", requireAuth, async (req, res) => {
     try {
       const physId = req.params.id;
