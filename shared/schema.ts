@@ -1,6 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, jsonb, index, pgEnum, numeric, uniqueIndex,
+  pgTable, text, varchar, integer, boolean, timestamp, date, real, json, jsonb, index, pgEnum, numeric, uniqueIndex, uuid,
 } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
@@ -55,6 +55,9 @@ export const financialAlertTypeEnum = pgEnum("financial_alert_type", [
   "LOW_PROVIDER_REVENUE",
   "LOW_ARRIVAL_RATE",
   "HIGH_LABOR_PERCENT",
+  "HIGH_BILLING_LAG",
+  "HIGH_AR_AGING",
+  "UNDERPAYMENT_RATE",
 ]);
 
 export const users = pgTable("users", {
@@ -704,3 +707,115 @@ export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
 });
+
+// --- Revenue Leakage Recovery Engine ---
+
+export const claimStatusEnum = pgEnum("claim_status", [
+  "SUBMITTED", "PAID", "PARTIAL", "DENIED", "APPEALED", "ADJUSTED", "VOID",
+]);
+
+export const appealStatusEnum = pgEnum("appeal_status", [
+  "DRAFTED", "SUBMITTED", "WON", "LOST", "WITHDRAWN",
+]);
+
+export const claims = pgTable("claims", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  claimNumber: varchar("claim_number", { length: 50 }).notNull(),
+  locationId: uuid("location_id").references(() => locations.id),
+  providerId: uuid("provider_id"), // user who provided service (therapist)
+  physicianId: uuid("physician_id").references(() => physicians.id), // referring physician
+  patientAccountNumber: varchar("patient_account_number", { length: 50 }),
+  dos: date("dos").notNull(), // date of service
+  cptCodes: text("cpt_codes"), // comma-separated CPT codes
+  units: integer("units").default(0),
+  payer: varchar("payer", { length: 100 }),
+  payerType: varchar("payer_type", { length: 50 }), // Commercial, Medicare, Medicaid, etc.
+  billedAmount: numeric("billed_amount", { precision: 12, scale: 2 }).default("0"),
+  expectedAmount: numeric("expected_amount", { precision: 12, scale: 2 }), // from rate schedule
+  paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }).default("0"),
+  adjustmentAmount: numeric("adjustment_amount", { precision: 12, scale: 2 }).default("0"),
+  patientResponsibility: numeric("patient_responsibility", { precision: 12, scale: 2 }).default("0"),
+  status: claimStatusEnum("status").default("SUBMITTED"),
+  submissionDate: date("submission_date"),
+  paymentDate: date("payment_date"),
+  denialCodes: text("denial_codes"), // comma-separated CARC codes
+  denialReason: text("denial_reason"),
+  isUnderpaid: boolean("is_underpaid").default(false),
+  underpaidAmount: numeric("underpaid_amount", { precision: 12, scale: 2 }),
+  source: varchar("source", { length: 50 }).default("import"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("claims_location_idx").on(table.locationId),
+  index("claims_dos_idx").on(table.dos),
+  index("claims_status_idx").on(table.status),
+  index("claims_payer_idx").on(table.payer),
+  index("claims_underpaid_idx").on(table.isUnderpaid),
+]);
+
+export const claimPayments = pgTable("claim_payments", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  claimId: uuid("claim_id").references(() => claims.id).notNull(),
+  paymentDate: date("payment_date").notNull(),
+  paidAmount: numeric("paid_amount", { precision: 12, scale: 2 }).notNull(),
+  adjustmentAmount: numeric("adjustment_amount", { precision: 12, scale: 2 }).default("0"),
+  adjustmentCodes: text("adjustment_codes"), // CARC/RARC codes
+  checkNumber: varchar("check_number", { length: 50 }),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => [
+  index("claim_payments_claim_idx").on(table.claimId),
+]);
+
+export const payerRateSchedule = pgTable("payer_rate_schedule", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  payer: varchar("payer", { length: 100 }).notNull(),
+  payerType: varchar("payer_type", { length: 50 }),
+  cptCode: varchar("cpt_code", { length: 10 }).notNull(),
+  expectedRate: numeric("expected_rate", { precision: 10, scale: 2 }).notNull(),
+  effectiveDate: date("effective_date"),
+  locationId: uuid("location_id").references(() => locations.id), // null = global default
+  source: varchar("source", { length: 50 }).default("manual"), // "manual" or "calculated"
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("payer_rate_payer_cpt_idx").on(table.payer, table.cptCode),
+]);
+
+export const appealTemplates = pgTable("appeal_templates", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  denialCodePattern: varchar("denial_code_pattern", { length: 50 }), // matches denial codes
+  templateText: text("template_text").notNull(),
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const appeals = pgTable("appeals", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  claimId: uuid("claim_id").references(() => claims.id).notNull(),
+  templateId: uuid("template_id").references(() => appealTemplates.id),
+  generatedText: text("generated_text").notNull(),
+  status: appealStatusEnum("status").default("DRAFTED"),
+  submittedDate: date("submitted_date"),
+  outcomeDate: date("outcome_date"),
+  outcomeNotes: text("outcome_notes"),
+  recoveredAmount: numeric("recovered_amount", { precision: 12, scale: 2 }),
+  createdBy: uuid("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  index("appeals_claim_idx").on(table.claimId),
+  index("appeals_status_idx").on(table.status),
+]);
+
+export type InsertClaim = typeof claims.$inferInsert;
+export type Claim = typeof claims.$inferSelect;
+export type InsertClaimPayment = typeof claimPayments.$inferInsert;
+export type ClaimPayment = typeof claimPayments.$inferSelect;
+export type InsertPayerRate = typeof payerRateSchedule.$inferInsert;
+export type PayerRate = typeof payerRateSchedule.$inferSelect;
+export type InsertAppealTemplate = typeof appealTemplates.$inferInsert;
+export type AppealTemplate = typeof appealTemplates.$inferSelect;
+export type InsertAppeal = typeof appeals.$inferInsert;
+export type Appeal = typeof appeals.$inferSelect;

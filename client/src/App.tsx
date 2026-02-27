@@ -60,6 +60,12 @@ const UnitEconomicsProviderProductivityPage = lazy(() => import("@/pages/unit-ec
 const UnitEconomicsAlertsPage = lazy(() => import("@/pages/unit-economics-alerts"));
 const UnitEconomicsTargetsPage = lazy(() => import("@/pages/unit-economics-targets"));
 const UnitEconomicsDataImportPage = lazy(() => import("@/pages/unit-economics-data-import"));
+const RevenueDashboardPage = lazy(() => import("@/pages/revenue-dashboard"));
+const RevenueClaimsPage = lazy(() => import("@/pages/revenue-claims"));
+const RevenueDenialsPage = lazy(() => import("@/pages/revenue-denials"));
+const RevenueBillingLagPage = lazy(() => import("@/pages/revenue-billing-lag"));
+const RevenueAppealsPage = lazy(() => import("@/pages/revenue-appeals"));
+const RevenueImportPage = lazy(() => import("@/pages/revenue-import"));
 
 function LazyFallback() {
   return (
@@ -120,6 +126,12 @@ function AuthenticatedRouter() {
         <Route path="/unit-economics/alerts" component={UnitEconomicsAlertsPage} />
         <Route path="/unit-economics/targets" component={UnitEconomicsTargetsPage} />
         <Route path="/unit-economics/import" component={UnitEconomicsDataImportPage} />
+        <Route path="/revenue" component={RevenueDashboardPage} />
+        <Route path="/revenue/claims" component={RevenueClaimsPage} />
+        <Route path="/revenue/denials" component={RevenueDenialsPage} />
+        <Route path="/revenue/billing-lag" component={RevenueBillingLagPage} />
+        <Route path="/revenue/appeals" component={RevenueAppealsPage} />
+        <Route path="/revenue/import" component={RevenueImportPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

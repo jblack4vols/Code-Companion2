@@ -83,3 +83,111 @@ export async function ensureSearchIndexes() {
     console.warn("[DB] Could not create search indexes:", err);
   }
 }
+
+/**
+ * Create Revenue Leakage Recovery Engine tables if they don't exist.
+ * Uses CREATE TABLE IF NOT EXISTS to be safe on repeated startup.
+ */
+export async function ensureRevenueRecoveryTables() {
+  try {
+    const statements = [
+      `CREATE TYPE IF NOT EXISTS claim_status AS ENUM ('SUBMITTED','PAID','PARTIAL','DENIED','APPEALED','ADJUSTED','VOID')`,
+      `CREATE TYPE IF NOT EXISTS appeal_status AS ENUM ('DRAFTED','SUBMITTED','WON','LOST','WITHDRAWN')`,
+      `CREATE TABLE IF NOT EXISTS claims (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        claim_number VARCHAR(50) NOT NULL,
+        location_id UUID REFERENCES locations(id),
+        provider_id UUID,
+        physician_id UUID REFERENCES physicians(id),
+        patient_account_number VARCHAR(50),
+        dos DATE NOT NULL,
+        cpt_codes TEXT,
+        units INTEGER DEFAULT 0,
+        payer VARCHAR(100),
+        payer_type VARCHAR(50),
+        billed_amount NUMERIC(12,2) DEFAULT 0,
+        expected_amount NUMERIC(12,2),
+        paid_amount NUMERIC(12,2) DEFAULT 0,
+        adjustment_amount NUMERIC(12,2) DEFAULT 0,
+        patient_responsibility NUMERIC(12,2) DEFAULT 0,
+        status claim_status DEFAULT 'SUBMITTED',
+        submission_date DATE,
+        payment_date DATE,
+        denial_codes TEXT,
+        denial_reason TEXT,
+        is_underpaid BOOLEAN DEFAULT false,
+        underpaid_amount NUMERIC(12,2),
+        source VARCHAR(50) DEFAULT 'import',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS claim_payments (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        claim_id UUID NOT NULL REFERENCES claims(id),
+        payment_date DATE NOT NULL,
+        paid_amount NUMERIC(12,2) NOT NULL,
+        adjustment_amount NUMERIC(12,2) DEFAULT 0,
+        adjustment_codes TEXT,
+        check_number VARCHAR(50),
+        created_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS payer_rate_schedule (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        payer VARCHAR(100) NOT NULL,
+        payer_type VARCHAR(50),
+        cpt_code VARCHAR(10) NOT NULL,
+        expected_rate NUMERIC(10,2) NOT NULL,
+        effective_date DATE,
+        location_id UUID REFERENCES locations(id),
+        source VARCHAR(50) DEFAULT 'manual',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS appeal_templates (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        name VARCHAR(200) NOT NULL,
+        denial_code_pattern VARCHAR(50),
+        template_text TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      `CREATE TABLE IF NOT EXISTS appeals (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        claim_id UUID NOT NULL REFERENCES claims(id),
+        template_id UUID REFERENCES appeal_templates(id),
+        generated_text TEXT NOT NULL,
+        status appeal_status DEFAULT 'DRAFTED',
+        submitted_date DATE,
+        outcome_date DATE,
+        outcome_notes TEXT,
+        recovered_amount NUMERIC(12,2),
+        created_by UUID REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      )`,
+      // Indexes
+      `CREATE INDEX IF NOT EXISTS idx_claims_location ON claims(location_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_claims_dos ON claims(dos)`,
+      `CREATE INDEX IF NOT EXISTS idx_claims_status ON claims(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_claims_payer ON claims(payer)`,
+      `CREATE INDEX IF NOT EXISTS idx_claims_underpaid ON claims(is_underpaid)`,
+      `CREATE INDEX IF NOT EXISTS idx_claim_payments_claim ON claim_payments(claim_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_payer_rate_payer_cpt ON payer_rate_schedule(payer, cpt_code)`,
+      `CREATE INDEX IF NOT EXISTS idx_appeals_claim ON appeals(claim_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_appeals_status ON appeals(status)`,
+    ];
+
+    for (const stmt of statements) {
+      try {
+        await db.execute(sql.raw(stmt));
+      } catch (e: any) {
+        // Ignore "already exists" errors for types
+        if (!e?.message?.includes("already exists")) throw e;
+      }
+    }
+    console.log("[DB] Revenue recovery tables ensured");
+  } catch (err) {
+    console.warn("[DB] Could not create revenue recovery tables:", err);
+  }
+}

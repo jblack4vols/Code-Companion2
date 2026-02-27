@@ -103,8 +103,9 @@ httpServer.listen(
         appReady = true;
         log("Application fully initialized");
 
-        const { ensureSearchIndexes } = await import("./db");
+        const { ensureSearchIndexes, ensureRevenueRecoveryTables } = await import("./db");
         await ensureSearchIndexes().catch(err => console.error("Index error:", err));
+        await ensureRevenueRecoveryTables().catch(err => console.error("Revenue recovery tables error:", err));
 
         const { seed } = await import("./seed");
         await seed().catch(err => console.error("Seed error:", err));

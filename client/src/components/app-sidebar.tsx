@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -68,6 +68,15 @@ const financeItems = [
   { title: "Import Financials", url: "/unit-economics/import", icon: Upload },
 ];
 
+const revenueItems = [
+  { title: "Revenue Dashboard", url: "/revenue", icon: DollarSign },
+  { title: "Claims", url: "/revenue/claims", icon: FileText },
+  { title: "Denials", url: "/revenue/denials", icon: XCircle },
+  { title: "Billing Lag", url: "/revenue/billing-lag", icon: Clock },
+  { title: "Appeals", url: "/revenue/appeals", icon: Scale },
+  { title: "Import Claims", url: "/revenue/import", icon: Upload },
+];
+
 const roleLabels: Record<string, string> = {
   OWNER: "Owner",
   DIRECTOR: "Director",
@@ -96,12 +105,14 @@ export function AppSidebar() {
   const isAdminActive = location.startsWith("/admin/") || location === "/import";
   const isIntelActive = location.startsWith("/dashboards/") || location === "/roi-calculator" || location === "/leaderboard";
   const isFinanceActive = location.startsWith("/unit-economics");
+  const isRevenueActive = location.startsWith("/revenue");
   const opsUrls = ["/tiering", "/declining", "/tasks", "/map", "/territories", "/goals"];
   const isOpsActive = opsUrls.some((u) => location === u || location.startsWith(u + "/"));
   const [adminOpen, setAdminOpen] = useState(isAdminActive);
   const [intelOpen, setIntelOpen] = useState(isIntelActive);
   const [opsOpen, setOpsOpen] = useState(isOpsActive);
   const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
+  const [revenueOpen, setRevenueOpen] = useState(isRevenueActive);
 
   useEffect(() => {
     if (!isAdminActive) setAdminOpen(false);
@@ -118,6 +129,10 @@ export function AppSidebar() {
   useEffect(() => {
     if (!isFinanceActive) setFinanceOpen(false);
   }, [isFinanceActive]);
+
+  useEffect(() => {
+    if (!isRevenueActive) setRevenueOpen(false);
+  }, [isRevenueActive]);
 
   if (!user) return null;
 
@@ -267,6 +282,46 @@ export function AppSidebar() {
                               isActive={location === item.url || location.startsWith(item.url + "/")}
                             >
                               <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                                <item.icon className="w-3.5 h-3.5" />
+                                <span>{item.title}</span>
+                              </Link>
+                            </SidebarMenuSubButton>
+                          </SidebarMenuSubItem>
+                        ))}
+                      </SidebarMenuSub>
+                    </CollapsibleContent>
+                  </SidebarMenuItem>
+                </Collapsible>
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+        )}
+
+        {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
+          <SidebarGroup>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                <Collapsible open={revenueOpen || isRevenueActive} onOpenChange={setRevenueOpen} className="group/revenue">
+                  <SidebarMenuItem>
+                    <CollapsibleTrigger asChild>
+                      <SidebarMenuButton
+                        isActive={isRevenueActive}
+                        data-testid="button-revenue-dropdown"
+                      >
+                        <Scale className="w-4 h-4" />
+                        <span>Revenue Recovery</span>
+                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/revenue:rotate-90" />
+                      </SidebarMenuButton>
+                    </CollapsibleTrigger>
+                    <CollapsibleContent>
+                      <SidebarMenuSub>
+                        {revenueItems.map((item) => (
+                          <SidebarMenuSubItem key={item.title}>
+                            <SidebarMenuSubButton
+                              asChild
+                              isActive={location === item.url || (item.url !== "/revenue" && location.startsWith(item.url))}
+                            >
+                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                                 <item.icon className="w-3.5 h-3.5" />
                                 <span>{item.title}</span>
                               </Link>

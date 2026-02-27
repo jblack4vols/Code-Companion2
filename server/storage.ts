@@ -31,14 +31,31 @@ import {
   type ProviderProductivity, type InsertProviderProductivity,
   type FinancialAlert, type InsertFinancialAlert,
   type FinancialTarget, type InsertFinancialTarget,
+  type Claim, type InsertClaim,
+  type ClaimPayment, type InsertClaimPayment,
+  type PayerRate, type InsertPayerRate,
+  type AppealTemplate, type InsertAppealTemplate,
+  type Appeal, type InsertAppeal,
 } from "@shared/schema";
 import * as unitEconomicsStorage from "./storage-unit-economics";
+import * as revenueRecoveryStorage from "./storage-revenue-recovery";
+import * as denialIntelligenceStorage from "./storage-denial-intelligence";
 export type {
   UnitEconomicsLocationSummary,
   UnitEconomicsLocationDetail,
   ProviderProductivityEntry,
   ForecastEntry,
 } from "./storage-unit-economics";
+export type {
+  UnderpaidClaim,
+  ReimbursementSummary,
+} from "./storage-revenue-recovery";
+export type {
+  DenialSummary,
+  DenialCodeStat,
+  ProviderDenialOutlier,
+  DenialTrend,
+} from "./storage-denial-intelligence";
 
 export interface PaginatedResult<T> {
   data: T[];
@@ -303,6 +320,30 @@ export interface IStorage {
   getUnitEconomicsLocationDetail(locationId: string, dateFrom?: string, dateTo?: string): Promise<unitEconomicsStorage.UnitEconomicsLocationDetail>;
   getProviderProductivityLeaderboard(dateFrom?: string, dateTo?: string, locationId?: string): Promise<unitEconomicsStorage.ProviderProductivityEntry[]>;
   getUnitEconomicsForecast(locationId?: string): Promise<unitEconomicsStorage.ForecastEntry[]>;
+
+  // Revenue Recovery - Claims
+  getClaims(filters: { locationId?: string; payer?: string; status?: string; dateFrom?: string; dateTo?: string; isUnderpaid?: boolean; page?: number; pageSize?: number }): Promise<{ data: Claim[]; total: number }>;
+  getClaim(id: string): Promise<Claim | undefined>;
+  upsertClaim(data: InsertClaim): Promise<Claim>;
+  bulkUpsertClaims(data: InsertClaim[]): Promise<{ inserted: number; updated: number }>;
+
+  // Revenue Recovery - Reimbursement Analysis
+  getUnderpaidClaims(filters: { locationId?: string; payer?: string; dateFrom?: string; dateTo?: string; minVariance?: number }): Promise<revenueRecoveryStorage.UnderpaidClaim[]>;
+  getReimbursementSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }): Promise<revenueRecoveryStorage.ReimbursementSummary[]>;
+  calculateExpectedAmount(claimId: string): Promise<number>;
+  flagUnderpaidClaims(filters?: { locationId?: string }): Promise<number>;
+
+  // Revenue Recovery - Payer Rate Schedule
+  getPayerRates(payer?: string, cptCode?: string): Promise<PayerRate[]>;
+  upsertPayerRate(data: InsertPayerRate): Promise<PayerRate>;
+  bulkUpsertPayerRates(data: InsertPayerRate[]): Promise<{ inserted: number; updated: number }>;
+  buildRatesFromHistory(payer?: string): Promise<number>;
+
+  // Denial Intelligence
+  getDenialSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }): Promise<denialIntelligenceStorage.DenialSummary>;
+  getTopDenialCodes(filters: { locationId?: string; limit?: number }): Promise<denialIntelligenceStorage.DenialCodeStat[]>;
+  getProviderDenialOutliers(filters: { dateFrom?: string; dateTo?: string }): Promise<denialIntelligenceStorage.ProviderDenialOutlier[]>;
+  getDenialTrends(filters: { locationId?: string; months?: number }): Promise<denialIntelligenceStorage.DenialTrend[]>;
 }
 
 export interface AtRiskSourceEntry {
@@ -2342,6 +2383,58 @@ export class DatabaseStorage implements IStorage {
   }
   async getUnitEconomicsForecast(locationId?: string) {
     return unitEconomicsStorage.getUnitEconomicsForecast(locationId);
+  }
+
+  // Revenue Recovery — delegate to storage-revenue-recovery module
+  async getClaims(filters: { locationId?: string; payer?: string; status?: string; dateFrom?: string; dateTo?: string; isUnderpaid?: boolean; page?: number; pageSize?: number }) {
+    return revenueRecoveryStorage.getClaims(filters);
+  }
+  async getClaim(id: string) {
+    return revenueRecoveryStorage.getClaim(id);
+  }
+  async upsertClaim(data: InsertClaim) {
+    return revenueRecoveryStorage.upsertClaim(data);
+  }
+  async bulkUpsertClaims(data: InsertClaim[]) {
+    return revenueRecoveryStorage.bulkUpsertClaims(data);
+  }
+  async getUnderpaidClaims(filters: { locationId?: string; payer?: string; dateFrom?: string; dateTo?: string; minVariance?: number }) {
+    return revenueRecoveryStorage.getUnderpaidClaims(filters);
+  }
+  async getReimbursementSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }) {
+    return revenueRecoveryStorage.getReimbursementSummary(filters);
+  }
+  async calculateExpectedAmount(claimId: string) {
+    return revenueRecoveryStorage.calculateExpectedAmount(claimId);
+  }
+  async flagUnderpaidClaims(filters?: { locationId?: string }) {
+    return revenueRecoveryStorage.flagUnderpaidClaims(filters);
+  }
+  async getPayerRates(payer?: string, cptCode?: string) {
+    return revenueRecoveryStorage.getPayerRates(payer, cptCode);
+  }
+  async upsertPayerRate(data: InsertPayerRate) {
+    return revenueRecoveryStorage.upsertPayerRate(data);
+  }
+  async bulkUpsertPayerRates(data: InsertPayerRate[]) {
+    return revenueRecoveryStorage.bulkUpsertPayerRates(data);
+  }
+  async buildRatesFromHistory(payer?: string) {
+    return revenueRecoveryStorage.buildRatesFromHistory(payer);
+  }
+
+  // Denial Intelligence — delegate to storage-denial-intelligence module
+  async getDenialSummary(filters: { locationId?: string; dateFrom?: string; dateTo?: string }) {
+    return denialIntelligenceStorage.getDenialSummary(filters);
+  }
+  async getTopDenialCodes(filters: { locationId?: string; limit?: number }) {
+    return denialIntelligenceStorage.getTopDenialCodes(filters);
+  }
+  async getProviderDenialOutliers(filters: { dateFrom?: string; dateTo?: string }) {
+    return denialIntelligenceStorage.getProviderDenialOutliers(filters);
+  }
+  async getDenialTrends(filters: { locationId?: string; months?: number }) {
+    return denialIntelligenceStorage.getDenialTrends(filters);
   }
 }
 
