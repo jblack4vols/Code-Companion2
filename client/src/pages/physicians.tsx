@@ -11,7 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Textarea } from "@/components/ui/textarea";
-import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star, Trash2 } from "lucide-react";
+import { Search, Plus, Stethoscope, ChevronLeft, ChevronRight, X, ArrowUpDown, ArrowUp, ArrowDown, Building2, Users, Download, Merge, ToggleLeft, CheckSquare, MessageSquare, Phone, Mail, Coffee, Star, Trash2, Loader2, CheckCircle2, Database } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -82,6 +82,8 @@ export default function PhysiciansPage() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [mergeNpi, setMergeNpi] = useState("");
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [npiLookupLoading, setNpiLookupLoading] = useState(false);
+  const [npiLookupResult, setNpiLookupResult] = useState<{ found: boolean; message?: string } | null>(null);
   const pageSize = 50;
 
   const { data: favoriteIds = [] } = useQuery<string[]>({
@@ -233,6 +235,61 @@ export default function PhysiciansPage() {
     onError: (err: any) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
   });
 
+  const enrichMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/npi/enrich", {});
+      return res.json();
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      toast({ title: `NPI enrichment complete`, description: `${data.enriched} enriched, ${data.skipped} skipped, ${data.failed} failed` });
+    },
+    onError: (err: any) => toast({ title: "NPI enrichment failed", description: err.message, variant: "destructive" }),
+  });
+
+  const handleNpiLookup = async (formRef: HTMLFormElement) => {
+    const npiInput = formRef.querySelector<HTMLInputElement>('[name="npi"]');
+    const npi = npiInput?.value?.trim();
+    if (!npi || !/^\d{10}$/.test(npi)) {
+      toast({ title: "Enter a valid 10-digit NPI number", variant: "destructive" });
+      return;
+    }
+    setNpiLookupLoading(true);
+    setNpiLookupResult(null);
+    try {
+      const res = await fetch(`/api/npi/lookup?number=${encodeURIComponent(npi)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Lookup failed");
+      const data = await res.json();
+      if (data.found && data.provider) {
+        const p = data.provider;
+        const setVal = (name: string, val: string) => {
+          const el = formRef.querySelector<HTMLInputElement>(`[name="${name}"]`);
+          if (el && !el.value) {
+            // Use native setter to trigger React's synthetic events
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, val);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        };
+        setVal("firstName", p.firstName);
+        setVal("lastName", p.lastName);
+        setVal("credentials", p.credentials);
+        setVal("specialty", p.specialty);
+        setVal("practiceName", p.practiceName);
+        setVal("phone", p.phone);
+        setVal("city", p.city);
+        setVal("state", p.state);
+        setNpiLookupResult({ found: true, message: `${p.firstName} ${p.lastName}${p.specialty ? ` — ${p.specialty}` : ""}` });
+        toast({ title: "NPI found — form auto-filled" });
+      } else {
+        setNpiLookupResult({ found: false, message: "NPI not found in the NPPES registry" });
+      }
+    } catch {
+      toast({ title: "NPI lookup failed", variant: "destructive" });
+    } finally {
+      setNpiLookupLoading(false);
+    }
+  };
+
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -317,6 +374,18 @@ export default function PhysiciansPage() {
             <Download className="w-4 h-4 mr-1.5" />Export CSV
           </Button>
           {canBulkAction && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => enrichMutation.mutate()}
+              disabled={enrichMutation.isPending}
+              data-testid="button-enrich-npi"
+            >
+              {enrichMutation.isPending ? <Loader2 className="w-4 h-4 mr-1.5 animate-spin" /> : <Database className="w-4 h-4 mr-1.5" />}
+              Enrich from NPI
+            </Button>
+          )}
+          {canBulkAction && (
             <Dialog open={showMerge} onOpenChange={setShowMerge}>
               <DialogTrigger asChild>
                 <Button variant="outline" size="sm" data-testid="button-open-merge">
@@ -338,7 +407,7 @@ export default function PhysiciansPage() {
             </Dialog>
           )}
           {canCreate && (
-            <Dialog open={showAdd} onOpenChange={setShowAdd}>
+            <Dialog open={showAdd} onOpenChange={(open) => { setShowAdd(open); if (!open) { setNpiLookupResult(null); } }}>
               <DialogTrigger asChild>
                 <Button data-testid="button-add-physician"><Plus className="w-4 h-4 mr-2" />Add Referring Provider</Button>
               </DialogTrigger>
@@ -347,7 +416,47 @@ export default function PhysiciansPage() {
                   <DialogTitle>Add New Referring Provider</DialogTitle>
                   <DialogDescription>Add a new referring provider to the directory</DialogDescription>
                 </DialogHeader>
-                <form onSubmit={handleAdd} className="space-y-4">
+                <form onSubmit={handleAdd} className="space-y-4" ref={(el) => { if (el) el.dataset.formRef = "add"; }}>
+                  {/* NPI Lookup section */}
+                  <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                    <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                      <Database className="w-3.5 h-3.5" />
+                      Auto-fill from NPI Registry
+                    </Label>
+                    <div className="flex gap-2">
+                      <Input
+                        name="npi"
+                        placeholder="Enter 10-digit NPI to auto-fill..."
+                        maxLength={10}
+                        className="font-mono"
+                        data-testid="input-physician-npi"
+                        onChange={() => setNpiLookupResult(null)}
+                      />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        disabled={npiLookupLoading}
+                        onClick={(e) => {
+                          const form = (e.target as HTMLElement).closest("form");
+                          if (form) handleNpiLookup(form);
+                        }}
+                        data-testid="button-npi-lookup"
+                      >
+                        {npiLookupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                      </Button>
+                    </div>
+                    {npiLookupResult && (
+                      <div className={`text-xs px-2 py-1.5 rounded border ${npiLookupResult.found ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400" : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400"}`}>
+                        {npiLookupResult.found ? (
+                          <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />Found: {npiLookupResult.message}</span>
+                        ) : (
+                          <span>{npiLookupResult.message}</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="firstName">First Name *</Label>
@@ -364,21 +473,15 @@ export default function PhysiciansPage() {
                       <Input id="credentials" name="credentials" placeholder="M.D., DO, NP, etc." data-testid="input-physician-credentials" />
                     </div>
                     <div className="space-y-1.5">
-                      <Label htmlFor="npi">NPI</Label>
-                      <Input id="npi" name="npi" placeholder="10-digit NPI" maxLength={10} data-testid="input-physician-npi" />
-                    </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
                       <Label htmlFor="specialty">Specialty</Label>
                       <Input id="specialty" name="specialty" placeholder="Orthopedics" data-testid="input-physician-specialty" />
                     </div>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="practiceName">Office/Practice Name</Label>
                       <Input id="practiceName" name="practiceName" data-testid="input-physician-practice" />
                     </div>
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1.5">
                       <Label htmlFor="phone">Phone</Label>
                       <Input id="phone" name="phone" data-testid="input-physician-phone" />

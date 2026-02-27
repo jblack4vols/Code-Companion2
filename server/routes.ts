@@ -24,6 +24,7 @@ import { registerSearchRoutes } from "./routes/search";
 import { registerGoalRoutes } from "./routes/goals";
 import { registerTemplateRoutes } from "./routes/templates";
 import { registerFeatureRoutes } from "./routes/features";
+import { registerNpiRegistryRoutes } from "./routes/npi-registry";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -88,6 +89,7 @@ export async function registerRoutes(
   registerGoalRoutes(app);
   registerTemplateRoutes(app);
   registerFeatureRoutes(app);
+  registerNpiRegistryRoutes(app);
 
   return httpServer;
 }

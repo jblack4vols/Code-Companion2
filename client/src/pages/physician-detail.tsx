@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft, Loader2, Search, Database, CheckCircle2 } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +44,8 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const [newComment, setNewComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
+  const [npiLookupLoading, setNpiLookupLoading] = useState(false);
+  const [npiLookupResult, setNpiLookupResult] = useState<{ found: boolean; message?: string } | null>(null);
 
   const { data: physician, isLoading } = useQuery<Physician>({
     queryKey: ["/api/physicians", params.id],
@@ -185,6 +187,46 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     addCommentMutation.mutate(newComment);
   };
 
+  const handleNpiLookup = async (formRef: HTMLFormElement) => {
+    const npiInput = formRef.querySelector<HTMLInputElement>('[name="npi"]');
+    const npi = npiInput?.value?.trim();
+    if (!npi || !/^\d{10}$/.test(npi)) {
+      toast({ title: "Enter a valid 10-digit NPI number", variant: "destructive" });
+      return;
+    }
+    setNpiLookupLoading(true);
+    setNpiLookupResult(null);
+    try {
+      const res = await fetch(`/api/npi/lookup?number=${encodeURIComponent(npi)}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Lookup failed");
+      const data = await res.json();
+      if (data.found && data.provider) {
+        const p = data.provider;
+        const setVal = (name: string, val: string) => {
+          const el = formRef.querySelector<HTMLInputElement>(`[name="${name}"]`);
+          if (el && !el.value && val) {
+            Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(el, val);
+            el.dispatchEvent(new Event("input", { bubbles: true }));
+          }
+        };
+        setVal("credentials", p.credentials);
+        setVal("specialty", p.specialty);
+        setVal("practiceName", p.practiceName);
+        setVal("phone", p.phone);
+        setVal("city", p.city);
+        setVal("state", p.state);
+        setNpiLookupResult({ found: true, message: `${p.firstName} ${p.lastName}${p.specialty ? ` — ${p.specialty}` : ""}` });
+        toast({ title: "NPI found — empty fields auto-filled" });
+      } else {
+        setNpiLookupResult({ found: false, message: "NPI not found in the NPPES registry" });
+      }
+    } catch {
+      toast({ title: "NPI lookup failed", variant: "destructive" });
+    } finally {
+      setNpiLookupLoading(false);
+    }
+  };
+
   const handleUpdate = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
@@ -274,7 +316,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
             {physician.relationshipStage.replace("_", " ")}
           </Badge>
           {canEdit && !editing && (
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit-physician">
+            <Button variant="outline" size="sm" onClick={() => { setEditing(true); setNpiLookupResult(null); }} data-testid="button-edit-physician">
               <Edit2 className="w-3 h-3 mr-1.5" />Edit
             </Button>
           )}
@@ -335,27 +377,52 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                   <Input name="lastName" defaultValue={physician.lastName} required />
                 </div>
               </div>
+              <div className="bg-muted/50 rounded-lg p-3 space-y-2">
+                <Label className="text-xs font-medium text-muted-foreground flex items-center gap-1.5">
+                  <Database className="w-3.5 h-3.5" />
+                  NPI — fill missing fields from registry
+                </Label>
+                <div className="flex gap-2">
+                  <Input name="npi" defaultValue={physician.npi || ""} placeholder="10-digit NPI" maxLength={10} className="font-mono" data-testid="input-edit-npi" onChange={() => setNpiLookupResult(null)} />
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={npiLookupLoading}
+                    onClick={(e) => {
+                      const form = (e.target as HTMLElement).closest("form");
+                      if (form) handleNpiLookup(form);
+                    }}
+                    data-testid="button-edit-npi-lookup"
+                  >
+                    {npiLookupLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                  </Button>
+                </div>
+                {npiLookupResult && (
+                  <div className={`text-xs px-2 py-1.5 rounded border ${npiLookupResult.found ? "bg-green-500/10 border-green-500/30 text-green-700 dark:text-green-400" : "bg-red-500/10 border-red-500/30 text-red-700 dark:text-red-400"}`}>
+                    {npiLookupResult.found ? (
+                      <span className="flex items-center gap-1.5"><CheckCircle2 className="w-3.5 h-3.5" />Found: {npiLookupResult.message}</span>
+                    ) : (
+                      <span>{npiLookupResult.message}</span>
+                    )}
+                  </div>
+                )}
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Credentials</Label>
                   <Input name="credentials" defaultValue={physician.credentials || ""} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label>NPI</Label>
-                  <Input name="npi" defaultValue={physician.npi || ""} placeholder="10-digit NPI" maxLength={10} className="font-mono" data-testid="input-edit-npi" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
                   <Label>Specialty</Label>
                   <Input name="specialty" defaultValue={physician.specialty || ""} />
                 </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Office/Practice Name</Label>
                   <Input name="practiceName" defaultValue={physician.practiceName || ""} />
                 </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label>Phone</Label>
                   <Input name="phone" defaultValue={physician.phone || ""} />

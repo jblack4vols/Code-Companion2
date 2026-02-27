@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { Readable } from "stream";
 import { requireRole, getClientIp } from "./shared";
+import { searchNpiRegistry, normalizeNpiResult } from "../npi-registry";
 
 export async function registerImportRoutes(app: Express) {
   const multer = (await import("multer")).default;
@@ -346,24 +347,18 @@ export async function registerImportRoutes(app: Express) {
         const batch = npis.slice(i, i + batchSize);
         const promises = batch.map(async (npi: string) => {
           try {
-            const response = await fetch(
-              `https://npiregistry.cms.hhs.gov/api/?number=${encodeURIComponent(npi)}&version=2.1`
-            );
-            if (!response.ok) return { npi, valid: false };
-            const data = await response.json() as any;
+            const data = await searchNpiRegistry({ number: npi });
             if (data.result_count > 0) {
-              const r = data.results[0];
-              const basic = r.basic || {};
-              const addr = r.addresses?.[0] || {};
+              const provider = normalizeNpiResult(data.results[0]);
               return {
                 npi,
                 valid: true,
-                name: `${basic.first_name || ''} ${basic.last_name || ''}`.trim(),
-                specialty: r.taxonomies?.[0]?.desc || null,
-                address: addr.address_1 || null,
-                city: addr.city || null,
-                state: addr.state || null,
-                zip: addr.postal_code?.slice(0, 5) || null,
+                name: `${provider.firstName} ${provider.lastName}`.trim() || undefined,
+                specialty: provider.specialty || undefined,
+                address: provider.primaryOfficeAddress || undefined,
+                city: provider.city || undefined,
+                state: provider.state || undefined,
+                zip: provider.zip || undefined,
               };
             }
             return { npi, valid: false };
