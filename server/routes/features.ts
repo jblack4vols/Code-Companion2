@@ -20,7 +20,8 @@ export function registerFeatureRoutes(app: Express) {
       const result = await storage.getAtRiskReferralSources(filters);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error("at-risk-sources error:", err);
+      res.status(500).json({ message: "Failed to retrieve at-risk sources" });
     }
   });
   app.get("/api/physicians/:id/scorecard", requireAuth, async (req, res) => {

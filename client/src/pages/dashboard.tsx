@@ -580,7 +580,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
   const atRiskQs = atRiskParams.toString();
   const atRiskUrl = atRiskQs ? `/api/at-risk-sources?${atRiskQs}` : "/api/at-risk-sources";
 
-  const { data: atRiskData } = useQuery<any>({
+  const { data: atRiskData, isLoading: atRiskLoading, isError: atRiskError, refetch: refetchAtRisk } = useQuery<any>({
     queryKey: [atRiskUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -594,13 +594,27 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
         <div>
           <h3 className="text-sm font-semibold" data-testid="text-at-risk-title">At-Risk Referral Sources</h3>
           <p className="text-xs text-muted-foreground">
-            {total > 0 ? `${total} provider${total !== 1 ? "s" : ""} need attention` : "No at-risk providers detected"}
+            {atRiskError ? "Failed to load" : total > 0 ? `${total} provider${total !== 1 ? "s" : ""} need attention` : "No at-risk providers detected"}
           </p>
         </div>
         <AlertTriangle className="w-4 h-4 text-chart-5" />
       </CardHeader>
       <CardContent className="p-4 pt-0">
-        {items.length > 0 ? (
+        {atRiskLoading ? (
+          <div className="space-y-2">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center gap-3 p-2">
+                <Skeleton className="w-8 h-8 rounded-md shrink-0" />
+                <div className="flex-1"><Skeleton className="h-4 w-full mb-1" /><Skeleton className="h-3 w-24" /></div>
+              </div>
+            ))}
+          </div>
+        ) : atRiskError ? (
+          <div className="h-40 flex flex-col items-center justify-center">
+            <p className="text-sm text-muted-foreground mb-3" data-testid="text-at-risk-error">Failed to load at-risk data</p>
+            <Button variant="outline" size="sm" onClick={() => refetchAtRisk()} data-testid="button-retry-at-risk">Retry</Button>
+          </div>
+        ) : items.length > 0 ? (
           <div className="space-y-2">
             {items.slice(0, 10).map((item: any) => {
               const phys = item.physician;

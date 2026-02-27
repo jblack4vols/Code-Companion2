@@ -208,7 +208,27 @@ export interface IStorage {
   categorizeReferralAsSelfReferral(referralId: string): Promise<Referral | undefined>;
 
   // At-risk referral sources
-  getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<any>;
+  getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<AtRiskResult>;
+}
+
+export interface AtRiskSourceEntry {
+  physicianId: string;
+  currentCount: number;
+  priorCount: number;
+  changePercent: number;
+  physician: {
+    id: string; firstName: string; lastName: string; credentials: string | null;
+    specialty: string | null; practiceName: string | null; relationshipStage: string;
+    assignedOwnerId: string | null; territoryId: string | null; lastInteractionAt: Date | null;
+  } | null;
+  riskSignal: "no_contact" | "overdue_task";
+  daysSinceContact: number | null;
+}
+
+export interface AtRiskResult {
+  data: AtRiskSourceEntry[];
+  total: number;
+  period: { currentStart: string; currentEnd: string; priorStart: string; priorEnd: string };
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1804,20 +1824,25 @@ export class DatabaseStorage implements IStorage {
     return updated;
   }
 
-  async getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }) {
+  async getAtRiskReferralSources(filters?: { locationId?: string; territoryId?: string }): Promise<AtRiskResult> {
     const now = new Date();
-    const currentMonthEnd = now.toISOString().slice(0, 10);
+    // Use exclusive upper bound [start, end) for consistent date boundaries
+    const currentEndExcl = new Date(now);
+    currentEndExcl.setDate(currentEndExcl.getDate() + 1);
+    const currentEndStr = currentEndExcl.toISOString().slice(0, 10);
     const currentMonthStart = new Date(now);
     currentMonthStart.setDate(currentMonthStart.getDate() - 30);
     const currentStartStr = currentMonthStart.toISOString().slice(0, 10);
 
-    const priorMonthEnd = currentStartStr;
+    const priorEndStr = currentStartStr; // exclusive upper bound for prior window
     const priorMonthStart = new Date(currentMonthStart);
     priorMonthStart.setDate(priorMonthStart.getDate() - 30);
     const priorStartStr = priorMonthStart.toISOString().slice(0, 10);
 
     const touchpointCutoff = new Date(now);
     touchpointCutoff.setDate(touchpointCutoff.getDate() - 30);
+
+    const emptyResult: AtRiskResult = { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentEndStr, priorStart: priorStartStr, priorEnd: priorEndStr } };
 
     // Build physician filter conditions for location/territory
     const physConditions: any[] = [isNull(physicians.deletedAt)];
@@ -1836,11 +1861,12 @@ export class DatabaseStorage implements IStorage {
       .from(physicians)
       .where(and(...physConditions));
     const eligibleIds = eligiblePhysicians.map(p => p.id);
-    if (eligibleIds.length === 0) {
-      return { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd } };
-    }
+    if (eligibleIds.length === 0) return emptyResult;
 
-    // Query A: referrals in current 30-day window
+    // Scope referral queries to eligible physicians only (perf fix)
+    const eligibleIdsSql = sql.join(eligibleIds.map(id => sql`${id}`), sql`, `);
+
+    // Query A: referrals in current 30-day window [currentStart, currentEnd)
     const currentCounts = await db.select({
       physicianId: referrals.physicianId,
       count: sql<number>`count(*)`,
@@ -1848,12 +1874,13 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         isNull(referrals.deletedAt),
         isNotNull(referrals.physicianId),
+        sql`${referrals.physicianId} IN (${eligibleIdsSql})`,
         sql`${referrals.referralDate} >= ${currentStartStr}`,
-        sql`${referrals.referralDate} <= ${currentMonthEnd}`,
+        sql`${referrals.referralDate} < ${currentEndStr}`,
       ))
       .groupBy(referrals.physicianId);
 
-    // Query B: referrals in prior 30-day window
+    // Query B: referrals in prior 30-day window [priorStart, priorEnd)
     const priorCounts = await db.select({
       physicianId: referrals.physicianId,
       count: sql<number>`count(*)`,
@@ -1861,8 +1888,9 @@ export class DatabaseStorage implements IStorage {
       .where(and(
         isNull(referrals.deletedAt),
         isNotNull(referrals.physicianId),
+        sql`${referrals.physicianId} IN (${eligibleIdsSql})`,
         sql`${referrals.referralDate} >= ${priorStartStr}`,
-        sql`${referrals.referralDate} < ${priorMonthEnd}`,
+        sql`${referrals.referralDate} < ${priorEndStr}`,
       ))
       .groupBy(referrals.physicianId);
 
@@ -1871,12 +1899,11 @@ export class DatabaseStorage implements IStorage {
 
     // Compute decline: >20% drop, only for physicians with prior referrals
     const declining: { physicianId: string; currentCount: number; priorCount: number; changePercent: number }[] = [];
-    const eligibleSet = new Set(eligibleIds);
 
     const priorEntries = Array.from(priorMap.entries());
     for (let i = 0; i < priorEntries.length; i++) {
       const [physId, priorCount] = priorEntries[i];
-      if (!physId || priorCount === 0 || !eligibleSet.has(physId)) continue;
+      if (!physId || priorCount === 0) continue;
       const currentCount = currentMap.get(physId) || 0;
       const changePercent = Math.round(((currentCount - priorCount) / priorCount) * 100);
       if (changePercent <= -20) {
@@ -1884,17 +1911,16 @@ export class DatabaseStorage implements IStorage {
       }
     }
 
-    if (declining.length === 0) {
-      return { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd } };
-    }
+    if (declining.length === 0) return emptyResult;
 
     const decliningIds = declining.map(d => d.physicianId);
+    const decliningIdsSql = sql.join(decliningIds.map(id => sql`${id}`), sql`, `);
 
     // Query C: physicians with no recent touchpoint
     const noTouchpoint = await db.select({ id: physicians.id })
       .from(physicians)
       .where(and(
-        sql`${physicians.id} IN (${sql.join(decliningIds.map(id => sql`${id}`), sql`, `)})`,
+        sql`${physicians.id} IN (${decliningIdsSql})`,
         or(
           isNull(physicians.lastInteractionAt),
           sql`${physicians.lastInteractionAt} < ${touchpointCutoff.toISOString()}`,
@@ -1907,7 +1933,7 @@ export class DatabaseStorage implements IStorage {
       physicianId: tasks.physicianId,
     }).from(tasks)
       .where(and(
-        sql`${tasks.physicianId} IN (${sql.join(decliningIds.map(id => sql`${id}`), sql`, `)})`,
+        sql`${tasks.physicianId} IN (${decliningIdsSql})`,
         eq(tasks.status, "OPEN"),
         sql`${tasks.dueAt} < ${now.toISOString()}`,
       ))
@@ -1919,9 +1945,7 @@ export class DatabaseStorage implements IStorage {
       noTouchpointSet.has(d.physicianId) || overdueSet.has(d.physicianId)
     );
 
-    if (atRisk.length === 0) {
-      return { data: [], total: 0, period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd } };
-    }
+    if (atRisk.length === 0) return emptyResult;
 
     // Hydrate physician details
     const atRiskIds = atRisk.map(d => d.physicianId);
@@ -1944,7 +1968,7 @@ export class DatabaseStorage implements IStorage {
     const result = atRisk.map(d => ({
       ...d,
       physician: physMap.get(d.physicianId) || null,
-      riskSignal: noTouchpointSet.has(d.physicianId) ? "no_contact" : "overdue_task",
+      riskSignal: (noTouchpointSet.has(d.physicianId) ? "no_contact" : "overdue_task") as "no_contact" | "overdue_task",
       daysSinceContact: (() => {
         const phys = physMap.get(d.physicianId);
         if (!phys?.lastInteractionAt) return null;
@@ -1956,7 +1980,7 @@ export class DatabaseStorage implements IStorage {
     return {
       data: result,
       total: result.length,
-      period: { currentStart: currentStartStr, currentEnd: currentMonthEnd, priorStart: priorStartStr, priorEnd: priorMonthEnd },
+      period: { currentStart: currentStartStr, currentEnd: currentEndStr, priorStart: priorStartStr, priorEnd: priorEndStr },
     };
   }
 }

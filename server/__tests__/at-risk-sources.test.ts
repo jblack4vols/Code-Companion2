@@ -160,6 +160,7 @@ describe("At-Risk Referral Sources Computation", () => {
     expect(result[0].physicianId).toBe("p1");
     expect(result[0].changePercent).toBe(-50);
     expect(result[0].riskSignal).toBe("no_contact");
+    expect(result[0].daysSinceContact).toBe(45);
   });
 
   it("includes physician with >20% decline + overdue task", () => {
@@ -175,6 +176,7 @@ describe("At-Risk Referral Sources Computation", () => {
     const result = computeAtRiskSources(current, prior, physicians, tasks, NOW);
     expect(result).toHaveLength(1);
     expect(result[0].riskSignal).toBe("overdue_task");
+    expect(result[0].daysSinceContact).toBe(5);
   });
 
   it("excludes physician with >20% decline but recent touchpoint and no overdue task", () => {
@@ -283,5 +285,80 @@ describe("At-Risk Referral Sources Computation", () => {
     expect(result).toHaveLength(2);
     expect(result[0].physicianId).toBe("p2");
     expect(result[1].physicianId).toBe("p1");
+  });
+
+  it("includes physician at exactly -20% boundary", () => {
+    const physicians = [makePhysician({ id: "p1", lastInteractionAt: null })];
+    const prior: ReferralCount[] = [{ physicianId: "p1", count: 10 }];
+    const current: ReferralCount[] = [{ physicianId: "p1", count: 8 }]; // exactly -20%
+
+    const result = computeAtRiskSources(current, prior, physicians, [], NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].changePercent).toBe(-20);
+  });
+
+  it("excludes physician at -19% (just above threshold)", () => {
+    const physicians = [makePhysician({ id: "p1", lastInteractionAt: null })];
+    // 100 -> 81 = -19%
+    const prior: ReferralCount[] = [{ physicianId: "p1", count: 100 }];
+    const current: ReferralCount[] = [{ physicianId: "p1", count: 81 }];
+
+    const result = computeAtRiskSources(current, prior, physicians, [], NOW);
+    expect(result).toHaveLength(0);
+  });
+
+  it("handles 100% decline (zero current referrals)", () => {
+    const physicians = [makePhysician({ id: "p1", lastInteractionAt: null })];
+    const prior: ReferralCount[] = [{ physicianId: "p1", count: 8 }];
+    const current: ReferralCount[] = []; // no current referrals at all
+
+    const result = computeAtRiskSources(current, prior, physicians, [], NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].changePercent).toBe(-100);
+    expect(result[0].currentCount).toBe(0);
+  });
+
+  it("no_contact takes priority when both risk signals present", () => {
+    const physicians = [
+      makePhysician({ id: "p1", lastInteractionAt: DAYS_AGO(60) }),
+    ];
+    const prior: ReferralCount[] = [{ physicianId: "p1", count: 10 }];
+    const current: ReferralCount[] = [{ physicianId: "p1", count: 5 }];
+    const tasks: TaskInfo[] = [
+      { physicianId: "p1", status: "OPEN", dueAt: DAYS_AGO(7) },
+    ];
+
+    const result = computeAtRiskSources(current, prior, physicians, tasks, NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].riskSignal).toBe("no_contact"); // no_contact wins
+  });
+
+  it("ignores completed overdue tasks", () => {
+    const physicians = [
+      makePhysician({ id: "p1", lastInteractionAt: DAYS_AGO(5) }),
+    ];
+    const prior: ReferralCount[] = [{ physicianId: "p1", count: 10 }];
+    const current: ReferralCount[] = [{ physicianId: "p1", count: 5 }];
+    const tasks: TaskInfo[] = [
+      { physicianId: "p1", status: "DONE", dueAt: DAYS_AGO(3) },
+    ];
+
+    const result = computeAtRiskSources(current, prior, physicians, tasks, NOW);
+    expect(result).toHaveLength(0); // recent touchpoint + no OPEN overdue task
+  });
+
+  it("returns daysSinceContact as null when lastInteractionAt is null", () => {
+    const physicians = [makePhysician({ id: "p1", lastInteractionAt: null })];
+    const prior: ReferralCount[] = [{ physicianId: "p1", count: 10 }];
+    const current: ReferralCount[] = [{ physicianId: "p1", count: 3 }];
+
+    const result = computeAtRiskSources(current, prior, physicians, [], NOW);
+    expect(result).toHaveLength(1);
+    expect(result[0].daysSinceContact).toBeNull();
+  });
+
+  it("returns empty results for empty inputs", () => {
+    const result = computeAtRiskSources([], [], [], [], NOW);
+    expect(result).toHaveLength(0);
   });
 });
