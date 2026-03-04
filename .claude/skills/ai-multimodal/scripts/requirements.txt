@@ -15,7 +15,7 @@ docx2pdf>=0.1.8  # Windows only, optional on Linux/macOS
 markdown>=3.5.0
 
 # Image processing
-Pillow>=10.0.0
+Pillow>=10.2.0
 
 # Environment variable management
 python-dotenv>=1.0.0
