@@ -1,0 +1,197 @@
+You are ClaudeKit Engineer. Build a production-ready MVP web app called “Tristar Ops” for a multi-location outpatient PT/OT business.
+
+PRIORITY: Ship a working MVP fast, with a clean architecture that can expand later.
+
+TECH STACK (NON-NEGOTIABLE)
+- Next.js 14+ (App Router) + TypeScript
+- TailwindCSS + shadcn/ui + lucide-react
+- Charts: Recharts
+- DB/Auth/Storage: Supabase (Postgres + Auth + Storage)
+- ORM: Drizzle (drizzle-orm + drizzle-kit)
+- Validation: Zod
+- State: Zustand only when necessary
+- API: Next.js Route Handlers (no separate server)
+- Deployment-ready for Vercel
+- Seed data so the app runs immediately
+
+APP MODULES (MVP)
+Build 4 modules inside one app:
+1) Command Center KPI Dashboard
+2) Referral Intelligence
+3) Underpayment Detector
+4) AI Front Desk Automation (triage + booking workflow)
+
+ROUTING
+- /login
+- /dashboard (Command Center)
+- /referrals
+- /underpayments
+- /frontdesk
+- /imports (CSV imports for KPI/referrals/claims)
+- /settings (admin only: locations/providers/payers/fee schedule)
+
+AUTH + RBAC (KEEP SIMPLE)
+- Supabase Auth email/password
+- Roles: admin, manager, staff (store role in public.profiles table)
+- Route protection middleware:
+  - admin: all routes
+  - manager: dashboard/referrals/underpayments/imports (read/write), frontdesk (read)
+  - staff: frontdesk only + limited read (no imports, no underpayments)
+
+DATA MODEL (DRIZZLE MIGRATIONS + SEEDS)
+Tables:
+- profiles(id uuid pk, email text, role text)
+- locations(id, name, address, timezone)
+- providers(id, name, role, location_id)
+- payers(id, name)
+
+KPI + ops:
+- kpi_daily(id, date, location_id, visits, evals, revenue, units, cancellations, no_shows, arrival_rate, cost, profit)
+
+Referrals:
+- referral_sources(id, npi, name, specialty, organization, phone, address)
+- referrals(id, date, location_id, referral_source_id, patient_hash, status, payer)
+
+Claims/underpayments:
+- claims(id, claim_number, patient_hash, date_of_service, location_id, payer_id, total_billed, total_allowed, total_paid, status)
+- claim_lines(id, claim_id, cpt, units, billed, allowed, paid, modifier)
+- fee_schedule(id, payer_id, cpt, allowed_expected)
+- underpayment_flags(id, claim_line_id, expected_allowed, variance, reason, resolved_at, notes)
+
+Front desk:
+- patient_requests(
+    id, created_at, channel, patient_name, phone, email,
+    location_preference, symptoms_text, acuity, status,
+    consent, insurance_text, booked_at, appointment_time, appointment_location_id, notes
+  )
+- appointment_slots(id, location_id, provider_id, start_time, end_time, status)
+
+PHI / SAFETY
+- Do not store DOB.
+- patient_hash = sha256(lower(name)+phone) if phone present else sha256(lower(name)+email). Do not store raw combos.
+- Keep PHI out of logs.
+- Emergency detection:
+  If symptoms mention chest pain, shortness of breath, stroke signs, severe bleeding, suicidal ideation -> show “Call 911” banner and DO NOT schedule.
+
+IMPORTS (FAST MVP)
+Route: /imports
+Implement 3 CSV upload types with strict required headers (NO mapping UI):
+A) KPI CSV -> kpi_daily
+B) Referrals CSV -> referral_sources + referrals
+C) Claims CSV -> claims + claim_lines
+
+For each importer:
+- Provide a “Download Template CSV” button.
+- Validate each row with Zod.
+- Show row-level errors in a table.
+- Idempotent upsert:
+  - kpi_daily: unique(date, location_id)
+  - referral_sources: unique(npi) if present else unique(name, address)
+  - referrals: unique(date, location_id, referral_source_id, patient_hash)
+  - claims: unique(claim_number) if present else unique(patient_hash, date_of_service, payer_id, location_id)
+  - claim_lines: unique(claim_id, cpt, modifier, units, billed, allowed, paid) (ok for MVP)
+- Store original CSV in Supabase Storage and store import history in a small imports table (imports(id, type, created_at, filename, rows_ok, rows_failed)).
+
+MODULE 1: COMMAND CENTER (/dashboard)
+- Filters: date range, location multi-select
+- Cards: Revenue, Visits, Revenue/Visit, Profit, Arrival Rate, Cancels, No-shows
+- Charts: revenue trend, visits trend
+- Table: location comparison with conditional formatting
+- Alerts panel (rule-based):
+  - revenue/visit drops > 5% vs prior 7-day avg
+  - arrival_rate < 85%
+  - visits drop > 10% week-over-week (compare last 7 days vs prior 7 days)
+
+MODULE 2: REFERRAL INTELLIGENCE (/referrals)
+- Directory table w search (name/NPI/specialty/organization)
+- Detail page:
+  - referrals over time chart
+  - referrals by location table
+  - payer mix summary (from referrals.payer)
+- “Top Movers”:
+  - trending up/down over last 30 days vs previous 30 days
+- “Marketing visit recommended” heuristic (MVP):
+  - specialty in {orthopedics, primary care, pain management, neurology}
+  - AND referrals last 30 days < 5
+  - AND organization not null
+
+MODULE 3: UNDERPAYMENT DETECTOR (/underpayments)
+- Fee schedule CRUD in /settings + CSV upload template
+- Engine:
+  expected_allowed = fee_schedule.allowed_expected for payer + cpt
+  variance = paid - expected_allowed
+  Flag if:
+    - expected exists AND variance < -5
+    - OR paid == 0 AND expected > 0
+    - OR expected missing -> reason “missing fee schedule”
+- UI:
+  - Underpayments table with filters payer/location/date range/CPT/resolved
+  - Totals widgets:
+    - total flagged $ this month (sum of -variance where variance negative)
+    - by payer
+    - by CPT
+  - Resolve flow: notes + mark resolved
+
+MODULE 4: AI FRONT DESK (/frontdesk)
+Build an intake workflow that feels like a real operator console:
+- Left: “New Request” (form + “simulate SMS chat” input)
+- Right: “Triage + Next Steps”
+Steps:
+1) Capture symptoms_text + location preference + contact
+2) Triage (rule-based) into:
+   - Red (2 hours), Orange (24 hours), Yellow (3 days), Green (7 days)
+   Heuristic:
+   - Red keywords: severe, unbearable, numbness, sudden weakness, fall with inability to bear weight
+   - Orange: acute injury <48h, high pain, post-op concerns
+   - Yellow: subacute pain limiting function
+   - Green: chronic / general PT request
+3) Ask for consent + insurance text
+4) Offer earliest slot within acuity window for preferred location, else any location
+5) Book the slot (update appointment_slots to booked, set patient_requests booked_at + appointment_time)
+6) If no slots in window: add to waitlist (status=waitlist)
+
+Scheduling for MVP:
+- Seed appointment_slots for next 14 days for each location/provider
+- 60-min slots on the hour from 8:00–12:00 and 2:00–5:00, lunch 1–2
+- Only weekdays
+
+MESSAGING (OPTIONAL LLM)
+- Provide a function generatePatientMessage(context) that:
+  - If OPENAI_API_KEY exists: call LLM to craft polite concise text
+  - Else: deterministic template messages (no dependency)
+- Never include medical diagnosis. Keep to scheduling + intake questions.
+
+UI/UX REQUIREMENTS
+- Compact, executive-friendly, minimal scrolling
+- Top navigation, global search (search referral_sources + claims by claim_number + patient_requests)
+- Loading skeletons, empty states, toasts
+- Responsive
+
+QUALITY
+- Add minimal tests (vitest):
+  - triage classifier
+  - underpayment calculator
+  - CSV row validator
+- Make sure `npm run build` passes.
+
+DELIVERABLES
+- Full working app with seed data
+- README with:
+  - setup instructions
+  - env vars
+  - supabase schema/migrations usage
+  - how to import CSV templates
+  - next steps to replace CSV imports with real integrations later
+
+IMPLEMENTATION ORDER
+1) Scaffold repo + shadcn + routing
+2) Supabase auth + profiles + middleware
+3) Drizzle schema + migrations + seeds
+4) Dashboard module
+5) Imports module
+6) Referrals module
+7) Underpayments module
+8) Front desk module
+9) Tests + polish + README
+
+Start now. Do not stop until the app runs with seed data, imports work, and all four modules are navigable and functional.
