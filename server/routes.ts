@@ -3,6 +3,8 @@ import { type Server } from "http";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import connectPgSimple from "connect-pg-simple";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
 import { apiLimiter } from "./middleware/rateLimiter";
 import { csrfProtection, csrfTokenEndpoint } from "./middleware/csrf";
 import { SESSION_TIMEOUT_MS } from "./routes/shared";
@@ -37,6 +39,18 @@ export async function registerRoutes(
 ): Promise<Server> {
   const PgStore = connectPgSimple(session);
 
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    ) WITH (OIDS=FALSE)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
+  `);
+
   app.use(cookieParser());
 
   app.use((_req, res, next) => {
@@ -56,7 +70,9 @@ export async function registerRoutes(
     session({
       store: new PgStore({
         conString: process.env.DATABASE_URL,
-        createTableIfMissing: true,
+        createTableIfMissing: false,
+        pruneSessionInterval: 60 * 15,
+        tableName: "session",
       }),
       secret: process.env.SESSION_SECRET ?? (() => { throw new Error("SESSION_SECRET environment variable is required"); })(),
       resave: false,
