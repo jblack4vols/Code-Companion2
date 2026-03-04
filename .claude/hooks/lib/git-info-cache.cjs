@@ -11,7 +11,7 @@
  * Cross-platform: No bash-only syntax (no 2>/dev/null), windowsHide on all exec calls
  */
 
-const { execSync } = require('child_process');
+const { execFileSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -25,8 +25,9 @@ const CACHE_MISS = Symbol('cache_miss');
  * Safe command execution wrapper with optional cwd
  */
 function execIn(cmd, cwd) {
+  const [file, ...args] = cmd.split(' ');
   try {
-    return execSync(cmd, {
+    return execFileSync(file, args, {
       encoding: 'utf8',
       stdio: ['pipe', 'pipe', 'ignore'],
       windowsHide: true,
