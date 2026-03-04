@@ -65,7 +65,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
   const { data: practiceNamesData } = useQuery<string[]>({
     queryKey: ["/api/physicians/practice-names"],
-    enabled: editing,
+    enabled: editing || linkingOffice,
   });
   const { data: comments } = useQuery<PhysicianComment[]>({
     queryKey: ["/api/physicians", params.id, "comments"],
@@ -95,6 +95,8 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
   const canDelete = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
   const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
+  const [linkingOffice, setLinkingOffice] = useState(false);
+  const [linkOfficeName, setLinkOfficeName] = useState("");
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -106,6 +108,22 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       setEditing(false);
       toast({ title: "Referring provider updated" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const linkOfficeMutation = useMutation({
+    mutationFn: async (practiceName: string) => {
+      const res = await apiRequest("PATCH", `/api/physicians/${params.id}/link-office`, { practiceName });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/provider-offices"] });
+      setLinkingOffice(false);
+      setLinkOfficeName("");
+      toast({ title: "Office linked successfully" });
     },
     onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
@@ -477,7 +495,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                   <span>{physician.credentials}</span>
                 </div>
               )}
-              {physician.practiceName && (
+              {physician.practiceName ? (
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Office/Practice Name</span>
                   <Link href={`/physicians?practice=${encodeURIComponent(physician.practiceName)}`}>
@@ -486,6 +504,32 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                     </span>
                   </Link>
                 </div>
+              ) : null}
+              {linkingOffice ? (
+                <div className="space-y-2 p-2 border rounded-md bg-muted/30">
+                  <Label className="text-xs">Link to Office/Practice</Label>
+                  <Input
+                    value={linkOfficeName}
+                    onChange={(e) => setLinkOfficeName(e.target.value)}
+                    placeholder="Type practice name..."
+                    list="link-practice-names-list"
+                    data-testid="input-link-office"
+                    className="text-sm"
+                  />
+                  <datalist id="link-practice-names-list">
+                    {(practiceNamesData || []).map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { setLinkingOffice(false); setLinkOfficeName(""); }} data-testid="button-cancel-link-office"><X className="w-3 h-3 mr-1" />Cancel</Button>
+                    <Button size="sm" disabled={!linkOfficeName.trim() || linkOfficeMutation.isPending} onClick={() => linkOfficeMutation.mutate(linkOfficeName.trim())} data-testid="button-save-link-office"><Save className="w-3 h-3 mr-1" />Save</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => { setLinkOfficeName(physician.practiceName || ""); setLinkingOffice(true); }} data-testid="button-link-office">
+                  <Building2 className="w-3 h-3 mr-1.5" />{physician.practiceName ? "Change Office" : "Link to Office"}
+                </Button>
               )}
               <div className="pt-2 border-t" />
               {physician.phone && (

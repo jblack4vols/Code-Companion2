@@ -362,6 +362,37 @@ export function registerPhysicianRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/physicians/:id/link-office", requireAuth, async (req, res) => {
+    try {
+      const { practiceName } = req.body;
+      if (typeof practiceName !== "string") {
+        return res.status(400).json({ message: "practiceName is required" });
+      }
+      const existing = await storage.getPhysician(req.params.id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const locationScope = await getUserLocationScope(req);
+      if (locationScope !== null) {
+        if (locationScope.length === 0) return res.status(403).json({ message: "No location access" });
+        const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+        if (!scopedIds.has(existing.id)) return res.status(403).json({ message: "Physician not in your location scope" });
+      }
+      const phys = await storage.updatePhysician(req.params.id, { practiceName: practiceName.trim() || null } as any);
+      if (!phys) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "UPDATE",
+        entity: "Physician",
+        entityId: phys.id,
+        detailJson: { action: "link-office", practiceName: practiceName.trim() },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
+      });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/physicians/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const deleted = await storage.softDeletePhysician(req.params.id);
