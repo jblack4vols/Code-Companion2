@@ -24,12 +24,12 @@ const navItems = [
   { title: "Referral Explorer", url: "/referral-explorer", icon: Search },
   { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
   { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Front Desk", url: "/frontdesk", icon: UserCheck, roles: ["OWNER", "DIRECTOR", "FRONT_DESK"] as string[] },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Recent Activity", url: "/activity", icon: Activity, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
 ];
 
 const opsItems = [
+  { title: "Front Desk", url: "/frontdesk", icon: UserCheck, roles: ["OWNER", "DIRECTOR", "FRONT_DESK"] as string[] },
   { title: "Goals", url: "/goals", icon: Target, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
