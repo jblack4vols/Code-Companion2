@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { users, locations, physicians, interactions, referrals, tasks, calendarEvents, userLocationAccess, auditLogs } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -13,7 +13,36 @@ async function loadJsonData(filename: string): Promise<any[]> {
   return JSON.parse(raw);
 }
 
+async function syncOwnerCredentials() {
+  const ownerEmail = "jblack@tristarpt.com";
+  const bcrypt = await import("bcryptjs");
+  const seedOwnerPw = process.env.SEED_OWNER_PASSWORD;
+  if (!seedOwnerPw) return;
+
+  const existingOwner = await db.select().from(users).where(eq(users.email, ownerEmail));
+
+  if (existingOwner.length > 0) {
+    const owner = existingOwner[0];
+    const passwordMatch = await bcrypt.compare(seedOwnerPw, owner.password);
+    if (!passwordMatch) {
+      const newHash = await bcrypt.hash(seedOwnerPw, 10);
+      await db.update(users).set({ password: newHash }).where(eq(users.id, owner.id));
+      console.log(`[seed] Updated password for ${ownerEmail}`);
+    }
+    return;
+  }
+
+  const legacyOwner = await db.select().from(users).where(eq(users.email, "admin@tristar360.com"));
+  if (legacyOwner.length > 0) {
+    const newHash = await bcrypt.hash(seedOwnerPw, 10);
+    await db.update(users).set({ email: ownerEmail, password: newHash }).where(eq(users.id, legacyOwner[0].id));
+    console.log(`[seed] Migrated owner from admin@tristar360.com -> ${ownerEmail}`);
+  }
+}
+
 export async function seed() {
+  await syncOwnerCredentials();
+
   const existingUsers = await db.select().from(users);
   const existingPhysicians = await db.select({ id: physicians.id }).from(physicians).limit(20);
 
