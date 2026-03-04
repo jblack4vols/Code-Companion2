@@ -1,13 +1,18 @@
 import type { Express } from "express";
 import { storage } from "../storage";
 import { insertInteractionSchema } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp } from "./shared";
+import { requireAuth, requireRole, getClientIp, getUserLocationScope } from "./shared";
 
 export function registerInteractionRoutes(app: Express) {
   app.get("/api/interactions", requireAuth, async (req, res) => {
     const physicianId = req.query.physicianId as string | undefined;
     const includeDeleted = req.query.includeDeleted === "true";
-    res.json(await storage.getInteractions(physicianId, includeDeleted));
+    const locationScope = await getUserLocationScope(req);
+    if (locationScope !== null && locationScope.length === 0) return res.json([]);
+    const results = await storage.getInteractions(physicianId, includeDeleted);
+    if (locationScope === null) return res.json(results);
+    const scopeSet = new Set(locationScope);
+    res.json(results.filter((i: any) => i.locationId && scopeSet.has(i.locationId)));
   });
 
   app.post("/api/interactions", requireRole("OWNER", "DIRECTOR", "MARKETER"), async (req, res) => {
@@ -43,10 +48,15 @@ export function registerInteractionRoutes(app: Express) {
   });
 
   app.get("/api/interactions/paginated", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    if (locationScope !== null && locationScope.length === 0) {
+      return res.json({ data: [], total: 0, page: 1, pageSize: 50, totalPages: 0 });
+    }
     const filters = {
       search: req.query.search as string | undefined,
       type: req.query.type as string | undefined,
       locationId: req.query.locationId as string | undefined,
+      locationIds: locationScope ?? undefined,
       physicianId: req.query.physicianId as string | undefined,
       dateFrom: req.query.dateFrom as string | undefined,
       dateTo: req.query.dateTo as string | undefined,

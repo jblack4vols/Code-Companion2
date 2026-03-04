@@ -65,6 +65,29 @@ export async function registerImportRoutes(app: Express) {
     return workbook;
   }
 
+  app.get("/api/import/template/:type", requireRole("OWNER", "DIRECTOR", "MARKETER"), (req, res) => {
+    const type = req.params.type;
+    if (type === "physicians") {
+      const headers = ["First Name","Last Name","Credentials","NPI","Practice Name","Street Address 1","Street Address 2","City","State","Zip","Phone","Fax","Email","Specialty"];
+      const row1 = ["Jane","Smith","MD","1234567890","Valley Orthopedics","123 Main St","Suite 200","Austin","TX","78701","512-555-0100","512-555-0101","jane.smith@example.com","Orthopedic Surgery"];
+      const row2 = ["Robert","Johnson","DO","0987654321","Summit Primary Care","456 Oak Ave","","Denver","CO","80202","303-555-0200","303-555-0201","r.johnson@example.com","Family Medicine"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=physicians_template.csv");
+      return res.send(csv);
+    }
+    if (type === "referrals") {
+      const headers = ["Patient Account Number","Patient Name","Case Title","Case Therapist","Facility","Case Status","Date of Initial Eval","Primary Insurance","Primary Payer Type","Referring Doctor","Referring Doctor NPI","Referral Source","Discharge Date","Discharge Reason","Scheduled Visits","Arrived Visits","Created Date","Date of First Scheduled Visit","Date of First Arrived Visit","Created to Arrived","Discipline","Diagnosis Category"];
+      const row1 = ["PAT-001","John Doe","Knee Rehab","Sarah Thompson","Main Street Clinic","Active","2025-01-15","Blue Cross","Commercial","Dr. Jane Smith","1234567890","Physician Referral","","","12","8","2025-01-10","2025-01-12","2025-01-14","4","PT","Musculoskeletal"];
+      const row2 = ["PAT-002","Mary Williams","Back Pain","Mike Chen","Downtown PT Center","Scheduled","2025-02-01","Medicare","Medicare","Dr. Robert Johnson","0987654321","Self Referral","","","6","3","2025-01-20","2025-01-22","2025-01-25","5","PT","Spine"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=referrals_template.csv");
+      return res.send(csv);
+    }
+    return res.status(400).json({ message: "Invalid template type. Use: physicians, referrals" });
+  });
+
   app.post("/api/import/preview", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
     try {
       if (!req.file) return res.status(400).json({ message: "No file uploaded" });

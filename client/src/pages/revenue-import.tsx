@@ -19,7 +19,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  Upload, FileSpreadsheet, ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, Loader2,
+  Upload, FileSpreadsheet, ArrowRight, ArrowLeft, CheckCircle2, AlertTriangle, Loader2, Download,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -229,6 +229,19 @@ export default function RevenueImportPage() {
             className="hidden"
             onChange={(e) => setFile(e.target.files?.[0] || null)}
           />
+          {importType && (
+            <div className="flex items-center justify-center">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => window.open(`/api/revenue/claims/template/${importType}`, "_blank")}
+                data-testid="button-download-template"
+              >
+                <Download className="w-4 h-4 mr-2" />
+                Download {IMPORT_TYPES.find(t => t.id === importType)?.label || ""} CSV Template
+              </Button>
+            </div>
+          )}
           <div className="flex justify-between pt-2">
             <Button variant="outline" onClick={() => setStep(1)}>
               <ArrowLeft className="w-4 h-4 mr-2" /> Back

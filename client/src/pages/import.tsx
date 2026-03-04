@@ -5,7 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2, ShieldCheck, ShieldX, Shield, Sparkles } from "lucide-react";
+import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2, ShieldCheck, ShieldX, Shield, Sparkles, Download } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
 
@@ -419,6 +419,20 @@ export default function ImportPage() {
                 )}
                 <p className="font-medium">{loading ? "Reading file..." : "Drop file here or click to browse"}</p>
                 <p className="text-sm text-muted-foreground mt-1">Supports .xlsx, .xls, .csv files up to 50MB</p>
+              </div>
+              <div className="flex items-center justify-center pt-4">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    window.open(`/api/import/template/${importType}`, "_blank");
+                  }}
+                  data-testid="button-download-template"
+                >
+                  <Download className="w-4 h-4 mr-2" />
+                  Download {importType === "physicians" ? "Provider" : "Referral"} CSV Template
+                </Button>
               </div>
             </CardContent>
           </Card>

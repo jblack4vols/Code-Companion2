@@ -108,6 +108,39 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
     return {};
   }
 
+  // ---- CSV Template Downloads ----
+  app.get("/api/revenue/claims/template/:type", READ, (req, res) => {
+    const type = req.params.type;
+    if (type === "claims") {
+      const headers = ["Claim Number","Date of Service","Payer","CPT Code(s)","Units","Billed Amount","Paid Amount","Claim Status","Denial Codes"];
+      const row1 = ["CLM-2025-001","2025-01-15","Blue Cross","97110","4","$480.00","$360.00","PAID",""];
+      const row2 = ["CLM-2025-002","2025-01-16","Aetna","97140","3","$330.00","$0.00","DENIED","CO-4, PR-1"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=claims_template.csv");
+      return res.send(csv);
+    }
+    if (type === "payments") {
+      const headers = ["Claim Number","Payment Date","Paid Amount","Adjustment Amount","Check / EFT Number"];
+      const row1 = ["CLM-2025-001","2025-02-01","$360.00","$120.00","EFT-88901"];
+      const row2 = ["CLM-2025-003","2025-02-05","$275.00","$25.00","CHK-44502"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=payments_template.csv");
+      return res.send(csv);
+    }
+    if (type === "rates") {
+      const headers = ["Payer","CPT Code","Expected Rate","Effective Date"];
+      const row1 = ["Blue Cross","97110","$120.00","2025-01-01"];
+      const row2 = ["Aetna","97140","$110.00","2025-01-01"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=rates_template.csv");
+      return res.send(csv);
+    }
+    return res.status(400).json({ message: "Invalid template type. Use: claims, payments, rates" });
+  });
+
   // ---- Claims ----
 
   // GET /api/revenue/claims — paginated claims list

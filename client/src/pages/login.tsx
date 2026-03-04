@@ -117,6 +117,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email"
                     required
+                    autoComplete="email"
                     data-testid="input-email"
                   />
                 </div>
@@ -140,6 +141,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password"
                     required
+                    autoComplete="current-password"
                     data-testid="input-password"
                   />
                 </div>
@@ -190,6 +192,7 @@ export default function LoginPage() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Jane Smith"
                     required
+                    autoComplete="name"
                     data-testid="input-register-name"
                   />
                 </div>
@@ -203,6 +206,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="jane@company.com"
                     required
+                    autoComplete="email"
                     data-testid="input-register-email"
                   />
                 </div>
@@ -216,6 +220,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Min 8 chars, upper/lower/number/special"
                     required
+                    autoComplete="new-password"
                     data-testid="input-register-password"
                   />
                 </div>
@@ -229,6 +234,7 @@ export default function LoginPage() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
                     required
+                    autoComplete="new-password"
                     data-testid="input-register-confirm"
                   />
                 </div>
@@ -296,6 +302,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email"
                     required
+                    autoComplete="email"
                     data-testid="input-forgot-email"
                   />
                 </div>

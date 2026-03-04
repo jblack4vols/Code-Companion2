@@ -582,6 +582,50 @@ export function registerDashboardRoutes(app: Express) {
     }
   });
 
+  app.get("/api/dashboard/location-conversion", requireAuth, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      const startDate = qstr(req.query.startDate as any);
+      const endDate = qstr(req.query.endDate as any);
+
+      const dateFilter = startDate && endDate
+        ? sql`AND r.referral_date >= ${startDate} AND r.referral_date <= ${endDate}`
+        : startDate ? sql`AND r.referral_date >= ${startDate}`
+        : endDate ? sql`AND r.referral_date <= ${endDate}`
+        : sql`AND r.referral_date >= CURRENT_DATE - INTERVAL '30 days'`;
+
+      const locScopeFilter = locationScope !== null && locationScope.length > 0
+        ? sql`AND l.id = ANY(${locationScope})`
+        : locationScope !== null && locationScope.length === 0
+        ? sql`AND 1=0`
+        : sql``;
+
+      const result = await db.execute(sql`
+        SELECT
+          l.id as location_id,
+          l.name as location_name,
+          COALESCE(SUM(r.scheduled_visits), 0)::int as total_scheduled,
+          COALESCE(SUM(r.arrived_visits), 0)::int as total_arrived,
+          COUNT(r.id)::int as total_referrals,
+          CASE
+            WHEN COALESCE(SUM(r.scheduled_visits), 0) > 0
+            THEN ROUND(COALESCE(SUM(r.arrived_visits), 0)::numeric / SUM(r.scheduled_visits) * 100, 1)
+            ELSE 0
+          END as arrival_rate
+        FROM locations l
+        LEFT JOIN referrals r ON r.location_id = l.id AND r.deleted_at IS NULL ${dateFilter}
+        WHERE l.is_active = true ${locScopeFilter}
+        GROUP BY l.id, l.name
+        HAVING COUNT(r.id) > 0
+        ORDER BY total_scheduled DESC
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/dashboard/location-performance", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
     try {
       const result = await db.execute(sql`

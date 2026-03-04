@@ -3,16 +3,21 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql, type SQL } from "drizzle-orm";
 import { insertPhysicianSchema } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
 
 export function registerPhysicianRoutes(app: Express) {
   app.get("/api/physicians/paginated", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    if (locationScope !== null && locationScope.length === 0) {
+      return res.json({ data: [], total: 0, page: 1, pageSize: 50, totalPages: 0 });
+    }
     res.json(await storage.getPhysiciansPaginated({
       search: qstr(req.query.search as any),
       status: qstr(req.query.status as any),
       stage: qstr(req.query.stage as any),
       priority: qstr(req.query.priority as any),
       practiceName: qstr(req.query.practiceName as any),
+      locationIds: locationScope ?? undefined,
       sortBy: qstr(req.query.sortBy as any),
       sortOrder: qstr(req.query.sortOrder as any),
       page: req.query.page ? parseInt(req.query.page as string) : 1,
@@ -23,11 +28,22 @@ export function registerPhysicianRoutes(app: Express) {
   app.get("/api/physicians/search", requireAuth, async (req, res) => {
     const query = (req.query.q as string || "").trim();
     if (query.length < 2) return res.json([]);
-    res.json(await storage.searchPhysiciansTypeahead(query));
+    const locationScope = await getUserLocationScope(req);
+    const results = await storage.searchPhysiciansTypeahead(query);
+    if (locationScope === null) return res.json(results);
+    if (locationScope.length === 0) return res.json([]);
+    const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+    res.json(results.filter((p: any) => scopedIds.has(p.id)));
   });
 
   app.get("/api/physicians/practice-names", requireAuth, async (req, res) => {
-    const allPhysicians = await storage.getPhysicians();
+    const locationScope = await getUserLocationScope(req);
+    let allPhysicians = await storage.getPhysicians();
+    if (locationScope !== null) {
+      if (locationScope.length === 0) return res.json([]);
+      const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+      allPhysicians = allPhysicians.filter(p => scopedIds.has(p.id));
+    }
     const practiceSet = new Set<string>();
     for (const p of allPhysicians) {
       if (p.practiceName && p.practiceName.trim()) {
@@ -47,7 +63,13 @@ export function registerPhysicianRoutes(app: Express) {
   app.get("/api/physicians/by-practice", requireAuth, async (req, res) => {
     const name = (req.query.name as string || "").trim();
     if (!name) return res.json([]);
-    const allPhysicians = await storage.getPhysicians();
+    const locationScope = await getUserLocationScope(req);
+    let allPhysicians = await storage.getPhysicians();
+    if (locationScope !== null) {
+      if (locationScope.length === 0) return res.json([]);
+      const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+      allPhysicians = allPhysicians.filter(p => scopedIds.has(p.id));
+    }
     const matched = allPhysicians.filter(
       (p) => p.practiceName && p.practiceName.trim().toLowerCase() === name.toLowerCase()
     );

@@ -7,7 +7,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar } from "lucide-react";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar, MapPin } from "lucide-react";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Funnel, FunnelChart, LabelList } from "recharts";
 import type { Physician, Location, Territory } from "@shared/schema";
 import { format, subMonths, differenceInDays, subDays, startOfQuarter, startOfYear } from "date-fns";
@@ -556,6 +556,8 @@ export default function DashboardPage() {
         <AtRiskReferralSourcesCard locationId={locationId} territoryId={territoryId} navigate={navigate} />
       </div>
 
+      <LocationConversionCard startDate={startDate} endDate={endDate} navigate={navigate} />
+
       <Card>
         <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
           <div>
@@ -571,6 +573,113 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
     </div>
+  );
+}
+
+function LocationConversionCard({ startDate, endDate, navigate }: { startDate: string; endDate: string; navigate: (to: string) => void }) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  const qs = params.toString();
+  const url = qs ? `/api/dashboard/location-conversion?${qs}` : "/api/dashboard/location-conversion";
+
+  const conversionData = useQuery<any[]>({
+    queryKey: [url],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const rows = conversionData.data || [];
+
+  const maxScheduled = Math.max(...rows.map((r: any) => Number(r.total_scheduled) || 0), 1);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <div>
+          <h3 className="text-sm font-semibold" data-testid="text-location-conversion-title">Location Conversion Comparison</h3>
+          <p className="text-xs text-muted-foreground">Scheduled vs arrived by location</p>
+        </div>
+        <MapPin className="w-4 h-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        {conversionData.isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-4 w-24 shrink-0" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="h-32 flex items-center justify-center text-sm text-muted-foreground" data-testid="text-no-conversion-data">
+            No conversion data available for this period
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="table-location-conversion">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs">Location</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Referrals</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Scheduled</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Arrived</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Arrival Rate</th>
+                  <th className="pb-2 font-medium text-muted-foreground text-xs min-w-[120px]">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row: any) => {
+                  const rate = Number(row.arrival_rate) || 0;
+                  const scheduled = Number(row.total_scheduled) || 0;
+                  const arrived = Number(row.total_arrived) || 0;
+                  const barWidth = maxScheduled > 0 ? (scheduled / maxScheduled) * 100 : 0;
+                  const arrivedWidth = scheduled > 0 ? (arrived / scheduled) * 100 : 0;
+
+                  return (
+                    <tr
+                      key={row.location_id}
+                      className="border-b last:border-0 hover-elevate cursor-pointer"
+                      onClick={() => navigate(`/locations/${row.location_id}`)}
+                      data-testid={`row-location-conversion-${row.location_id}`}
+                    >
+                      <td className="py-2.5 pr-4">
+                        <span className="font-medium text-xs">{row.location_name}</span>
+                      </td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-xs">{row.total_referrals}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-xs">{scheduled}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-xs">{arrived}</td>
+                      <td className="py-2.5 pr-4 text-right">
+                        <Badge
+                          variant={rate >= 80 ? "default" : rate >= 60 ? "secondary" : "destructive"}
+                          className="text-[10px] tabular-nums"
+                          data-testid={`badge-arrival-rate-${row.location_id}`}
+                        >
+                          {rate}%
+                        </Badge>
+                      </td>
+                      <td className="py-2.5">
+                        <div className="relative h-4 rounded-md bg-muted/50 overflow-hidden min-w-[120px]">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-md bg-chart-2/30"
+                            style={{ width: `${barWidth}%` }}
+                          />
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-md bg-chart-4/60"
+                            style={{ width: `${barWidth * (arrivedWidth / 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 

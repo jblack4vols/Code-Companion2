@@ -71,6 +71,7 @@ export interface PhysicianFilters {
   stage?: string;
   priority?: string;
   practiceName?: string;
+  locationIds?: string[];
   sortBy?: string;
   sortOrder?: string;
   page?: number;
@@ -81,6 +82,7 @@ export interface InteractionFilters {
   search?: string;
   type?: string;
   locationId?: string;
+  locationIds?: string[];
   physicianId?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -153,6 +155,7 @@ export interface IStorage {
   getPhysicians(): Promise<Physician[]>;
   searchPhysiciansTypeahead(query: string, limit?: number): Promise<Pick<Physician, 'id' | 'firstName' | 'lastName' | 'credentials' | 'npi' | 'practiceName' | 'specialty'>[]>;
   getPhysiciansPaginated(filters: PhysicianFilters): Promise<PaginatedResult<any>>;
+  getPhysicianIdsByLocations(locationIds: string[]): Promise<Set<string>>;
   getPhysician(id: string): Promise<Physician | undefined>;
   createPhysician(phys: InsertPhysician): Promise<Physician>;
   updatePhysician(id: string, data: Partial<InsertPhysician>): Promise<Physician | undefined>;
@@ -489,6 +492,11 @@ export class DatabaseStorage implements IStorage {
     if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
     if (filters.priority && filters.priority !== "all") conditions.push(eq(physicians.priority, filters.priority as any));
     if (filters.practiceName) conditions.push(eq(physicians.practiceName, filters.practiceName));
+    if (filters.locationIds && filters.locationIds.length > 0) {
+      conditions.push(
+        sql`${physicians.id} IN (SELECT DISTINCT ${referrals.physicianId} FROM ${referrals} WHERE ${referrals.deletedAt} IS NULL AND ${inArray(referrals.locationId, filters.locationIds)})`
+      );
+    }
     if (filters.search) {
       const term = `%${filters.search}%`;
       conditions.push(or(
@@ -1570,7 +1578,11 @@ export class DatabaseStorage implements IStorage {
 
     if (!filters.includeDeleted) conditions.push(isNull(interactions.deletedAt));
     if (filters.type && filters.type !== "all") conditions.push(eq(interactions.type, filters.type as any));
-    if (filters.locationId && filters.locationId !== "all") conditions.push(eq(interactions.locationId, filters.locationId));
+    if (filters.locationIds && filters.locationIds.length > 0) {
+      conditions.push(inArray(interactions.locationId, filters.locationIds));
+    } else if (filters.locationId && filters.locationId !== "all") {
+      conditions.push(eq(interactions.locationId, filters.locationId));
+    }
     if (filters.physicianId) conditions.push(eq(interactions.physicianId, filters.physicianId));
     if (filters.dateFrom) conditions.push(gte(interactions.occurredAt, new Date(filters.dateFrom)));
     if (filters.dateTo) {
@@ -1978,6 +1990,18 @@ export class DatabaseStorage implements IStorage {
       .from(userLocationAccess)
       .where(eq(userLocationAccess.userId, userId));
     return rows.map(r => r.locationId);
+  }
+
+  async getPhysicianIdsByLocations(locationIds: string[]): Promise<Set<string>> {
+    if (locationIds.length === 0) return new Set();
+    const rows = await db.selectDistinct({ physicianId: referrals.physicianId })
+      .from(referrals)
+      .where(and(
+        isNull(referrals.deletedAt),
+        inArray(referrals.locationId, locationIds),
+        isNotNull(referrals.physicianId),
+      ));
+    return new Set(rows.map(r => r.physicianId).filter(Boolean) as string[]);
   }
 
   async getInteractionTemplates(): Promise<InteractionTemplate[]> {

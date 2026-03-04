@@ -35,9 +35,10 @@ The UI is designed to be mobile-friendly, adapting layout for smaller screens (e
 The application includes four integrated operational modules:
 
 ### Command Center KPI Dashboard
-- Extended `dashboard.ts` with `/api/dashboard/kpis`, `/api/dashboard/alerts`, `/api/dashboard/location-performance`
+- Extended `dashboard.ts` with `/api/dashboard/kpis`, `/api/dashboard/alerts`, `/api/dashboard/location-performance`, `/api/dashboard/location-conversion`
 - KPI metrics: visits, arrival rate, scheduled, cancellations with 30-day vs prior comparison
 - Automated alerts: arrival rate <85%, visit drop >10% WoW, referral volume drop >5%
+- Location conversion comparison table on main dashboard with progress bars and color-coded arrival rates
 
 ### Referral Intelligence
 - Extended `referrals.ts` with `/api/referrals/top-sources`, `/api/referrals/trending`, `/api/referrals/by-location`
@@ -55,6 +56,10 @@ The application includes four integrated operational modules:
 - Rule-based triage engine: RED (emergency/911), ORANGE (urgent/24h), YELLOW (moderate/3-5d), GREEN (routine)
 - Appointment slot management with 14-day seeding, scheduling, and waitlist workflow
 - Accessible to OWNER, DIRECTOR, FRONT_DESK roles
+
+## Data Security
+- **Location scoping enforced**: `getPhysiciansPaginated` and `getInteractionsPaginated` accept `locationIds` arrays. Physicians scoped via referrals subquery. Routes call `getUserLocationScope()` — OWNER/DIRECTOR bypass, FRONT_DESK/MARKETER see only assigned locations.
+- **CSV template downloads**: `/api/import/template/:type` (physicians, referrals) and `/api/revenue/claims/template/:type` (claims, payments, rates) serve pre-formatted CSV templates with example rows.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database, backed by Neon.
