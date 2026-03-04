@@ -66,6 +66,7 @@ const RevenueDenialsPage = lazy(() => import("@/pages/revenue-denials"));
 const RevenueBillingLagPage = lazy(() => import("@/pages/revenue-billing-lag"));
 const RevenueAppealsPage = lazy(() => import("@/pages/revenue-appeals"));
 const RevenueImportPage = lazy(() => import("@/pages/revenue-import"));
+const FrontDeskPage = lazy(() => import("@/pages/frontdesk"));
 
 function LazyFallback() {
   return (
@@ -132,6 +133,7 @@ function AuthenticatedRouter() {
         <Route path="/revenue/billing-lag" component={RevenueBillingLagPage} />
         <Route path="/revenue/appeals" component={RevenueAppealsPage} />
         <Route path="/revenue/import" component={RevenueImportPage} />
+        <Route path="/frontdesk" component={FrontDeskPage} />
         <Route component={NotFound} />
       </Switch>
     </Suspense>

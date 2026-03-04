@@ -8,6 +8,9 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import { storage } from "../storage";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { requireRole, qstr } from "./shared";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
@@ -409,6 +412,80 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   });
 
   // ---- Denial Intelligence ----
+
+  app.get("/api/revenue/underpayments/by-payer", READ, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          payer,
+          payer_type,
+          COUNT(*) as claim_count,
+          SUM(billed_amount::numeric) as total_billed,
+          SUM(paid_amount::numeric) as total_paid,
+          SUM(expected_amount::numeric) as total_expected,
+          SUM(underpaid_amount::numeric) as total_underpaid,
+          ROUND(AVG(underpaid_amount::numeric), 2) as avg_underpaid,
+          ROUND(SUM(underpaid_amount::numeric) / NULLIF(SUM(expected_amount::numeric), 0) * 100, 1) as underpaid_pct
+        FROM claims
+        WHERE is_underpaid = true
+          AND underpaid_amount IS NOT NULL
+          AND underpaid_amount > 0
+        GROUP BY payer, payer_type
+        ORDER BY total_underpaid DESC
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/revenue/underpayments/by-cpt", READ, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          cpt_codes as cpt_code,
+          COUNT(*) as claim_count,
+          SUM(billed_amount::numeric) as total_billed,
+          SUM(paid_amount::numeric) as total_paid,
+          SUM(expected_amount::numeric) as total_expected,
+          SUM(underpaid_amount::numeric) as total_underpaid
+        FROM claims
+        WHERE is_underpaid = true
+          AND underpaid_amount IS NOT NULL
+          AND underpaid_amount > 0
+          AND cpt_codes IS NOT NULL
+        GROUP BY cpt_codes
+        ORDER BY total_underpaid DESC
+        LIMIT 50
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/revenue/underpayments/resolve", WRITE, async (req, res) => {
+    try {
+      const schema = z.object({
+        claimIds: z.array(z.string().uuid()).min(1, "At least one claim ID required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
+      }
+
+      const { claimIds } = parsed.data;
+      await db.execute(sql`
+        UPDATE claims
+        SET is_underpaid = false, updated_at = NOW()
+        WHERE id = ANY(${claimIds}::uuid[])
+      `);
+
+      res.json({ resolved: claimIds.length });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 
   // GET /api/revenue/denials/summary — overall denial stats
   app.get("/api/revenue/denials/summary", READ, async (req, res) => {

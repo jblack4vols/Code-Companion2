@@ -31,6 +31,31 @@ The application is built with a modern web stack: **React + Vite + TypeScript** 
 
 The UI is designed to be mobile-friendly, adapting layout for smaller screens (e.g., card-based provider lists).
 
+## Operational Modules
+The application includes four integrated operational modules:
+
+### Command Center KPI Dashboard
+- Extended `dashboard.ts` with `/api/dashboard/kpis`, `/api/dashboard/alerts`, `/api/dashboard/location-performance`
+- KPI metrics: visits, arrival rate, scheduled, cancellations with 30-day vs prior comparison
+- Automated alerts: arrival rate <85%, visit drop >10% WoW, referral volume drop >5%
+
+### Referral Intelligence
+- Extended `referrals.ts` with `/api/referrals/top-sources`, `/api/referrals/trending`, `/api/referrals/by-location`
+- Top sources with 30-day trend analysis and marketing recommendations
+- Growing/declining/stable trend classification
+
+### Claim Underpayment Detector
+- Extended `revenue-recovery.ts` with `/api/revenue/underpayments/by-payer`, `/api/revenue/underpayments/by-cpt`, `/api/revenue/underpayments/resolve`
+- Underpayment analysis grouped by payer and CPT code
+- Resolve functionality with Zod-validated UUID arrays
+
+### AI Front Desk Intake + Scheduling
+- New route: `server/routes/frontdesk.ts`, page: `client/src/pages/frontdesk.tsx`
+- Database tables: `patient_requests`, `appointment_slots`
+- Rule-based triage engine: RED (emergency/911), ORANGE (urgent/24h), YELLOW (moderate/3-5d), GREEN (routine)
+- Appointment slot management with 14-day seeding, scheduling, and waitlist workflow
+- Accessible to OWNER, DIRECTOR, FRONT_DESK roles
+
 ## External Dependencies
 - **PostgreSQL**: Primary database, backed by Neon.
 - **Microsoft Graph API**: Used for Outlook email notifications (task assignments, reports) and SharePoint Lists synchronization (batch operations for app data).

@@ -238,4 +238,123 @@ export function registerReferralRoutes(app: Express) {
       res.status(500).json({ message: err.message });
     }
   });
+
+  app.get("/api/referrals/top-sources", requireAuth, async (req, res) => {
+    try {
+      const locationId = qstr(req.query.locationId as any);
+      const limitVal = Math.min(Math.max(parseInt(qstr(req.query.limit as any) || "20") || 20, 1), 100);
+      const locFilter = locationId ? sql`AND r.location_id = ${locationId}` : sql``;
+
+      const result = await db.execute(sql`
+        SELECT
+          p.id as physician_id,
+          p.first_name,
+          p.last_name,
+          p.credentials,
+          p.specialty,
+          p.practice_name,
+          p.relationship_stage,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as current_count,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as prior_count,
+          CASE
+            WHEN COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') > 0
+            THEN ROUND(
+              (COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days')
+               - COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days'))::numeric
+              / COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') * 100, 1
+            )
+            ELSE NULL
+          END as change_percent
+        FROM physicians p
+        LEFT JOIN referrals r ON r.physician_id = p.id AND r.deleted_at IS NULL
+        WHERE 1=1 ${locFilter}
+        GROUP BY p.id, p.first_name, p.last_name, p.credentials, p.specialty, p.practice_name, p.relationship_stage
+        HAVING COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') > 0
+        ORDER BY current_count DESC
+        LIMIT ${limitVal}
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/referrals/trending", requireAuth, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        WITH physician_trends AS (
+          SELECT
+            p.id as physician_id,
+            p.first_name,
+            p.last_name,
+            p.credentials,
+            p.specialty,
+            p.practice_name,
+            p.relationship_stage,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as current_count,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as prior_count
+          FROM physicians p
+          LEFT JOIN referrals r ON r.physician_id = p.id AND r.deleted_at IS NULL
+          GROUP BY p.id, p.first_name, p.last_name, p.credentials, p.specialty, p.practice_name, p.relationship_stage
+          HAVING COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days') > 0
+        )
+        SELECT *,
+          current_count - prior_count as change_absolute,
+          CASE WHEN prior_count > 0
+            THEN ROUND((current_count - prior_count)::numeric / prior_count * 100, 1)
+            ELSE NULL
+          END as change_percent,
+          CASE
+            WHEN current_count > prior_count THEN 'growing'
+            WHEN current_count < prior_count THEN 'declining'
+            ELSE 'stable'
+          END as trend,
+          CASE
+            WHEN current_count > prior_count AND prior_count > 0 AND ((current_count - prior_count)::numeric / prior_count * 100) > 20 THEN 'Rapid growth — consider strengthening relationship'
+            WHEN current_count < prior_count AND prior_count > 0 AND ((current_count - prior_count)::numeric / prior_count * 100) < -20 THEN 'Significant decline — schedule outreach immediately'
+            WHEN current_count = 0 AND prior_count > 0 THEN 'Referrals stopped — urgent re-engagement needed'
+            ELSE NULL
+          END as recommendation
+        FROM physician_trends
+        ORDER BY change_absolute DESC
+        LIMIT 50
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/referrals/by-location", requireAuth, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          l.id as location_id,
+          l.name as location_name,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as referrals_30d,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as referrals_prior_30d,
+          COUNT(DISTINCT r.physician_id) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as unique_sources_30d,
+          CASE
+            WHEN COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') > 0
+            THEN ROUND(
+              (COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days')
+               - COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days'))::numeric
+              / COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') * 100, 1
+            )
+            ELSE 0
+          END as change_percent
+        FROM locations l
+        LEFT JOIN referrals r ON r.location_id = l.id AND r.deleted_at IS NULL
+        WHERE l.is_active = true
+        GROUP BY l.id, l.name
+        ORDER BY referrals_30d DESC
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 }
