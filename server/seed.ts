@@ -202,7 +202,7 @@ export async function seed() {
   const passHash = await bcrypt.hash(process.env.SEED_USER_PASSWORD || "change_me_user", 10);
 
   await db.insert(users).values([
-    { name: "Sarah Mitchell", email: "admin@tristar360.com", password: adminHash, role: "OWNER" },
+    { name: "Sarah Mitchell", email: "jblack@tristarpt.com", password: adminHash, role: "OWNER" },
     { name: "James Wilson", email: "james@tristar360.com", password: passHash, role: "DIRECTOR" },
     { name: "Emily Chen", email: "emily@tristar360.com", password: passHash, role: "MARKETER" },
     { name: "Maria Santos", email: "maria@tristar360.com", password: passHash, role: "FRONT_DESK" },

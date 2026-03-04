@@ -46,3 +46,8 @@ waitForPort = 5000
 [agent]
 integrations = ["outlook:1.0.0", "sharepoint:1.0.0"]
 expertMode = true
+
+[userenv]
+
+[userenv.shared]
+SEED_OWNER_PASSWORD = "Eden2024@!"
