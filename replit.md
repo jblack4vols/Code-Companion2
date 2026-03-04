@@ -40,6 +40,13 @@ The application includes four integrated operational modules:
 - Automated alerts: arrival rate <85%, visit drop >10% WoW, referral volume drop >5%
 - Location conversion comparison table on main dashboard with progress bars and color-coded arrival rates
 
+### Referral Explorer
+- Deep-dive page at `/referral-explorer` for browsing all referral cases
+- Multi-filter search: location, referral source, payer type, status, discipline, date range, free-text
+- Expandable rows showing therapist, diagnosis, insurance, visits, discharge details
+- Stats cards: total filtered, active, arrived visits, top referrer
+- Backend: `/api/referrals/filter-options` returns distinct filter values; `getReferralsPaginated` extended with `referralSource` and `primaryPayerType` filters
+
 ### Referral Intelligence
 - Extended `referrals.ts` with `/api/referrals/top-sources`, `/api/referrals/trending`, `/api/referrals/by-location`
 - Top sources with 30-day trend analysis and marketing recommendations

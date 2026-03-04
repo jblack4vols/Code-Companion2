@@ -19,6 +19,8 @@ export function registerReferralRoutes(app: Express) {
       locationId: qstr(req.query.locationId as any),
       locationIds: locationScope ?? undefined,
       discipline: qstr(req.query.discipline as any),
+      referralSource: qstr(req.query.referralSource as any),
+      primaryPayerType: qstr(req.query.primaryPayerType as any),
       dateFrom: qstr(req.query.dateFrom as any),
       dateTo: qstr(req.query.dateTo as any),
       physicianId: qstr(req.query.physicianId as any),
@@ -353,6 +355,36 @@ export function registerReferralRoutes(app: Express) {
       `);
 
       res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/referrals/filter-options", requireAuth, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      const locFilter = locationScope !== null && locationScope.length > 0
+        ? sql`AND r.location_id = ANY(${locationScope})`
+        : locationScope !== null && locationScope.length === 0
+        ? sql`AND 1=0`
+        : sql``;
+
+      const result = await db.execute(sql`
+        SELECT
+          COALESCE(array_agg(DISTINCT r.referral_source) FILTER (WHERE r.referral_source IS NOT NULL AND r.referral_source != ''), '{}') as referral_sources,
+          COALESCE(array_agg(DISTINCT r.primary_payer_type) FILTER (WHERE r.primary_payer_type IS NOT NULL AND r.primary_payer_type != ''), '{}') as payer_types,
+          COALESCE(array_agg(DISTINCT r.discipline) FILTER (WHERE r.discipline IS NOT NULL AND r.discipline != ''), '{}') as disciplines,
+          COALESCE(array_agg(DISTINCT r.diagnosis_category) FILTER (WHERE r.diagnosis_category IS NOT NULL AND r.diagnosis_category != ''), '{}') as diagnosis_categories
+        FROM referrals r
+        WHERE r.deleted_at IS NULL ${locFilter}
+      `);
+      const row = result.rows[0] as any;
+      res.json({
+        referralSources: (row?.referral_sources || []).sort(),
+        payerTypes: (row?.payer_types || []).sort(),
+        disciplines: (row?.disciplines || []).sort(),
+        diagnosisCategories: (row?.diagnosis_categories || []).sort(),
+      });
     } catch (err: any) {
       res.status(500).json({ message: err.message });
     }

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search,
 } from "lucide-react";
 import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
 import {
@@ -21,6 +21,7 @@ const navItems = [
   { title: "Quick Log", url: "/quick-log", icon: Zap, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Patients", url: "/referrals", icon: FileText },
+  { title: "Referral Explorer", url: "/referral-explorer", icon: Search },
   { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
   { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Front Desk", url: "/frontdesk", icon: UserCheck, roles: ["OWNER", "DIRECTOR", "FRONT_DESK"] as string[] },

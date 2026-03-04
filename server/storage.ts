@@ -98,6 +98,8 @@ export interface ReferralFilters {
   /** Server-side location scope enforcement: list of allowed location IDs for non-admin users */
   locationIds?: string[];
   discipline?: string;
+  referralSource?: string;
+  primaryPayerType?: string;
   dateFrom?: string;
   dateTo?: string;
   physicianId?: string;
@@ -639,9 +641,10 @@ export class DatabaseStorage implements IStorage {
 
     if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
     if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
-    // Server-side scope: restrict to user's allowed locations (non-admin)
     if (filters.locationIds && filters.locationIds.length > 0) conditions.push(inArray(referrals.locationId, filters.locationIds));
     if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
+    if (filters.referralSource && filters.referralSource !== "all") conditions.push(eq(referrals.referralSource, filters.referralSource));
+    if (filters.primaryPayerType && filters.primaryPayerType !== "all") conditions.push(eq(referrals.primaryPayerType, filters.primaryPayerType));
     if (filters.physicianId) conditions.push(eq(referrals.physicianId, filters.physicianId));
     if (filters.dateFrom) conditions.push(gte(referrals.referralDate, filters.dateFrom));
     if (filters.dateTo) conditions.push(lte(referrals.referralDate, filters.dateTo));

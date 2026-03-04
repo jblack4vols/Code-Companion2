@@ -23,6 +23,7 @@ const PhysiciansPage = lazy(() => import("@/pages/physicians"));
 const PhysicianDetailPage = lazy(() => import("@/pages/physician-detail"));
 const InteractionsPage = lazy(() => import("@/pages/interactions"));
 const ReferralsPage = lazy(() => import("@/pages/referrals"));
+const ReferralExplorerPage = lazy(() => import("@/pages/referral-explorer"));
 const TasksPage = lazy(() => import("@/pages/tasks"));
 const AdminUsersPage = lazy(() => import("@/pages/admin-users"));
 const AdminSettingsPage = lazy(() => import("@/pages/admin-settings"));
@@ -90,6 +91,7 @@ function AuthenticatedRouter() {
         <Route path="/scorecard/:id">{(params) => <ProviderScorecardPage params={params} />}</Route>
         <Route path="/interactions" component={InteractionsPage} />
         <Route path="/referrals" component={ReferralsPage} />
+        <Route path="/referral-explorer" component={ReferralExplorerPage} />
         <Route path="/provider-offices" component={ProviderOfficesPage} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/calendar" component={CalendarPage} />
