@@ -43,8 +43,7 @@ try {
     getGitRoot,
     getCodingLevelStyleName,
     getCodingLevelGuidelines,
-    buildContextOutput,
-    execSafe
+    buildContextOutput
   } = require('./lib/project-detector.cjs');
 
 /**

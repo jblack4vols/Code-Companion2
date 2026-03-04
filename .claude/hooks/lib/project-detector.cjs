@@ -11,29 +11,11 @@
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
-const { execSync, execFileSync } = require('child_process');
+const { execFileSync } = require('child_process');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // SAFE EXECUTION HELPERS
 // ═══════════════════════════════════════════════════════════════════════════
-
-/**
- * Safely execute shell command with optional timeout
- * @param {string} cmd - Command to execute
- * @param {number} [timeoutMs=5000] - Timeout in milliseconds
- * @returns {string|null} Output or null on error
- */
-function execSafe(cmd, timeoutMs = 5000) {
-  try {
-    return execSync(cmd, {
-      encoding: 'utf8',
-      timeout: timeoutMs,
-      stdio: ['pipe', 'pipe', 'pipe']
-    }).trim();
-  } catch (e) {
-    return null;
-  }
-}
 
 /**
  * Safely execute a binary with arguments (no shell interpolation)
@@ -127,14 +109,14 @@ function getPythonPaths() {
 function findPythonBinary() {
   // Fast path: try `which` command first (10ms vs 2000ms per path)
   if (process.platform !== 'win32') {
-    const whichPython3 = execSafe('which python3', 500);
+    const whichPython3 = execFileSafe('which', ['python3'], 500);
     if (whichPython3 && isValidPythonPath(whichPython3)) return whichPython3;
 
-    const whichPython = execSafe('which python', 500);
+    const whichPython = execFileSafe('which', ['python'], 500);
     if (whichPython && isValidPythonPath(whichPython)) return whichPython;
   } else {
     // Windows: try `where` command
-    const wherePython = execSafe('where python', 500);
+    const wherePython = execFileSafe('where', ['python'], 500);
     if (wherePython) {
       const firstPath = wherePython.split('\n')[0].trim();
       if (isValidPythonPath(firstPath)) return firstPath;
@@ -202,7 +184,7 @@ function isGitRepo(startDir) {
  */
 function getGitRemoteUrl() {
   if (!isGitRepo()) return null;
-  return execSafe('git config --get remote.origin.url');
+  return execFileSafe('git', ['config', '--get', 'remote.origin.url']);
 }
 
 /**
@@ -211,7 +193,7 @@ function getGitRemoteUrl() {
  */
 function getGitBranch() {
   if (!isGitRepo()) return null;
-  return execSafe('git branch --show-current');
+  return execFileSafe('git', ['branch', '--show-current']);
 }
 
 /**
@@ -220,7 +202,7 @@ function getGitBranch() {
  */
 function getGitRoot() {
   if (!isGitRepo()) return null;
-  return execSafe('git rev-parse --show-toplevel');
+  return execFileSafe('git', ['rev-parse', '--show-toplevel']);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -469,6 +451,5 @@ module.exports = {
   buildContextOutput,
 
   // Helpers
-  execSafe,
   execFileSafe
 };
