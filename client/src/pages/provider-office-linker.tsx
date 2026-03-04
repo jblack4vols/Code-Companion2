@@ -87,7 +87,8 @@ export default function ProviderOfficeLinkerPage() {
 
   const existingOffices = useMemo(() => {
     if (!officesList) return [];
-    return (officesList as any[]).map((o: any) => o.office_name || o.officeName).filter(Boolean).sort();
+    const items = Array.isArray(officesList) ? officesList : (officesList as any)?.data || [];
+    return items.map((o: any) => o.office_name || o.officeName).filter(Boolean).sort();
   }, [officesList]);
 
   const physicians: Physician[] = useMemo(() => {
