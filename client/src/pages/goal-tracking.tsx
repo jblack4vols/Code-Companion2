@@ -302,7 +302,7 @@ export default function GoalTrackingPage() {
                   </span>
                   {goal.targetRevenue && (
                     <span data-testid={`text-revenue-${goal.id}`}>
-                      Revenue: <span className="font-medium text-foreground">${goal.actualRevenue.toLocaleString()}</span> / ${parseFloat(goal.targetRevenue).toLocaleString()}
+                      Revenue: <span className="font-medium text-foreground">${(goal.actualRevenue || 0).toLocaleString()}</span> / ${(parseFloat(goal.targetRevenue) || 0).toLocaleString()}
                     </span>
                   )}
                 </div>
