@@ -40,8 +40,29 @@ async function syncOwnerCredentials() {
   }
 }
 
+async function syncUserCredentials() {
+  const bcrypt = await import("bcryptjs");
+  const credentialUpdates: { email: string; password: string; }[] = [
+    { email: "cvaughn@tristarpt.com", password: process.env.SEED_CVAUGHN_PASSWORD || "" },
+  ];
+
+  for (const { email, password } of credentialUpdates) {
+    if (!password) continue;
+    const existing = await db.select().from(users).where(eq(users.email, email));
+    if (existing.length === 0) continue;
+    const user = existing[0];
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      const hash = await bcrypt.hash(password, 10);
+      await db.update(users).set({ password: hash, forcePasswordChange: false }).where(eq(users.id, user.id));
+      console.log(`[seed] Updated password for ${email}`);
+    }
+  }
+}
+
 export async function seed() {
   await syncOwnerCredentials();
+  await syncUserCredentials();
 
   const existingUsers = await db.select().from(users);
   const existingPhysicians = await db.select({ id: physicians.id }).from(physicians).limit(20);
