@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { requireRole, getClientIp } from "./shared";
+import { requireAuth, requireRole, getClientIp } from "./shared";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -551,7 +551,7 @@ export async function registerImportRoutes(app: Express) {
     }
   });
 
-  app.post("/api/import/npi-lookup", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+  app.post("/api/import/npi-lookup", requireAuth, async (req, res) => {
     try {
       const { firstName, lastName, npi } = req.body;
       const params = new URLSearchParams({ version: "2.1", enumeration_type: "NPI-1" });
@@ -596,7 +596,7 @@ export async function registerImportRoutes(app: Express) {
     }
   });
 
-  app.post("/api/import/bulk-link-offices", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+  app.post("/api/import/bulk-link-offices", requireAuth, async (req, res) => {
     try {
       const { links } = req.body;
       if (!Array.isArray(links) || links.length === 0) {

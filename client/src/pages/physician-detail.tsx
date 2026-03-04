@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +44,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const [newComment, setNewComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
+  const [practiceNameValue, setPracticeNameValue] = useState("");
 
   const { data: physician, isLoading } = useQuery<Physician>({
     queryKey: ["/api/physicians", params.id],
@@ -62,6 +63,10 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+  const { data: practiceNamesData } = useQuery<string[]>({
+    queryKey: ["/api/physicians/practice-names"],
+    enabled: editing,
+  });
   const { data: comments } = useQuery<PhysicianComment[]>({
     queryKey: ["/api/physicians", params.id, "comments"],
     queryFn: async () => {
@@ -71,6 +76,12 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     },
     enabled: !!params.id,
   });
+  useEffect(() => {
+    if (editing && physician) {
+      setPracticeNameValue(physician.practiceName || "");
+    }
+  }, [editing, physician]);
+
   const { data: healthScore } = useQuery<any>({
     queryKey: ["/api/physicians", params.id, "health-score"],
     queryFn: async () => {
@@ -194,7 +205,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       credentials: fd.get("credentials") || null,
       npi: fd.get("npi") || null,
       specialty: fd.get("specialty") || null,
-      practiceName: fd.get("practiceName") || null,
+      practiceName: practiceNameValue.trim() || null,
       phone: fd.get("phone") || null,
       email: fd.get("email") || null,
       city: fd.get("city") || null,
@@ -274,7 +285,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
             {physician.relationshipStage.replace("_", " ")}
           </Badge>
           {canEdit && !editing && (
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit-physician">
+            <Button variant="outline" size="sm" onClick={() => { setPracticeNameValue(physician?.practiceName || ""); setEditing(true); }} data-testid="button-edit-physician">
               <Edit2 className="w-3 h-3 mr-1.5" />Edit
             </Button>
           )}
@@ -352,7 +363,20 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                 </div>
                 <div className="space-y-1.5">
                   <Label>Office/Practice Name</Label>
-                  <Input name="practiceName" defaultValue={physician.practiceName || ""} />
+                  <div className="relative">
+                    <Input
+                      value={practiceNameValue}
+                      onChange={(e) => setPracticeNameValue(e.target.value)}
+                      placeholder="Type or select a practice..."
+                      list="practice-names-list"
+                      data-testid="input-edit-practice-name"
+                    />
+                    <datalist id="practice-names-list">
+                      {(practiceNamesData || []).map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
