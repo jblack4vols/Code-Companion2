@@ -53,6 +53,7 @@ const adminItems = [
   { title: "Duplicates", url: "/admin/duplicates", icon: Copy },
   { title: "Unlinked Referrals", url: "/admin/unlinked-referrals", icon: Link2 },
   { title: "Team Reports", url: "/admin/reports", icon: BarChart3 },
+  { title: "Office Linker", url: "/provider-office-linker", icon: Link2 },
   { title: "Import", url: "/import", icon: Upload },
   { title: "SharePoint Sync", url: "/admin/sharepoint", icon: Cloud },
   { title: "Integrations", url: "/admin/integrations", icon: Plug },

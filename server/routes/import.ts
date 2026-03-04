@@ -534,4 +534,96 @@ export async function registerImportRoutes(app: Express) {
       res.status(500).json({ message: err.message });
     }
   });
+
+  app.post("/api/import/npi-lookup", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { firstName, lastName, npi } = req.body;
+      const params = new URLSearchParams({ version: "2.1", enumeration_type: "NPI-1" });
+      if (npi) {
+        params.set("number", npi);
+      } else if (firstName && lastName) {
+        params.set("first_name", firstName);
+        params.set("last_name", lastName);
+      } else {
+        return res.status(400).json({ message: "Provide either npi or firstName+lastName" });
+      }
+
+      const response = await fetch(`https://npiregistry.cms.hhs.gov/api/?${params.toString()}`);
+      if (!response.ok) return res.status(502).json({ message: "NPI Registry unavailable" });
+      const data = await response.json() as any;
+
+      const results = (data.results || []).slice(0, 20).map((r: any) => {
+        const basic = r.basic || {};
+        const locAddr = r.addresses?.find((a: any) => a.address_purpose === "LOCATION") || {};
+        const mailAddr = r.addresses?.find((a: any) => a.address_purpose === "MAILING") || {};
+        const taxonomy = r.taxonomies?.find((t: any) => t.primary) || r.taxonomies?.[0];
+        const orgName = locAddr.organization_name || mailAddr.organization_name || null;
+        return {
+          npi: r.number,
+          firstName: basic.first_name || "",
+          lastName: basic.last_name || "",
+          credentials: basic.credential || "",
+          specialty: taxonomy?.desc || null,
+          organizationName: orgName,
+          address: [locAddr.address_1, locAddr.address_2].filter(Boolean).join(", ") || null,
+          city: locAddr.city || null,
+          state: locAddr.state || null,
+          zip: locAddr.postal_code?.slice(0, 5) || null,
+          phone: locAddr.telephone_number || null,
+        };
+      });
+
+      res.json({ count: results.length, results });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.post("/api/import/bulk-link-offices", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
+    try {
+      const { links } = req.body;
+      if (!Array.isArray(links) || links.length === 0) {
+        return res.status(400).json({ message: "Provide an array of { physicianId, practiceName, npi? }" });
+      }
+
+      let updated = 0;
+      let failed = 0;
+      const details: any[] = [];
+
+      for (const link of links) {
+        try {
+          if (!link.physicianId || !link.practiceName) { failed++; continue; }
+          const updates: Record<string, any> = { practiceName: link.practiceName };
+          if (link.npi) updates.npi = link.npi;
+          if (link.address) updates.primaryOfficeAddress = link.address;
+          if (link.city) updates.city = link.city;
+          if (link.state) updates.state = link.state;
+          if (link.zip) updates.zip = link.zip;
+          if (link.phone) updates.phone = link.phone;
+          if (link.specialty) updates.specialty = link.specialty;
+          if (link.credentials) updates.credentials = link.credentials;
+          await storage.updatePhysician(link.physicianId, updates as any);
+          updated++;
+          details.push({ physicianId: link.physicianId, practiceName: link.practiceName, status: "ok" });
+        } catch {
+          failed++;
+          details.push({ physicianId: link.physicianId, status: "error" });
+        }
+      }
+
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "IMPORT",
+        entity: "physician",
+        entityId: "bulk-link",
+        detailJson: { action: "bulk-link-offices", updated, failed, count: links.length },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
+      });
+
+      res.json({ updated, failed, total: links.length, details });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
 }

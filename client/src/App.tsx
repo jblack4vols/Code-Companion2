@@ -37,6 +37,7 @@ const ImportPage = lazy(() => import("@/pages/import"));
 const SharePointSyncPage = lazy(() => import("@/pages/sharepoint-sync"));
 const MapViewPage = lazy(() => import("@/pages/map-view"));
 const DuplicateDetectionPage = lazy(() => import("@/pages/duplicate-detection"));
+const ProviderOfficeLinkerPage = lazy(() => import("@/pages/provider-office-linker"));
 const UserActivityReportsPage = lazy(() => import("@/pages/user-activity-reports"));
 const IntegrationsPage = lazy(() => import("@/pages/integrations"));
 const ExecutiveDashboardPage = lazy(() => import("@/pages/executive-dashboard"));
@@ -93,6 +94,7 @@ function AuthenticatedRouter() {
         <Route path="/referrals" component={ReferralsPage} />
         <Route path="/referral-explorer" component={ReferralExplorerPage} />
         <Route path="/provider-offices" component={ProviderOfficesPage} />
+        <Route path="/provider-office-linker" component={ProviderOfficeLinkerPage} />
         <Route path="/tasks" component={TasksPage} />
         <Route path="/calendar" component={CalendarPage} />
         <Route path="/tiering" component={PhysicianTieringPage} />

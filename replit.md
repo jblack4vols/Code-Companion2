@@ -67,6 +67,7 @@ The application includes four integrated operational modules:
 ## Data Security
 - **Location scoping enforced**: `getPhysiciansPaginated` and `getInteractionsPaginated` accept `locationIds` arrays. Physicians scoped via referrals subquery. Routes call `getUserLocationScope()` — OWNER/DIRECTOR bypass, FRONT_DESK/MARKETER see only assigned locations.
 - **CSV template downloads**: `/api/import/template/:type` (physicians, referrals) and `/api/revenue/claims/template/:type` (claims, payments, rates) serve pre-formatted CSV templates with example rows.
+- **Provider Office Linker**: `/provider-office-linker` page for bulk-linking providers to practice offices using NPI Registry. Backend endpoints: `/api/import/npi-lookup` (name/NPI search), `/api/import/bulk-link-offices` (batch update). Accessible to OWNER and DIRECTOR roles.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database, backed by Neon.
