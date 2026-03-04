@@ -1,0 +1,54 @@
+---
+title: "Local Development"
+description: "Setting up and running the Tristar 360° development environment"
+---
+
+# Local Development Setup
+
+## Prerequisites
+
+- Node.js 18+
+- A PostgreSQL database (e.g. [Neon](https://neon.tech) free tier)
+
+## Steps
+
+### 1. Install dependencies
+
+```bash
+npm install
+```
+
+### 2. Create `.env` from the template
+
+```bash
+cp .env.example .env
+```
+
+### 3. Fill in required values
+
+| Variable | Description |
+|---|---|
+| `DATABASE_URL` | Postgres connection string (e.g. `postgresql://user:pass@host/dbname?sslmode=require`) |
+| `SESSION_SECRET` | Random string, min 16 characters |
+
+### 4. Push the schema to the database
+
+```bash
+npm run db:push
+```
+
+### 5. Start the dev server
+
+```bash
+npm run dev
+```
+
+The app runs at `http://localhost:5000` by default.
+
+## Notes
+
+- `dotenv/config` loads `.env` automatically in both the server and drizzle-kit
+- Scripts use `cross-env` so they work on Windows, macOS, and Linux
+- `.env` is gitignored; never commit credentials
+- Vite runs in middleware mode on the same Express server — no separate proxy needed
+- The `/health` endpoint is always available, even before the app finishes initializing

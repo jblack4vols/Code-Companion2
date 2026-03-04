@@ -39,3 +39,37 @@ The UI is designed to be mobile-friendly, adapting layout for smaller screens (e
 - **Microsoft SharePoint**: Used for syncing all application data to SharePoint Lists.
 - **node-cron**: For scheduling nightly ETL jobs and other automated tasks.
 - **ExcelJS**: Utilized for Excel (.xlsx) import functionality.
+
+## ClaudeKit Engineer Integration
+The project includes ClaudeKit Engineer tooling for AI-assisted development:
+
+### Testing
+- **Vitest** unit and integration tests in `tests/unit/` and `tests/integration/`
+- Existing tests in `server/__tests__/`
+- Run: `npx vitest run` (266 tests across 15 files)
+- Watch mode: `npx vitest`
+- Coverage: `npx vitest run --coverage`
+
+### Kanban Project Board
+- Plans-kanban dashboard for task visualization
+- Plans directory: `plans/` with active improvement backlog
+- Start: `node .opencode/skills/plans-kanban/scripts/server.cjs --dir ./plans`
+- Usage guide: `docs/kanban-usage.md`
+
+### Documentation Site (Mintlify)
+- Mintlify docs in `documentation/` directory
+- Config: `documentation/docs.json`
+- Pages: introduction, architecture, data-model, permissions, workflows, local-dev
+
+### Design System
+- Design system documented in `docs/design-system.md`
+- Colors, typography, components, layout patterns, dark mode, interaction system
+
+### Architecture Diagrams
+- Mermaid diagrams in `docs/diagrams/system-architecture.md`
+- System architecture, request flow, ER diagram, ETL flow, auth flow
+
+### Code Review Workflows
+- Review process: `docs/code-review.md`
+- AI agent checklist: `.claude/rules/code-review-checklist.md`
+- HIPAA-specific review items included
