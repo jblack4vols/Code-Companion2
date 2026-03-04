@@ -28,6 +28,7 @@ export function registerUserRoutes(app: Express) {
       const plainPassword = validated.password;
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
       const user = await storage.createUser({ ...validated, password: hashedPassword });
+      await storage.updateUser(user.id, { forcePasswordChange: true } as any);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: user.role }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
 
       const host = req.headers.host || process.env.REPLIT_DOMAINS?.split(",")[0] || "localhost:5000";
