@@ -33,7 +33,8 @@ export function registerDashboardRoutes(app: Express) {
         triggerETL().catch(err => console.error("[ETL] Manual trigger error:", err));
       }
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -195,7 +196,8 @@ export function registerDashboardRoutes(app: Express) {
         { stage: "Discharged", count: row.discharged },
       ]);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -226,7 +228,8 @@ export function registerDashboardRoutes(app: Express) {
       `);
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -248,7 +251,8 @@ export function registerDashboardRoutes(app: Express) {
       `);
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -313,7 +317,8 @@ export function registerDashboardRoutes(app: Express) {
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, limit);
       res.json(combined);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -365,7 +370,8 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -452,7 +458,8 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json({ events, tasks: taskList, followUps });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -508,7 +515,8 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json(result.rows[0] || {});
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -578,7 +586,8 @@ export function registerDashboardRoutes(app: Express) {
       alerts.sort((a, b) => (a.severity === "critical" ? -1 : 1) - (b.severity === "critical" ? -1 : 1));
       res.json(alerts);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -622,7 +631,8 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -654,7 +664,8 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

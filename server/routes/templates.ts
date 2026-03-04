@@ -8,7 +8,8 @@ export function registerTemplateRoutes(app: Express) {
       const templates = await storage.getInteractionTemplates();
       res.json(templates);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -40,7 +41,8 @@ export function registerTemplateRoutes(app: Express) {
 
       res.status(201).json(created);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -58,7 +60,8 @@ export function registerTemplateRoutes(app: Express) {
       if (!updated) return res.status(404).json({ message: "Template not found" });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -67,7 +70,8 @@ export function registerTemplateRoutes(app: Express) {
       await storage.deleteInteractionTemplate(req.params.id);
       res.json({ message: "Template deactivated" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

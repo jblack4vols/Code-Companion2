@@ -2235,7 +2235,7 @@ export class DatabaseStorage implements IStorage {
     `);
     const total = parseInt((countResult.rows[0] as any)?.total || "0");
 
-    const dataResult = await db.execute(sql.raw(`
+    const dataResult = await db.execute(sql`
       SELECT
         TRIM(p.practice_name) as practice_name,
         COUNT(DISTINCT p.id)::int as physician_count,
@@ -2266,11 +2266,11 @@ export class DatabaseStorage implements IStorage {
       WHERE p.deleted_at IS NULL
         AND p.practice_name IS NOT NULL
         AND TRIM(p.practice_name) != ''
-        ${searchPattern ? `AND (p.practice_name ILIKE '${searchPattern.replace(/'/g, "''")}' OR p.city ILIKE '${searchPattern.replace(/'/g, "''")}')` : ''}
+        ${searchCond}
       GROUP BY TRIM(p.practice_name)
-      ORDER BY ${sortCol} ${sortDir}
+      ORDER BY ${sql.raw(sortCol)} ${sql.raw(sortDir)}
       LIMIT ${pageSize} OFFSET ${offset}
-    `));
+    `);
 
     const data: PracticeSummary[] = (dataResult.rows as any[]).map(r => ({
       practiceName: r.practice_name,

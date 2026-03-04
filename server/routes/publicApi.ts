@@ -21,7 +21,8 @@ export function registerPublicApiRoutes(app: Express) {
       const keys = await storage.getApiKeys();
       res.json(keys.map((k) => ({ ...k, keyHash: undefined })));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -96,7 +97,8 @@ export function registerPublicApiRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "ROTATE_API_KEY", entity: "ApiKey", entityId: newApiKey.id, detailJson: { oldKeyId: oldKey.id, name: oldKey.name }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ ...newApiKey, rawKey, keyHash: undefined });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -107,7 +109,8 @@ export function registerPublicApiRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -139,7 +142,8 @@ export function registerPublicApiRoutes(app: Express) {
       // Physicians are not directly location-scoped, return all
       res.json({ data: allPhysicians, total: allPhysicians.length });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -149,7 +153,8 @@ export function registerPublicApiRoutes(app: Express) {
       if (!phys) return res.status(404).json({ error: "Not found" });
       res.json(phys);
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -163,7 +168,8 @@ export function registerPublicApiRoutes(app: Express) {
         : allReferrals;
       res.json({ data, total: data.length });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -177,7 +183,8 @@ export function registerPublicApiRoutes(app: Express) {
         : allLocations;
       res.json({ data, total: data.length });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -191,7 +198,8 @@ export function registerPublicApiRoutes(app: Express) {
         : allInteractions;
       res.json({ data, total: data.length });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 
@@ -202,7 +210,8 @@ export function registerPublicApiRoutes(app: Express) {
 
       res.json({ received: true, event });
     } catch (err: any) {
-      res.status(500).json({ error: err.message });
+      console.error(err);
+      res.status(500).json({ error: "Internal server error" });
     }
   });
 }

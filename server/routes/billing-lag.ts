@@ -27,7 +27,8 @@ export function registerBillingLagRoutes(app: Express): void {
         const data = await getARAgingBuckets(locationId);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -46,7 +47,8 @@ export function registerBillingLagRoutes(app: Express): void {
         const data = await getBillingLagMetrics(filters);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -65,7 +67,8 @@ export function registerBillingLagRoutes(app: Express): void {
         const data = await getBillingLagByPayer(filters);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -83,7 +86,8 @@ export function registerBillingLagRoutes(app: Express): void {
         const data = await getBillingLagByLocation(filters);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -100,7 +104,8 @@ export function registerBillingLagRoutes(app: Express): void {
         const data = await getStaleClaims(thresholdDays);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -115,7 +120,8 @@ export function registerBillingLagRoutes(app: Express): void {
         const alertsCreated = await evaluateBillingLagAlerts(locationId);
         res.json({ alertsCreated });
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );

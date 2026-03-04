@@ -135,7 +135,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE_ALL", entity: "Referral", entityId: "all", detailJson: { count }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -145,7 +146,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE_ALL", entity: "Referral", entityId: "all", detailJson: { count }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -159,7 +161,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Referral", entityId: "bulk", detailJson: { count, ids }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -170,7 +173,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -181,7 +185,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -237,7 +242,8 @@ export function registerReferralRoutes(app: Express) {
       }
       res.json(combined.slice(0, 100));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -278,7 +284,8 @@ export function registerReferralRoutes(app: Express) {
 
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -325,7 +332,8 @@ export function registerReferralRoutes(app: Express) {
 
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -356,7 +364,8 @@ export function registerReferralRoutes(app: Express) {
 
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -386,7 +395,8 @@ export function registerReferralRoutes(app: Express) {
         diagnosisCategories: (row?.diagnosis_categories || []).sort(),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

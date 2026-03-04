@@ -10,7 +10,8 @@ export function registerSearchRoutes(app: Express) {
       const results = await storage.globalSearch(q, 10);
       res.json(results);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -19,7 +20,8 @@ export function registerSearchRoutes(app: Express) {
       const favoriteIds = await storage.getPhysicianFavorites(req.session.userId!);
       res.json(favoriteIds);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -28,7 +30,8 @@ export function registerSearchRoutes(app: Express) {
       await storage.addPhysicianFavorite(req.session.userId!, req.params.physicianId);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -37,7 +40,8 @@ export function registerSearchRoutes(app: Express) {
       await storage.removePhysicianFavorite(req.session.userId!, req.params.physicianId);
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -48,7 +52,8 @@ export function registerSearchRoutes(app: Express) {
       const result = await storage.getUnlinkedReferrals(page, pageSize);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -68,7 +73,8 @@ export function registerSearchRoutes(app: Express) {
 
       res.json({ ...updated, linkedCount });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -78,7 +84,8 @@ export function registerSearchRoutes(app: Express) {
       if (!updated) return res.status(404).json({ message: "Referral not found" });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -87,7 +94,8 @@ export function registerSearchRoutes(app: Express) {
       const matches = await storage.getSuggestedPhysicianMatches(req.params.id);
       res.json(matches);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -147,7 +155,8 @@ export function registerSearchRoutes(app: Express) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

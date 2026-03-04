@@ -19,7 +19,8 @@ export function registerGoalRoutes(app: Express) {
       const result = await db.select().from(goals).where(and(...conditions));
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -64,7 +65,8 @@ export function registerGoalRoutes(app: Express) {
 
       res.status(201).json(created);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -73,7 +75,8 @@ export function registerGoalRoutes(app: Express) {
       await db.delete(goals).where(eq(goals.id, req.params.id));
       res.json({ message: "Goal deleted" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -124,7 +127,8 @@ export function registerGoalRoutes(app: Express) {
 
       res.json(progress);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

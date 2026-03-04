@@ -21,7 +21,8 @@ export function registerAdminRoutes(app: Express) {
       const result = await db.select().from(appSettings).where(eq(appSettings.key, "audit_retention_days")).limit(1);
       res.json({ value: result[0]?.value || "365" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -34,7 +35,8 @@ export function registerAdminRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Setting", entityId: "audit_retention_days", detailJson: { days }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -48,7 +50,8 @@ export function registerAdminRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "PURGE", entity: "AuditLog", entityId: "bulk", detailJson: { retentionDays, cutoffDate: cutoffDate.toISOString() }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ deleted: deleted.rowCount || 0 });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -63,7 +66,8 @@ export function registerAdminRoutes(app: Express) {
         reportTime: reportResult[0]?.value || "6:30",
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -95,7 +99,8 @@ export function registerAdminRoutes(app: Express) {
 
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -116,7 +121,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="physicians_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -139,7 +145,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="referrals_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -159,7 +166,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="interactions_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -177,7 +185,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="tasks_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -195,7 +204,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="audit_logs_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -203,7 +213,8 @@ export function registerAdminRoutes(app: Express) {
     try {
       res.json(await storage.getScheduledReports());
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -241,7 +252,8 @@ export function registerAdminRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "ScheduledReport", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -286,7 +298,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

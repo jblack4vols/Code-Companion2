@@ -100,7 +100,8 @@ export function registerUserRoutes(app: Express) {
       const locationIds = await storage.getUserLocationIds(user.id);
       res.json({ locationIds, all: false });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

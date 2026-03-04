@@ -34,7 +34,8 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
         const data = await getAppealTemplates(activeOnly);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -49,7 +50,8 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
         if (!tmpl) return res.status(404).json({ message: "Template not found" });
         res.json(tmpl);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -77,7 +79,8 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
         await deleteAppealTemplate(String(req.params.id));
         res.json({ success: true });
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -93,7 +96,8 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
         const stats = await getAppealStats();
         res.json(stats);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -113,7 +117,8 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
         const result = await getAppeals(filters);
         res.json(result);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -128,7 +133,8 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
         if (!appeal) return res.status(404).json({ message: "Appeal not found" });
         res.json(appeal);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );

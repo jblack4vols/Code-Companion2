@@ -146,7 +146,8 @@ export function registerPhysicianRoutes(app: Express) {
         totalPages: Math.ceil(total / pageSize),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -175,7 +176,8 @@ export function registerPhysicianRoutes(app: Express) {
       enriched.sort((a, b) => b.referralCount - a.referralCount);
       res.json(enriched);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -261,7 +263,8 @@ export function registerPhysicianRoutes(app: Express) {
       `);
       res.json(results.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -290,7 +293,8 @@ export function registerPhysicianRoutes(app: Express) {
       `);
       res.json(dupes.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -314,7 +318,8 @@ export function registerPhysicianRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -364,7 +369,8 @@ export function registerPhysicianRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -375,7 +381,8 @@ export function registerPhysicianRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -396,7 +403,8 @@ export function registerPhysicianRoutes(app: Express) {
       const comments = await storage.getPhysicianComments(req.params.id);
       res.json(comments);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 

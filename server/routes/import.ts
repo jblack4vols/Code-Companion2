@@ -10,7 +10,19 @@ export async function registerImportRoutes(app: Express) {
   const ExcelJS = (await import("exceljs")).default;
   const uploadDir = path.join(os.tmpdir(), "crm-uploads");
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  const allowedExtensions = [".csv", ".xlsx", ".xls"];
+  const upload = multer({
+    dest: uploadDir,
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExtensions.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only .csv, .xlsx, and .xls files are allowed") as any, false);
+      }
+    },
+  });
 
   function excelSerialToDate(serial: number): Date {
     const utcDays = Math.floor(serial - 25569);
@@ -219,7 +231,8 @@ export async function registerImportRoutes(app: Express) {
       });
       res.json({ ...result, enriched: enrichmentStats.enriched, enrichmentFailed: enrichmentStats.failed });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -407,7 +420,8 @@ export async function registerImportRoutes(app: Express) {
       });
       res.json(summary);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -477,7 +491,8 @@ export async function registerImportRoutes(app: Express) {
 
       res.json(stats);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -531,7 +546,8 @@ export async function registerImportRoutes(app: Express) {
         results,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -575,7 +591,8 @@ export async function registerImportRoutes(app: Express) {
 
       res.json({ count: results.length, results });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -623,7 +640,8 @@ export async function registerImportRoutes(app: Express) {
 
       res.json({ updated, failed, total: links.length, details });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

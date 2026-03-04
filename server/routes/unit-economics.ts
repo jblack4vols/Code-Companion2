@@ -16,7 +16,19 @@ export async function registerUnitEconomicsRoutes(app: Express) {
 
   const uploadDir = path.join(os.tmpdir(), "crm-uploads");
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  const allowedExtensions = [".csv", ".xlsx", ".xls"];
+  const upload = multer({
+    dest: uploadDir,
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExtensions.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only .csv, .xlsx, and .xls files are allowed") as any, false);
+      }
+    },
+  });
 
   // Read uploaded file from disk into ExcelJS workbook, then clean up temp file
   async function loadWorkbook(file: Express.Multer.File) {
@@ -112,7 +124,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         const data = await storage.getUnitEconomicsDashboard(locationScope ?? undefined);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -134,7 +147,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         const data = await storage.getUnitEconomicsLocationDetail(locationId, dateFrom, dateTo);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -151,7 +165,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         const data = await storage.getProviderProductivityLeaderboard(dateFrom, dateTo, locationId);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -166,7 +181,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         const data = await storage.getUnitEconomicsForecast(locationId);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -209,7 +225,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         const data = await storage.getFinancialAlerts({ locationId, acknowledged });
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -224,7 +241,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         if (!alert) return res.status(404).json({ message: "Alert not found" });
         res.json(alert);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -239,7 +257,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         const data = await storage.getFinancialTargets(locationId);
         res.json(data);
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );
@@ -284,7 +303,8 @@ export async function registerUnitEconomicsRoutes(app: Express) {
         ]);
         res.json({ locationAlerts, providerAlerts, total: locationAlerts + providerAlerts });
       } catch (err: any) {
-        res.status(500).json({ message: err.message });
+        console.error(err);
+      res.status(500).json({ message: "Internal server error" });
       }
     },
   );

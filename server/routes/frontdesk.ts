@@ -70,7 +70,8 @@ export function registerFrontDeskRoutes(app: Express) {
       const results = await query;
       res.json(results);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -96,7 +97,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
       res.json({ request, triage });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -109,7 +111,8 @@ export function registerFrontDeskRoutes(app: Express) {
       const result = triageClassify(symptoms);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -139,7 +142,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
       res.json(slots);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -173,7 +177,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
       res.json({ request: updated, slot });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -190,7 +195,8 @@ export function registerFrontDeskRoutes(app: Express) {
       if (!updated) return res.status(404).json({ message: "Patient request not found" });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -213,7 +219,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -246,7 +253,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
       res.json({ requests: requestStats, slots: slotStats });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -296,7 +304,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
       res.json({ message: `Seeded ${slotsToInsert.length} appointment slots across ${locs.length} locations for 14 days` });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

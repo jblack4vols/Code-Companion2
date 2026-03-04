@@ -119,7 +119,8 @@ export function registerIntegrationRoutes(app: Express) {
 
       res.json({ success: true, outlookEventId: data.id });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -128,7 +129,8 @@ export function registerIntegrationRoutes(app: Express) {
       const sites = await searchSPSites(qstr(req.query.q as string | string[] | undefined) || "*");
       res.json(sites);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -137,7 +139,8 @@ export function registerIntegrationRoutes(app: Express) {
       const siteId = await getSPSiteId();
       res.json({ siteId });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -149,7 +152,8 @@ export function registerIntegrationRoutes(app: Express) {
       await setSPSiteId(siteId);
       res.json({ success: true, site: { id: site.id, displayName: site.displayName, webUrl: site.webUrl } });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -159,7 +163,8 @@ export function registerIntegrationRoutes(app: Express) {
       const siteId = await getSPSiteId();
       res.json({ siteId, statuses });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -191,7 +196,8 @@ export function registerIntegrationRoutes(app: Express) {
     try {
       res.json(await storage.getIntegrationConfigs());
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -239,7 +245,8 @@ export function registerIntegrationRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE_INTEGRATION", entity: "Integration", entityId: req.params.id as string, detailJson: {}, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -304,7 +311,8 @@ export function registerIntegrationRoutes(app: Express) {
 
       res.json({ success: false, message: "Test not available for this integration type" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -334,7 +342,8 @@ export function registerIntegrationRoutes(app: Express) {
       }));
       return res.json({ success: true, fields });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -872,7 +881,8 @@ export function registerIntegrationRoutes(app: Express) {
       await storage.updateIntegrationSyncLog(log.id, { status: "skipped", details: { message: "Sync not configured for this integration" }, finishedAt: new Date() });
       res.json({ success: false, message: "Sync not available or not configured" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -881,7 +891,8 @@ export function registerIntegrationRoutes(app: Express) {
       const logs = await storage.getIntegrationSyncLogs(req.params.id as string, 20);
       res.json(logs);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

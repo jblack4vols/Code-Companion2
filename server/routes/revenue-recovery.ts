@@ -21,7 +21,19 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
 
   const uploadDir = path.join(os.tmpdir(), "crm-uploads");
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  const allowedExtensions = [".csv", ".xlsx", ".xls"];
+  const upload = multer({
+    dest: uploadDir,
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExtensions.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only .csv, .xlsx, and .xls files are allowed") as any, false);
+      }
+    },
+  });
 
   const READ = requireRole("OWNER", "DIRECTOR", "ANALYST");
   const WRITE = requireRole("OWNER", "DIRECTOR");
@@ -160,7 +172,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json({ ...result, page, pageSize });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -171,7 +184,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       if (!claim) return res.status(404).json({ message: "Claim not found" });
       res.json(claim);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -181,7 +195,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const claim = await storage.upsertClaim(req.body);
       res.status(201).json(claim);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -192,7 +207,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const result = await storage.bulkUpsertClaims(req.body);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -381,7 +397,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -395,7 +412,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -405,7 +423,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const count = await storage.flagUnderpaidClaims(req.body?.locationId ? { locationId: req.body.locationId } : undefined);
       res.json({ flagged: count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -420,7 +439,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       );
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -430,7 +450,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const rate = await storage.upsertPayerRate(req.body);
       res.status(201).json(rate);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -440,7 +461,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const count = await storage.buildRatesFromHistory(req.body?.payer);
       res.json({ ratesBuilt: count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -468,7 +490,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       `);
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -493,7 +516,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       `);
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -516,7 +540,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
 
       res.json({ resolved: claimIds.length });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -530,7 +555,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -544,7 +570,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -557,7 +584,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -571,7 +599,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

@@ -137,7 +137,8 @@ export function registerFeatureRoutes(app: Express) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -190,7 +191,8 @@ export function registerFeatureRoutes(app: Express) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -280,7 +282,8 @@ export function registerFeatureRoutes(app: Express) {
         dateRange: { from: dateFrom, to: dateTo },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -289,7 +292,8 @@ export function registerFeatureRoutes(app: Express) {
       const history = await storage.getPhysicianStageHistory(req.params.id);
       res.json(history);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }
