@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Integration tests for canonical ck-help query routing."""
 
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -16,7 +17,7 @@ SCRIPT = (
 
 def run_ck_help(query: str) -> str:
     result = subprocess.run(
-        [sys.executable, str(SCRIPT)] + query.split(),
+        [sys.executable, str(SCRIPT)] + shlex.split(query),
         capture_output=True,
         text=True,
     )
