@@ -29,6 +29,7 @@ import { registerUnitEconomicsRoutes } from "./routes/unit-economics";
 import { registerRevenueRecoveryRoutes } from "./routes/revenue-recovery";
 import { registerBillingLagRoutes } from "./routes/billing-lag";
 import { registerRevenueRecoveryAppealsRoutes } from "./routes/revenue-recovery-appeals";
+import { registerFrontDeskRoutes } from "./routes/frontdesk";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -98,6 +99,7 @@ export async function registerRoutes(
   await registerRevenueRecoveryRoutes(app);
   registerBillingLagRoutes(app);
   await registerRevenueRecoveryAppealsRoutes(app);
+  registerFrontDeskRoutes(app);
 
   return httpServer;
 }

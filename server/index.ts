@@ -103,9 +103,10 @@ httpServer.listen(
         appReady = true;
         log("Application fully initialized");
 
-        const { ensureSearchIndexes, ensureRevenueRecoveryTables } = await import("./db");
+        const { ensureSearchIndexes, ensureRevenueRecoveryTables, ensureFrontDeskTables } = await import("./db");
         await ensureSearchIndexes().catch(err => console.error("Index error:", err));
         await ensureRevenueRecoveryTables().catch(err => console.error("Revenue recovery tables error:", err));
+        await ensureFrontDeskTables().catch(err => console.error("Front desk tables error:", err));
 
         const { seed } = await import("./seed");
         await seed().catch(err => console.error("Seed error:", err));

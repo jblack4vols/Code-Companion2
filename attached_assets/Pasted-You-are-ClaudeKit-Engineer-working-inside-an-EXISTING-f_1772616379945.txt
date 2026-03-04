@@ -1,0 +1,314 @@
+You are ClaudeKit Engineer working inside an EXISTING full-stack TypeScript project.
+
+IMPORTANT:
+This project already has a working architecture. DO NOT rebuild it or switch frameworks.
+
+Current architecture:
+Frontend:
+- React 18
+- Vite
+- Tailwind
+- Radix UI
+- TanStack Query
+- Wouter router
+
+Backend:
+- Express server
+- PostgreSQL
+- Drizzle ORM
+- express-session auth
+- multer uploads
+
+Your job is to EXTEND this existing system.
+
+Do not introduce Next.js or any new server framework.
+
+OBJECTIVE
+
+Add four integrated operational modules to the application:
+
+1. Command Center KPI Dashboard
+2. Referral Intelligence
+3. Claim Underpayment Detector
+4. AI Front Desk Intake + Scheduling Assistant
+
+These modules must integrate cleanly into the existing system with:
+
+- existing Express API structure
+- existing Drizzle database
+- existing React component patterns
+- existing auth/session logic
+
+Do NOT create a separate application.
+
+----------------------------------
+
+STEP 1 — ANALYZE THE EXISTING CODE
+
+Before writing new code:
+
+1. Inspect server/index.ts
+2. Inspect existing routes and middleware
+3. Inspect Drizzle schema
+4. Inspect React routing (likely wouter)
+5. Inspect API utilities and React Query usage
+
+Follow existing patterns exactly.
+
+----------------------------------
+
+STEP 2 — DATABASE EXTENSIONS (DRIZZLE)
+
+Add the following tables using Drizzle migrations.
+
+locations
+providers
+payers
+
+kpi_daily
+referral_sources
+referrals
+
+claims
+claim_lines
+fee_schedule
+underpayment_flags
+
+patient_requests
+appointment_slots
+
+Do NOT delete existing tables.
+
+Seed initial data for:
+- 8 clinic locations
+- several providers
+- 14 days of appointment slots
+
+----------------------------------
+
+STEP 3 — EXPRESS API ROUTES
+
+Create modular route files inside the existing Express API structure.
+
+Add endpoints for:
+
+/api/dashboard
+/api/referrals
+/api/underpayments
+/api/frontdesk
+/api/imports
+
+Follow existing validation patterns using Zod.
+
+All endpoints must:
+- validate inputs
+- handle errors
+- return typed responses
+- use Drizzle queries
+
+----------------------------------
+
+STEP 4 — CSV IMPORT SYSTEM
+
+Using multer and exceljs (already installed):
+
+Implement CSV uploads for:
+
+1. KPI data
+2. Referrals
+3. Claims
+
+Features:
+- template CSV download
+- row validation with Zod
+- error table
+- idempotent upserts
+
+Store files in /uploads or existing storage pattern.
+
+----------------------------------
+
+STEP 5 — COMMAND CENTER DASHBOARD
+
+Frontend route: /dashboard
+
+Build components:
+
+KPI Cards
+Revenue chart
+Visits chart
+Location comparison table
+Alerts panel
+
+Use Recharts.
+
+Alerts:
+
+- revenue/visit drop >5%
+- arrival rate <85%
+- visits drop >10% week-over-week
+
+Fetch data with React Query.
+
+----------------------------------
+
+STEP 6 — REFERRAL INTELLIGENCE
+
+Frontend route: /referrals
+
+Features:
+
+Referral directory
+Search by:
+- name
+- NPI
+- specialty
+- organization
+
+Referral source detail page:
+
+- referral trend chart
+- referrals by clinic
+- payer mix
+
+Top Movers:
+
+Compare last 30 days vs previous 30.
+
+----------------------------------
+
+STEP 7 — UNDERPAYMENT DETECTOR
+
+Frontend route: /underpayments
+
+Logic:
+
+expected = fee_schedule.allowed_expected
+variance = paid - expected
+
+Flag when:
+
+variance < -5
+OR paid = 0 and expected > 0
+OR fee schedule missing
+
+Display:
+
+- total underpayments
+- by payer
+- by CPT
+
+Allow marking issues resolved.
+
+----------------------------------
+
+STEP 8 — AI FRONT DESK WORKFLOW
+
+Frontend route: /frontdesk
+
+Workflow:
+
+Create patient request
+Capture:
+
+name
+phone
+symptoms
+location preference
+
+Run triage classification.
+
+Red
+Orange
+Yellow
+Green
+
+Then:
+
+Find earliest available appointment slot.
+
+Schedule patient or place on waitlist.
+
+----------------------------------
+
+STEP 9 — TRIAGE ENGINE
+
+Create rule-based classifier.
+
+Emergency phrases:
+
+chest pain
+stroke
+shortness of breath
+severe bleeding
+suicidal
+
+If detected:
+
+Show banner:
+"Call 911 immediately"
+
+Block scheduling.
+
+----------------------------------
+
+STEP 10 — DEBUG AND INTEGRATION
+
+Once implementation is complete:
+
+Run:
+
+npm install
+npm run check
+npm run dev
+
+Fix all TypeScript errors.
+
+Verify the following flows end-to-end:
+
+Login → dashboard loads
+
+Upload KPI CSV → dashboard updates
+
+Upload claims CSV → underpayment flags appear
+
+Create frontdesk request → triage → booking works
+
+Ensure React Query cache updates correctly.
+
+Ensure no console errors.
+
+----------------------------------
+
+STEP 11 — UI POLISH
+
+Follow existing UI design patterns:
+
+Radix UI
+Tailwind
+existing component library
+
+Add:
+
+loading skeletons
+error states
+empty states
+
+----------------------------------
+
+FINAL DELIVERABLE
+
+The existing application must:
+
+start with `npm run dev`
+
+and include:
+
+- working dashboard
+- working referrals
+- working underpayments
+- working frontdesk system
+- CSV imports
+- seeded data
+
+Ensure everything compiles and runs cleanly.

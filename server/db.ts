@@ -191,3 +191,51 @@ export async function ensureRevenueRecoveryTables() {
     console.warn("[DB] Could not create revenue recovery tables:", err);
   }
 }
+
+export async function ensureFrontDeskTables() {
+  try {
+    const statements = [
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'triage_level') THEN CREATE TYPE triage_level AS ENUM ('RED','ORANGE','YELLOW','GREEN'); END IF; END $$`,
+      `DO $$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'patient_request_status') THEN CREATE TYPE patient_request_status AS ENUM ('NEW','TRIAGED','SCHEDULED','WAITLISTED','COMPLETED','CANCELLED'); END IF; END $$`,
+      `CREATE TABLE IF NOT EXISTS patient_requests (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        patient_name TEXT NOT NULL,
+        phone TEXT NOT NULL,
+        symptoms TEXT NOT NULL,
+        location_preference VARCHAR(36) REFERENCES locations(id),
+        triage_level triage_level,
+        triage_notes TEXT,
+        status patient_request_status DEFAULT 'NEW' NOT NULL,
+        appointment_slot_id UUID,
+        created_by VARCHAR(36) REFERENCES users(id),
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )`,
+      `CREATE TABLE IF NOT EXISTS appointment_slots (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        location_id VARCHAR(36) NOT NULL REFERENCES locations(id),
+        date DATE NOT NULL,
+        start_time TEXT NOT NULL,
+        end_time TEXT NOT NULL,
+        is_available BOOLEAN DEFAULT true NOT NULL,
+        patient_request_id UUID,
+        created_at TIMESTAMP DEFAULT NOW() NOT NULL
+      )`,
+      `CREATE INDEX IF NOT EXISTS idx_patient_requests_status ON patient_requests(status)`,
+      `CREATE INDEX IF NOT EXISTS idx_patient_requests_triage ON patient_requests(triage_level)`,
+      `CREATE INDEX IF NOT EXISTS idx_appointment_slots_loc_date ON appointment_slots(location_id, date)`,
+      `CREATE INDEX IF NOT EXISTS idx_appointment_slots_available ON appointment_slots(is_available)`,
+    ];
+
+    for (const stmt of statements) {
+      try {
+        await db.execute(sql.raw(stmt));
+      } catch (e: any) {
+        if (!e?.message?.includes("already exists")) throw e;
+      }
+    }
+    console.log("[DB] Front desk tables ensured");
+  } catch (err) {
+    console.warn("[DB] Could not create front desk tables:", err);
+  }
+}
