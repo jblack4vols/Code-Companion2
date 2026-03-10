@@ -189,6 +189,12 @@ export default function ReferralsPage() {
   const physicianSearchRef = useRef<HTMLDivElement>(null);
   const debouncedPhysicianSearch = useDebounce(physicianSearch, 300);
 
+  const [editPhysicianSearch, setEditPhysicianSearch] = useState("");
+  const [editPhysicianResults, setEditPhysicianResults] = useState<any[]>([]);
+  const [showEditPhysicianDropdown, setShowEditPhysicianDropdown] = useState(false);
+  const editPhysicianSearchRef = useRef<HTMLDivElement>(null);
+  const debouncedEditPhysicianSearch = useDebounce(editPhysicianSearch, 300);
+
   useEffect(() => {
     if (debouncedPhysicianSearch.length >= 2) {
       fetch(`/api/physicians/search?q=${encodeURIComponent(debouncedPhysicianSearch)}`, { credentials: "include" })
@@ -202,9 +208,24 @@ export default function ReferralsPage() {
   }, [debouncedPhysicianSearch]);
 
   useEffect(() => {
+    if (debouncedEditPhysicianSearch.length >= 2) {
+      fetch(`/api/physicians/search?q=${encodeURIComponent(debouncedEditPhysicianSearch)}`, { credentials: "include" })
+        .then(r => r.json())
+        .then(data => { setEditPhysicianResults(data); setShowEditPhysicianDropdown(true); })
+        .catch(() => setEditPhysicianResults([]));
+    } else {
+      setEditPhysicianResults([]);
+      setShowEditPhysicianDropdown(false);
+    }
+  }, [debouncedEditPhysicianSearch]);
+
+  useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
       if (physicianSearchRef.current && !physicianSearchRef.current.contains(e.target as Node)) {
         setShowPhysicianDropdown(false);
+      }
+      if (editPhysicianSearchRef.current && !editPhysicianSearchRef.current.contains(e.target as Node)) {
+        setShowEditPhysicianDropdown(false);
       }
     }
     document.addEventListener("mousedown", handleClickOutside);
@@ -251,6 +272,9 @@ export default function ReferralsPage() {
   });
 
   const startEditing = (r: any) => {
+    setEditPhysicianSearch("");
+    setEditPhysicianResults([]);
+    setShowEditPhysicianDropdown(false);
     setEditData({
       patientFullName: r.patientFullName || "",
       patientPhone: r.patientPhone || "",
@@ -268,6 +292,7 @@ export default function ReferralsPage() {
       locationId: r.locationId || "",
       referringProviderName: r.referringProviderName || (r.physicianFirstName ? `${r.physicianFirstName} ${r.physicianLastName}` : ""),
       referringProviderNpi: r.referringProviderNpi || "",
+      physicianId: r.physicianId || "",
       dateOfInitialEval: r.dateOfInitialEval || "",
       dischargeDate: r.dischargeDate || "",
       dischargeReason: r.dischargeReason || "",
@@ -995,14 +1020,80 @@ export default function ReferralsPage() {
                   </select>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-1.5">
-                  <Label>Referring Provider Name</Label>
-                  <Input value={editData.referringProviderName} onChange={(e) => setEditData({ ...editData, referringProviderName: e.target.value })} data-testid="edit-referring-provider" />
-                </div>
-                <div className="space-y-1.5">
-                  <Label>Referring Provider NPI</Label>
-                  <Input value={editData.referringProviderNpi} onChange={(e) => setEditData({ ...editData, referringProviderNpi: e.target.value })} data-testid="edit-referring-npi" />
+              <div className="space-y-1.5">
+                <Label>Referring Provider</Label>
+                <div ref={editPhysicianSearchRef} className="relative">
+                  <div className="relative">
+                    <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                    <Input
+                      value={editPhysicianSearch}
+                      onChange={(e) => setEditPhysicianSearch(e.target.value)}
+                      onFocus={() => { if (editPhysicianResults.length > 0) setShowEditPhysicianDropdown(true); }}
+                      placeholder="Search by name or NPI..."
+                      className="pl-9"
+                      data-testid="edit-physician-search"
+                    />
+                  </div>
+                  {showEditPhysicianDropdown && (
+                    <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-48 overflow-y-auto">
+                      {editPhysicianResults.length > 0 ? editPhysicianResults.map((p: any) => (
+                        <button
+                          key={p.id}
+                          type="button"
+                          className="w-full text-left px-3 py-2 text-sm hover-elevate cursor-pointer"
+                          onClick={() => {
+                            setEditData({
+                              ...editData,
+                              referringProviderName: `${p.firstName} ${p.lastName}${p.credentials ? `, ${p.credentials}` : ""}`,
+                              referringProviderNpi: p.npi || "",
+                              physicianId: p.id,
+                            });
+                            setEditPhysicianSearch("");
+                            setShowEditPhysicianDropdown(false);
+                          }}
+                          data-testid={`edit-option-physician-${p.id}`}
+                        >
+                          <p className="font-medium">{p.lastName}, {p.firstName}{p.credentials ? `, ${p.credentials}` : ""}</p>
+                          <p className="text-[10px] text-muted-foreground">{[p.specialty, p.practiceName, p.npi ? `NPI: ${p.npi}` : null].filter(Boolean).join(" · ")}</p>
+                        </button>
+                      )) : (
+                        <div className="px-3 py-3 text-sm text-muted-foreground text-center">
+                          No referring providers found
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {editData.referringProviderName && (
+                    <div className="mt-2 flex items-center gap-2 px-2 py-1.5 rounded-md border bg-muted/30">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium truncate" data-testid="edit-referring-provider">{editData.referringProviderName}</p>
+                        {editData.referringProviderNpi && <p className="text-[10px] text-muted-foreground font-mono" data-testid="edit-referring-npi">NPI: {editData.referringProviderNpi}</p>}
+                      </div>
+                      <Button type="button" variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => setEditData({ ...editData, referringProviderName: "", referringProviderNpi: "", physicianId: "" })} data-testid="button-clear-edit-provider">
+                        <X className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {!editData.referringProviderName && (
+                    <div className="mt-2 space-y-2 p-2 border rounded-md bg-muted/20">
+                      <p className="text-[10px] text-muted-foreground">Or enter manually:</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Input
+                          placeholder="Provider name"
+                          data-testid="edit-manual-provider-name"
+                          className="text-sm"
+                          onBlur={(e) => { if (e.target.value.trim()) setEditData({ ...editData, referringProviderName: e.target.value.trim() }); }}
+                        />
+                        <Input
+                          placeholder="NPI (optional)"
+                          data-testid="edit-manual-provider-npi"
+                          className="text-sm font-mono"
+                          maxLength={10}
+                          onBlur={(e) => { if (e.target.value.trim()) setEditData({ ...editData, referringProviderNpi: e.target.value.trim() }); }}
+                        />
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
