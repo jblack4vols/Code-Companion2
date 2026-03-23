@@ -208,6 +208,81 @@ export function registerPublicApiRoutes(app: Express) {
       const { event, data } = req.body;
       if (!event || !data) return res.status(400).json({ error: "event and data fields required" });
 
+      console.log(`[Webhook] Received event: ${event}`, JSON.stringify(data).slice(0, 500));
+
+      if (event === "referral.created") {
+        try {
+          const allLocations = await storage.getLocations();
+          let matchedLocationId: string | null = null;
+
+          if (data.locationId) {
+            const loc = allLocations.find((l: any) => l.id === data.locationId);
+            if (loc) matchedLocationId = loc.id;
+          }
+          if (!matchedLocationId && data.location) {
+            const loc = allLocations.find((l: any) =>
+              l.name.toLowerCase().includes(data.location.toLowerCase()) ||
+              data.location.toLowerCase().includes(l.name.toLowerCase().replace("tristar pt - ", ""))
+            );
+            if (loc) matchedLocationId = loc.id;
+          }
+          if (!matchedLocationId && allLocations.length > 0) {
+            matchedLocationId = allLocations[0].id;
+          }
+
+          if (!matchedLocationId) {
+            console.error("[Webhook] No location found for referral, cannot create");
+            return res.status(422).json({ received: true, event, error: "No matching location found" });
+          }
+
+          let physicianId: string | undefined;
+          if (data.physicianId) {
+            physicianId = data.physicianId;
+          } else if (data.referringProviderNpi) {
+            const allPhysicians = await storage.getPhysicians();
+            const match = allPhysicians.find((p: any) => p.npi === data.referringProviderNpi);
+            if (match) physicianId = match.id;
+          } else if (data.referringProviderName) {
+            const allPhysicians = await storage.getPhysicians();
+            const nameParts = data.referringProviderName.trim().split(/\s+/);
+            if (nameParts.length >= 2) {
+              const first = nameParts[0].toLowerCase();
+              const last = nameParts[nameParts.length - 1].toLowerCase();
+              const match = allPhysicians.find((p: any) =>
+                p.firstName?.toLowerCase() === first && p.lastName?.toLowerCase() === last
+              );
+              if (match) physicianId = match.id;
+            }
+          }
+
+          const referralDate = data.referralDate || new Date().toISOString().split("T")[0];
+
+          const newReferral = await storage.createReferral({
+            physicianId: physicianId || undefined,
+            locationId: matchedLocationId,
+            referringProviderName: data.referringProviderName || undefined,
+            referringProviderNpi: data.referringProviderNpi || undefined,
+            referralDate,
+            patientFullName: data.patientFullName || data.patientName || undefined,
+            patientPhone: data.patientPhone || undefined,
+            patientDob: data.patientDob || undefined,
+            patientAccountNumber: data.patientAccountNumber || data.externalId || undefined,
+            caseTitle: data.caseTitle || `Webhook - ${data.patientFullName || data.patientName || "Unknown"}`,
+            referralSource: data.referralSource || "Webhook",
+            primaryInsurance: data.primaryInsurance || data.insurance || undefined,
+            diagnosisCategory: data.diagnosisCategory || data.diagnosis || undefined,
+            discipline: data.discipline || undefined,
+            status: "RECEIVED",
+          });
+
+          console.log(`[Webhook] Created referral ${newReferral.id} for patient: ${data.patientFullName || data.patientName || "Unknown"}`);
+          return res.json({ received: true, event, referralId: newReferral.id, created: true });
+        } catch (procErr: any) {
+          console.error("[Webhook] Error processing referral.created:", procErr);
+          return res.json({ received: true, event, error: procErr.message, created: false });
+        }
+      }
+
       res.json({ received: true, event });
     } catch (err: any) {
       console.error(err);
