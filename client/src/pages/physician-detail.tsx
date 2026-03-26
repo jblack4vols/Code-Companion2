@@ -45,6 +45,8 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
   const [practiceNameValue, setPracticeNameValue] = useState("");
+  const [linkingOffice, setLinkingOffice] = useState(false);
+  const [linkOfficeName, setLinkOfficeName] = useState("");
 
   const { data: physician, isLoading } = useQuery<Physician>({
     queryKey: ["/api/physicians", params.id],
@@ -95,8 +97,6 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const canEdit = user ? hasPermission(user.role, "edit", "physician") : false;
   const canDelete = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
   const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
-  const [linkingOffice, setLinkingOffice] = useState(false);
-  const [linkOfficeName, setLinkOfficeName] = useState("");
 
   const updateMutation = useMutation({
     mutationFn: async (data: any) => {

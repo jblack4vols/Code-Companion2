@@ -228,7 +228,7 @@ export function registerFrontDeskRoutes(app: Express) {
     try {
       const today = new Date().toISOString().slice(0, 10);
 
-      const [requestStats] = await db.execute(sql`
+      const requestResult = await db.execute(sql`
         SELECT 
           COUNT(*) FILTER (WHERE status = 'NEW') as new_count,
           COUNT(*) FILTER (WHERE status = 'TRIAGED') as triaged_count,
@@ -243,13 +243,15 @@ export function registerFrontDeskRoutes(app: Express) {
         FROM patient_requests
         WHERE created_at >= CURRENT_DATE
       `);
+      const requestStats = (requestResult.rows as any[])[0] || {};
 
-      const [slotStats] = await db.execute(sql`
+      const slotResult = await db.execute(sql`
         SELECT 
           COUNT(*) FILTER (WHERE is_available = true AND date >= ${today}) as available_slots,
           COUNT(*) FILTER (WHERE is_available = false AND date >= ${today}) as booked_slots
         FROM appointment_slots
       `);
+      const slotStats = (slotResult.rows as any[])[0] || {};
 
       res.json({ requests: requestStats, slots: slotStats });
     } catch (err: any) {
