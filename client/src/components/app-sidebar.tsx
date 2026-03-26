@@ -14,71 +14,67 @@ import { useAuth, hasPermission } from "@/lib/auth";
 import { useLocation, Link } from "wouter";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
-const navItems = [
+const coreItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Hit List", url: "/hit-list", icon: ListChecks, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Referring Providers", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Patients", url: "/referrals", icon: FileText },
+  { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
+];
+
+const outreachItems = [
   { title: "Quick Log", url: "/quick-log", icon: Zap, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Interactions", url: "/interactions", icon: MessageSquare, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Patients", url: "/referrals", icon: FileText },
-  { title: "Referral Explorer", url: "/referral-explorer", icon: Search },
-  { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
-  { title: "Office Linker", url: "/provider-office-linker", icon: Link2 },
-  { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
-  { title: "Recent Activity", url: "/activity", icon: Activity, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Feedback, Ideas & Support", url: "/feedback", icon: Lightbulb },
-];
-
-const opsItems = [
-  { title: "Front Desk", url: "/frontdesk", icon: UserCheck, roles: ["OWNER", "DIRECTOR", "FRONT_DESK"] as string[] },
-  { title: "Goals", url: "/goals", icon: Target, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
-  { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Tasks", url: "/tasks", icon: ClipboardList, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
-  { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
-  { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
+  { title: "Recent Activity", url: "/activity", icon: Activity, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
 ];
 
-const dashboardItems = [
+const analyticsItems = [
   { title: "Executive", url: "/dashboards/executive", icon: PieChart, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Territory", url: "/dashboards/territory", icon: Compass, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Location", url: "/dashboards/location", icon: Building2, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "ROI Calculator", url: "/roi-calculator", icon: DollarSign, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+];
+
+const opsItems = [
+  { title: "Front Desk", url: "/frontdesk", icon: UserCheck, roles: ["OWNER", "DIRECTOR", "FRONT_DESK"] as string[] },
+  { title: "Goals", url: "/goals", icon: Target, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
+  { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
+  { title: "Referral Explorer", url: "/referral-explorer", icon: Search },
+  { title: "Provider Offices", url: "/provider-offices", icon: Building2 },
+  { title: "Office Linker", url: "/provider-office-linker", icon: Link2 },
+];
+
+const financeItems = [
+  { title: "Unit Economics", url: "/unit-economics", icon: DollarSign },
+  { title: "Provider Productivity", url: "/unit-economics/providers", icon: Activity },
+  { title: "Econ Alerts", url: "/unit-economics/alerts", icon: AlertTriangle },
+  { title: "Econ Targets", url: "/unit-economics/targets", icon: Target },
+  { title: "Revenue Dashboard", url: "/revenue", icon: Scale },
+  { title: "Claims", url: "/revenue/claims", icon: FileText },
+  { title: "Denials", url: "/revenue/denials", icon: XCircle },
+  { title: "Billing Lag", url: "/revenue/billing-lag", icon: Clock },
+  { title: "Appeals", url: "/revenue/appeals", icon: Scale },
 ];
 
 const adminItems = [
   { title: "Users", url: "/admin/users", icon: Users },
   { title: "Locations", url: "/admin/locations", icon: MapPin },
-  { title: "Templates", url: "/admin/templates", icon: FileStack },
   { title: "Duplicates", url: "/admin/duplicates", icon: Copy },
   { title: "Unlinked Referrals", url: "/admin/unlinked-referrals", icon: Link2 },
+  { title: "Templates", url: "/admin/templates", icon: FileStack },
   { title: "Team Reports", url: "/admin/reports", icon: BarChart3 },
-  { title: "Import", url: "/import", icon: Upload },
+  { title: "Import Data", url: "/import", icon: Upload },
   { title: "SharePoint Sync", url: "/admin/sharepoint", icon: Cloud },
   { title: "Integrations", url: "/admin/integrations", icon: Plug },
   { title: "Scheduled Reports", url: "/admin/scheduled-reports", icon: CalendarClock },
   { title: "Audit Log", url: "/admin/audit-log", icon: ScrollText },
   { title: "Settings", url: "/admin/settings", icon: Settings },
-  { title: "Developer Guide", url: "/admin/developer-guide", icon: Code2 },
-];
-
-const financeItems = [
-  { title: "Unit Economics", url: "/unit-economics", icon: DollarSign },
-  { title: "Providers", url: "/unit-economics/providers", icon: Activity },
-  { title: "Alerts", url: "/unit-economics/alerts", icon: AlertTriangle },
-  { title: "Targets", url: "/unit-economics/targets", icon: Target },
-  { title: "Import Financials", url: "/unit-economics/import", icon: Upload },
-];
-
-const revenueItems = [
-  { title: "Revenue Dashboard", url: "/revenue", icon: DollarSign },
-  { title: "Claims", url: "/revenue/claims", icon: FileText },
-  { title: "Denials", url: "/revenue/denials", icon: XCircle },
-  { title: "Billing Lag", url: "/revenue/billing-lag", icon: Clock },
-  { title: "Appeals", url: "/revenue/appeals", icon: Scale },
-  { title: "Import Claims", url: "/revenue/import", icon: Upload },
 ];
 
 const roleLabels: Record<string, string> = {
@@ -97,6 +93,79 @@ const roleBadgeVariant: Record<string, string> = {
   ANALYST: "bg-chart-4/15 text-chart-4 dark:bg-chart-4/20 dark:text-chart-4",
 };
 
+const outreachUrls = ["/quick-log", "/interactions", "/tasks", "/activity"];
+const analyticsUrls = ["/dashboards/", "/roi-calculator", "/leaderboard", "/tiering", "/declining", "/practices"];
+const opsUrls = ["/frontdesk", "/goals", "/map", "/territories", "/referral-explorer", "/provider-offices", "/provider-office-linker"];
+const financeUrls = ["/unit-economics", "/revenue"];
+const adminUrls = ["/admin/", "/import"];
+
+function CollapsibleGroup({
+  label,
+  icon: Icon,
+  items,
+  isActive,
+  open,
+  onOpenChange,
+  groupClass,
+  userRole,
+  location,
+  closeMobileMenu,
+}: {
+  label: string;
+  icon: any;
+  items: { title: string; url: string; icon: any; roles?: string[] }[];
+  isActive: boolean;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  groupClass: string;
+  userRole: string;
+  location: string;
+  closeMobileMenu: () => void;
+}) {
+  const filtered = items.filter((item) => !item.roles || item.roles.includes(userRole));
+  if (filtered.length === 0) return null;
+
+  return (
+    <SidebarGroup>
+      <SidebarGroupContent>
+        <SidebarMenu>
+          <Collapsible open={open || isActive} onOpenChange={onOpenChange} className={groupClass}>
+            <SidebarMenuItem>
+              <CollapsibleTrigger asChild>
+                <SidebarMenuButton
+                  isActive={isActive}
+                  data-testid={`button-${label.toLowerCase().replace(/\s+/g, "-")}-dropdown`}
+                >
+                  <Icon className="w-4 h-4" />
+                  <span>{label}</span>
+                  <ChevronRight className={`ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/${groupClass.replace("group/", "")}:rotate-90`} />
+                </SidebarMenuButton>
+              </CollapsibleTrigger>
+              <CollapsibleContent>
+                <SidebarMenuSub>
+                  {filtered.map((item) => (
+                    <SidebarMenuSubItem key={item.title}>
+                      <SidebarMenuSubButton
+                        asChild
+                        isActive={location === item.url || (item.url !== "/" && location.startsWith(item.url + "/")) || (item.url !== "/" && location === item.url)}
+                      >
+                        <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
+                          <item.icon className="w-3.5 h-3.5" />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuSubButton>
+                    </SidebarMenuSubItem>
+                  ))}
+                </SidebarMenuSub>
+              </CollapsibleContent>
+            </SidebarMenuItem>
+          </Collapsible>
+        </SidebarMenu>
+      </SidebarGroupContent>
+    </SidebarGroup>
+  );
+}
+
 export function AppSidebar() {
   const { user, logout } = useAuth();
   const [location] = useLocation();
@@ -106,42 +175,30 @@ export function AppSidebar() {
     if (isMobile) setOpenMobile(false);
   };
 
-  const isAdminActive = location.startsWith("/admin/") || location === "/import";
-  const isIntelActive = location.startsWith("/dashboards/") || location === "/roi-calculator" || location === "/leaderboard";
-  const isFinanceActive = location.startsWith("/unit-economics");
-  const isRevenueActive = location.startsWith("/revenue");
-  const opsUrls = ["/tiering", "/declining", "/tasks", "/map", "/territories", "/goals"];
+  const isOutreachActive = outreachUrls.some((u) => location === u || location.startsWith(u + "/"));
+  const isAnalyticsActive = analyticsUrls.some((u) => location === u || location.startsWith(u));
   const isOpsActive = opsUrls.some((u) => location === u || location.startsWith(u + "/"));
-  const [adminOpen, setAdminOpen] = useState(isAdminActive);
-  const [intelOpen, setIntelOpen] = useState(isIntelActive);
+  const isFinanceActive = financeUrls.some((u) => location === u || location.startsWith(u));
+  const isAdminActive = adminUrls.some((u) => location === u || location.startsWith(u));
+
+  const [outreachOpen, setOutreachOpen] = useState(isOutreachActive);
+  const [analyticsOpen, setAnalyticsOpen] = useState(isAnalyticsActive);
   const [opsOpen, setOpsOpen] = useState(isOpsActive);
   const [financeOpen, setFinanceOpen] = useState(isFinanceActive);
-  const [revenueOpen, setRevenueOpen] = useState(isRevenueActive);
+  const [adminOpen, setAdminOpen] = useState(isAdminActive);
 
-  useEffect(() => {
-    if (!isAdminActive) setAdminOpen(false);
-  }, [isAdminActive]);
-
-  useEffect(() => {
-    if (!isIntelActive) setIntelOpen(false);
-  }, [isIntelActive]);
-
-  useEffect(() => {
-    if (!isOpsActive) setOpsOpen(false);
-  }, [isOpsActive]);
-
-  useEffect(() => {
-    if (!isFinanceActive) setFinanceOpen(false);
-  }, [isFinanceActive]);
-
-  useEffect(() => {
-    if (!isRevenueActive) setRevenueOpen(false);
-  }, [isRevenueActive]);
+  useEffect(() => { if (!isOutreachActive) setOutreachOpen(false); }, [isOutreachActive]);
+  useEffect(() => { if (!isAnalyticsActive) setAnalyticsOpen(false); }, [isAnalyticsActive]);
+  useEffect(() => { if (!isOpsActive) setOpsOpen(false); }, [isOpsActive]);
+  useEffect(() => { if (!isFinanceActive) setFinanceOpen(false); }, [isFinanceActive]);
+  useEffect(() => { if (!isAdminActive) setAdminOpen(false); }, [isAdminActive]);
 
   if (!user) return null;
 
   const canManage = hasPermission(user.role, "manage_users") || user.role === "OWNER";
   const initials = user.name.split(" ").map(n => n[0]).join("").toUpperCase().slice(0, 2);
+  const showAnalytics = ["OWNER", "DIRECTOR", "ANALYST", "MARKETER"].includes(user.role);
+  const showFinance = ["OWNER", "DIRECTOR", "ANALYST"].includes(user.role);
 
   return (
     <Sidebar data-testid="sidebar">
@@ -157,10 +214,10 @@ export function AppSidebar() {
 
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>Core</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
-              {navItems
+              {coreItems
                 .filter((item) => !item.roles || item.roles.includes(user.role))
                 .map((item) => (
                 <SidebarMenuItem key={item.title}>
@@ -168,7 +225,7 @@ export function AppSidebar() {
                     asChild
                     isActive={location === item.url || (item.url !== "/" && location.startsWith(item.url))}
                   >
-                    <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
+                    <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
                       <item.icon className="w-4 h-4" />
                       <span>{item.title}</span>
                     </Link>
@@ -179,206 +236,75 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
 
-        <SidebarGroup>
-          <SidebarGroupContent>
-            <SidebarMenu>
-              <Collapsible open={opsOpen || isOpsActive} onOpenChange={setOpsOpen} className="group/ops">
-                <SidebarMenuItem>
-                  <CollapsibleTrigger asChild>
-                    <SidebarMenuButton
-                      isActive={isOpsActive}
-                      data-testid="button-operations-dropdown"
-                    >
-                      <Crosshair className="w-4 h-4" />
-                      <span>Operations</span>
-                      <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/ops:rotate-90" />
-                    </SidebarMenuButton>
-                  </CollapsibleTrigger>
-                  <CollapsibleContent>
-                    <SidebarMenuSub>
-                      {opsItems
-                        .filter((item) => !item.roles || item.roles.includes(user.role))
-                        .map((item) => (
-                        <SidebarMenuSubItem key={item.title}>
-                          <SidebarMenuSubButton
-                            asChild
-                            isActive={location === item.url || location.startsWith(item.url + "/")}
-                          >
-                            <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
-                              <item.icon className="w-3.5 h-3.5" />
-                              <span>{item.title}</span>
-                            </Link>
-                          </SidebarMenuSubButton>
-                        </SidebarMenuSubItem>
-                      ))}
-                    </SidebarMenuSub>
-                  </CollapsibleContent>
-                </SidebarMenuItem>
-              </Collapsible>
-            </SidebarMenu>
-          </SidebarGroupContent>
-        </SidebarGroup>
+        <CollapsibleGroup
+          label="Outreach"
+          icon={MessageSquare}
+          items={outreachItems}
+          isActive={isOutreachActive}
+          open={outreachOpen}
+          onOpenChange={setOutreachOpen}
+          groupClass="group/outreach"
+          userRole={user.role}
+          location={location}
+          closeMobileMenu={closeMobileMenu}
+        />
 
-        {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <Collapsible open={intelOpen || isIntelActive} onOpenChange={setIntelOpen} className="group/intel">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        isActive={isIntelActive}
-                        data-testid="button-intelligence-dropdown"
-                      >
-                        <LineChart className="w-4 h-4" />
-                        <span>Intelligence</span>
-                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/intel:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {dashboardItems
-                          .filter((item) => !item.roles || item.roles.includes(user.role))
-                          .map((item) => (
-                          <SidebarMenuSubItem key={item.title}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={location === item.url || location.startsWith(item.url)}
-                            >
-                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
-                                <item.icon className="w-3.5 h-3.5" />
-                                <span>{item.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        {showAnalytics && (
+          <CollapsibleGroup
+            label="Analytics"
+            icon={LineChart}
+            items={analyticsItems}
+            isActive={isAnalyticsActive}
+            open={analyticsOpen}
+            onOpenChange={setAnalyticsOpen}
+            groupClass="group/analytics"
+            userRole={user.role}
+            location={location}
+            closeMobileMenu={closeMobileMenu}
+          />
         )}
 
-        {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <Collapsible open={financeOpen || isFinanceActive} onOpenChange={setFinanceOpen} className="group/finance">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        isActive={isFinanceActive}
-                        data-testid="button-finance-dropdown"
-                      >
-                        <DollarSign className="w-4 h-4" />
-                        <span>Finance</span>
-                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/finance:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {financeItems.map((item) => (
-                          <SidebarMenuSubItem key={item.title}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={location === item.url || location.startsWith(item.url + "/")}
-                            >
-                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase()}`}>
-                                <item.icon className="w-3.5 h-3.5" />
-                                <span>{item.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
-        )}
+        <CollapsibleGroup
+          label="Operations"
+          icon={Crosshair}
+          items={opsItems}
+          isActive={isOpsActive}
+          open={opsOpen}
+          onOpenChange={setOpsOpen}
+          groupClass="group/ops"
+          userRole={user.role}
+          location={location}
+          closeMobileMenu={closeMobileMenu}
+        />
 
-        {(user.role === "OWNER" || user.role === "DIRECTOR" || user.role === "ANALYST") && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <Collapsible open={revenueOpen || isRevenueActive} onOpenChange={setRevenueOpen} className="group/revenue">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        isActive={isRevenueActive}
-                        data-testid="button-revenue-dropdown"
-                      >
-                        <Scale className="w-4 h-4" />
-                        <span>Revenue Recovery</span>
-                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/revenue:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {revenueItems.map((item) => (
-                          <SidebarMenuSubItem key={item.title}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={location === item.url || (item.url !== "/revenue" && location.startsWith(item.url))}
-                            >
-                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                                <item.icon className="w-3.5 h-3.5" />
-                                <span>{item.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+        {showFinance && (
+          <CollapsibleGroup
+            label="Finance"
+            icon={DollarSign}
+            items={financeItems}
+            isActive={isFinanceActive}
+            open={financeOpen}
+            onOpenChange={setFinanceOpen}
+            groupClass="group/finance"
+            userRole={user.role}
+            location={location}
+            closeMobileMenu={closeMobileMenu}
+          />
         )}
 
         {canManage && (
-          <SidebarGroup>
-            <SidebarGroupContent>
-              <SidebarMenu>
-                <Collapsible open={adminOpen || isAdminActive} onOpenChange={setAdminOpen} className="group/collapsible">
-                  <SidebarMenuItem>
-                    <CollapsibleTrigger asChild>
-                      <SidebarMenuButton
-                        isActive={isAdminActive}
-                        data-testid="button-admin-dropdown"
-                      >
-                        <ShieldCheck className="w-4 h-4" />
-                        <span>Administration</span>
-                        <ChevronRight className="ml-auto h-4 w-4 transition-transform duration-200 group-data-[state=open]/collapsible:rotate-90" />
-                      </SidebarMenuButton>
-                    </CollapsibleTrigger>
-                    <CollapsibleContent>
-                      <SidebarMenuSub>
-                        {adminItems.map((item) => (
-                          <SidebarMenuSubItem key={item.title}>
-                            <SidebarMenuSubButton
-                              asChild
-                              isActive={location.startsWith(item.url)}
-                            >
-                              <Link href={item.url} onClick={closeMobileMenu} data-testid={`link-nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}>
-                                <item.icon className="w-3.5 h-3.5" />
-                                <span>{item.title}</span>
-                              </Link>
-                            </SidebarMenuSubButton>
-                          </SidebarMenuSubItem>
-                        ))}
-                      </SidebarMenuSub>
-                    </CollapsibleContent>
-                  </SidebarMenuItem>
-                </Collapsible>
-              </SidebarMenu>
-            </SidebarGroupContent>
-          </SidebarGroup>
+          <CollapsibleGroup
+            label="Administration"
+            icon={ShieldCheck}
+            items={adminItems}
+            isActive={isAdminActive}
+            open={adminOpen}
+            onOpenChange={setAdminOpen}
+            groupClass="group/admin"
+            userRole={user.role}
+            location={location}
+            closeMobileMenu={closeMobileMenu}
+          />
         )}
       </SidebarContent>
 
@@ -406,6 +332,13 @@ export function AppSidebar() {
           <DropdownMenuContent align="end" className="w-48">
             <DropdownMenuItem className="text-xs text-muted-foreground" disabled>
               {user.email}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem asChild>
+              <Link href="/feedback" onClick={closeMobileMenu} data-testid="link-nav-feedback">
+                <Lightbulb className="w-4 h-4 mr-2" />
+                Feedback & Support
+              </Link>
             </DropdownMenuItem>
             <DropdownMenuSeparator />
             <DropdownMenuItem onClick={logout} data-testid="button-logout">
