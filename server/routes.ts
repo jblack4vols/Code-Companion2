@@ -26,6 +26,7 @@ import { registerSearchRoutes } from "./routes/search";
 import { registerGoalRoutes } from "./routes/goals";
 import { registerTemplateRoutes } from "./routes/templates";
 import { registerFeatureRoutes } from "./routes/features";
+import { registerFeedbackRoutes } from "./routes/feedback";
 import { registerPracticeRoutes } from "./routes/practice-intelligence";
 import { registerUnitEconomicsRoutes } from "./routes/unit-economics";
 import { registerRevenueRecoveryRoutes } from "./routes/revenue-recovery";
@@ -116,6 +117,7 @@ export async function registerRoutes(
   registerBillingLagRoutes(app);
   await registerRevenueRecoveryAppealsRoutes(app);
   registerFrontDeskRoutes(app);
+  registerFeedbackRoutes(app);
 
   return httpServer;
 }

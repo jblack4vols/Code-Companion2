@@ -871,3 +871,57 @@ export type InsertAppealTemplate = typeof appealTemplates.$inferInsert;
 export type AppealTemplate = typeof appealTemplates.$inferSelect;
 export type InsertAppeal = typeof appeals.$inferInsert;
 export type Appeal = typeof appeals.$inferSelect;
+
+// ── Feedback & Ideas ────────────────────────────────────────────────────
+
+export const feedbackCategoryEnum = pgEnum("feedback_category", [
+  "FEATURE_IDEA", "BUG", "IMPROVEMENT", "OTHER",
+]);
+
+export const feedbackPriorityEnum = pgEnum("feedback_priority", [
+  "LOW", "MEDIUM", "HIGH", "CRITICAL",
+]);
+
+export const feedbackStatusEnum = pgEnum("feedback_status", [
+  "OPEN", "IN_REVIEW", "PLANNED", "IN_PROGRESS", "COMPLETED", "CLOSED",
+]);
+
+export const feedbackItems = pgTable("feedback_items", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: feedbackCategoryEnum("category").notNull(),
+  priority: feedbackPriorityEnum("feedback_priority").notNull().default("MEDIUM"),
+  status: feedbackStatusEnum("feedback_status").notNull().default("OPEN"),
+  attachments: jsonb("attachments").$type<{ filename: string; originalName: string; mimeType: string; size: number }[]>().default([]),
+  submittedBy: varchar("submitted_by", { length: 36 }).notNull().references(() => users.id),
+  assignedTo: varchar("assigned_to", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("feedback_category_idx").on(table.category),
+  index("feedback_status_idx").on(table.status),
+  index("feedback_submitted_by_idx").on(table.submittedBy),
+]);
+
+export const feedbackNotes = pgTable("feedback_notes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  feedbackItemId: varchar("feedback_item_id", { length: 36 }).notNull().references(() => feedbackItems.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("feedback_note_item_idx").on(table.feedbackItemId),
+]);
+
+export const insertFeedbackItemSchema = createInsertSchema(feedbackItems).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertFeedbackNoteSchema = createInsertSchema(feedbackNotes).omit({
+  id: true, createdAt: true,
+});
+
+export type FeedbackItem = typeof feedbackItems.$inferSelect;
+export type InsertFeedbackItem = z.infer<typeof insertFeedbackItemSchema>;
+export type FeedbackNote = typeof feedbackNotes.$inferSelect;
+export type InsertFeedbackNote = z.infer<typeof insertFeedbackNoteSchema>;
