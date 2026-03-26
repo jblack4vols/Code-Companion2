@@ -111,3 +111,10 @@ The project includes ClaudeKit Engineer tooling for AI-assisted development:
 - Review process: `docs/code-review.md`
 - AI agent checklist: `.claude/rules/code-review-checklist.md`
 - HIPAA-specific review items included
+
+### Referral Funnel Logic
+- Funnel stages are monotonically decreasing by construction: Received ≥ Scheduled ≥ Arrived ≥ Discharged
+- **Scheduled** = status in (SCHEDULED, EVAL_COMPLETED, DISCHARGED) OR scheduled_visits > 0 OR arrived_visits > 0
+- **Arrived** = arrived_visits > 0
+- **Discharged** = status = DISCHARGED AND arrived_visits > 0
+- Funnel endpoint (`/api/dashboard/funnel`) enforces location scope via `getUserLocationScope`

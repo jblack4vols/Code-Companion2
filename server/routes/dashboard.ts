@@ -162,10 +162,15 @@ export function registerDashboardRoutes(app: Express) {
 
   app.get("/api/dashboard/funnel", requireAuth, async (req, res) => {
     try {
+      const locationScope = await getUserLocationScope(req);
       const startDate = req.query.startDate as string | undefined;
       const endDate = req.query.endDate as string | undefined;
       const locationId = req.query.locationId as string | undefined;
       const territoryId = req.query.territoryId as string | undefined;
+
+      if (locationScope !== null && locationId && !locationScope.includes(locationId)) {
+        return res.status(403).json({ message: "Forbidden: no access to this location" });
+      }
 
       const dateFilter = startDate && endDate
         ? sql`AND r.referral_date >= ${startDate} AND r.referral_date <= ${endDate}`
@@ -173,7 +178,11 @@ export function registerDashboardRoutes(app: Express) {
         : endDate ? sql`AND r.referral_date <= ${endDate}`
         : sql``;
 
-      const locFilter = locationId ? sql`AND r.location_id = ${locationId}` : sql``;
+      const effectiveLocFilter = locationId
+        ? sql`AND r.location_id = ${locationId}`
+        : locationScope !== null
+          ? sql`AND r.location_id IN ${sql.raw(`('${locationScope.join("','")}')`)}` 
+          : sql``;
       const terrFilter = territoryId
         ? sql`AND r.physician_id IN (SELECT id FROM physicians WHERE territory_id = ${territoryId} AND deleted_at IS NULL)`
         : sql``;
@@ -181,11 +190,11 @@ export function registerDashboardRoutes(app: Express) {
       const result = await db.execute(sql`
         SELECT 
           COUNT(*)::int as received,
-          COUNT(CASE WHEN r.status IN ('SCHEDULED','EVAL_COMPLETED','DISCHARGED') THEN 1 END)::int as scheduled,
+          COUNT(CASE WHEN r.status IN ('SCHEDULED','EVAL_COMPLETED','DISCHARGED') OR r.scheduled_visits > 0 OR r.arrived_visits > 0 THEN 1 END)::int as scheduled,
           COUNT(CASE WHEN r.arrived_visits > 0 THEN 1 END)::int as arrived,
-          COUNT(CASE WHEN r.status = 'DISCHARGED' THEN 1 END)::int as discharged
+          COUNT(CASE WHEN r.status = 'DISCHARGED' AND r.arrived_visits > 0 THEN 1 END)::int as discharged
         FROM referrals r
-        WHERE r.deleted_at IS NULL ${dateFilter} ${locFilter} ${terrFilter}
+        WHERE r.deleted_at IS NULL ${dateFilter} ${effectiveLocFilter} ${terrFilter}
       `);
 
       const row = (result.rows as any[])[0] || { received: 0, scheduled: 0, arrived: 0, discharged: 0 };
