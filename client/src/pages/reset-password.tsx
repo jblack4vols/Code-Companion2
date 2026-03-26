@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { AlertCircle, Loader2, CheckCircle2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 import { useLocation } from "wouter";
-import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
+import tristarLogo from "@assets/tristar-logo-transparent.png";
 
 export default function ResetPasswordPage() {
   const [, setLocation] = useLocation();

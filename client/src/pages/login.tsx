@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2, Lock, CheckCircle2, ArrowLeft, Mail } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
+import tristarLogo from "@assets/tristar-logo-transparent.png";
 
 type View = "login" | "register" | "forgot" | "register-success" | "forgot-success";
 
