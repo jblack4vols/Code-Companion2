@@ -112,6 +112,15 @@ The project includes ClaudeKit Engineer tooling for AI-assisted development:
 - AI agent checklist: `.claude/rules/code-review-checklist.md`
 - HIPAA-specific review items included
 
+### Real Financial Data (Prompt EMR Import)
+- **19,784 real claims** imported from Prompt EMR Revenue Report (Jan 1 – Mar 26, 2026)
+- **19,695 operations records** from Prompt EMR Operations Report
+- Source files: `attached_assets/Revenue_Report_*.xlsx` and `attached_assets/Operations_Report_*.xlsx`
+- Import script: `server/import-real-financials.ts` — runs on startup, skips if already imported
+- Data includes all 8 locations, 67 payers, real billed/paid/outstanding amounts
+- Clinic financials (582 weekly records) computed from real claim payment data
+- Import format guide: `docs/import-formats.md`
+
 ### Referral Funnel Logic
 - Funnel stages are monotonically decreasing by construction: Received ≥ Scheduled ≥ Arrived ≥ Discharged
 - **Scheduled** = status in (SCHEDULED, EVAL_COMPLETED, DISCHARGED) OR scheduled_visits > 0 OR arrived_visits > 0

@@ -111,8 +111,8 @@ httpServer.listen(
         const { seed } = await import("./seed");
         await seed().catch(err => console.error("Seed error:", err));
 
-        const { seedFinancialData } = await import("./seed-financials");
-        await seedFinancialData().catch(err => console.error("Financial seed error:", err));
+        const { importRealFinancials } = await import("./import-real-financials");
+        await importRealFinancials().catch(err => console.error("Financial import error:", err));
 
         const { scheduleETL } = await import("./etl");
         scheduleETL();
