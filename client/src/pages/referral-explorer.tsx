@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Search, Filter, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Stethoscope, Users, Activity, MapPin } from "lucide-react";
+import { Search, Filter, X, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Users, Activity, MapPin } from "lucide-react";
 import { format, subMonths } from "date-fns";
 import type { Location } from "@shared/schema";
 import { useDebounce } from "@/hooks/use-debounce";
@@ -83,15 +83,13 @@ export default function ReferralExplorerPage() {
   const dischargedCount = data?.dischargedCount || 0;
 
   const stats = useMemo(() => {
-    let totalArrived = 0;
     const docs: Record<string, number> = {};
     for (const r of referrals) {
-      totalArrived += r.arrivedVisits || 0;
       const docName = r.physicianLastName ? `${r.physicianFirstName || ""} ${r.physicianLastName}`.trim() : r.referringProviderName;
       if (docName) docs[docName] = (docs[docName] || 0) + 1;
     }
     const topDoc = Object.entries(docs).sort((a, b) => b[1] - a[1])[0];
-    return { totalArrived, topDoc };
+    return { topDoc };
   }, [referrals]);
 
   const handleSort = (col: string) => {
@@ -148,17 +146,6 @@ export default function ReferralExplorerPage() {
             <div>
               <p className="text-sm text-muted-foreground">Active</p>
               <p className="text-2xl font-bold" data-testid="text-stat-active">{isLoading ? "—" : activeCount.toLocaleString()}</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardContent className="p-4 flex items-start gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-md shrink-0 bg-chart-4/10 text-chart-4">
-              <Stethoscope className="w-5 h-5" />
-            </div>
-            <div>
-              <p className="text-sm text-muted-foreground">Arrived Visits</p>
-              <p className="text-2xl font-bold" data-testid="text-stat-arrived">{isLoading ? "—" : stats.totalArrived.toLocaleString()}</p>
             </div>
           </CardContent>
         </Card>
@@ -317,7 +304,6 @@ export default function ReferralExplorerPage() {
                 <TableHead className="cursor-pointer select-none whitespace-nowrap" onClick={() => handleSort("status")} data-testid="th-status">
                   Status <SortIcon col="status" />
                 </TableHead>
-                <TableHead className="text-right whitespace-nowrap">Visits</TableHead>
                 <TableHead className="whitespace-nowrap">Disc.</TableHead>
               </TableRow>
             </TableHeader>
@@ -368,10 +354,6 @@ export default function ReferralExplorerPage() {
                         <Badge className={`text-[11px] ${STATUS_STYLES[r.status] || "bg-muted text-muted-foreground"}`} variant="outline">
                           {r.status?.replace(/_/g, " ") || "—"}
                         </Badge>
-                      </TableCell>
-                      <TableCell className="text-right font-mono text-sm">
-                        {r.arrivedVisits ?? 0}
-                        <span className="text-muted-foreground/50">/{r.scheduledVisits ?? 0}</span>
                       </TableCell>
                       <TableCell className="text-sm font-medium">{r.discipline || "—"}</TableCell>
                     </TableRow>
