@@ -146,14 +146,35 @@ export function registerIntegrationRoutes(app: Express) {
 
   app.post("/api/sharepoint/site", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const { siteId } = req.body;
-      if (!siteId) return res.status(400).json({ message: "siteId is required" });
-      const site = await validateSPSite(siteId);
-      await setSPSiteId(siteId);
-      res.json({ success: true, site: { id: site.id, displayName: site.displayName, webUrl: site.webUrl } });
+      const { siteId, siteUrl } = req.body;
+
+      let resolvedSite: any;
+
+      if (siteUrl) {
+        try {
+          const url = new URL(siteUrl);
+          const hostname = url.hostname;
+          const sitePath = url.pathname.replace(/^\//, "").replace(/\/$/, "");
+          if (!hostname || !sitePath) {
+            return res.status(400).json({ message: "Invalid SharePoint URL. Expected format: https://tenant.sharepoint.com/sites/SiteName" });
+          }
+          const { getSiteByUrl: getSPSiteByUrl } = await import("../sharepoint");
+          resolvedSite = await getSPSiteByUrl(hostname, sitePath);
+        } catch (urlErr: any) {
+          console.error("SharePoint URL resolution error:", urlErr.message);
+          return res.status(400).json({ message: `Could not resolve SharePoint site from URL: ${urlErr.message}` });
+        }
+      } else if (siteId) {
+        resolvedSite = await validateSPSite(siteId);
+      } else {
+        return res.status(400).json({ message: "siteId or siteUrl is required" });
+      }
+
+      await setSPSiteId(resolvedSite.id);
+      res.json({ success: true, site: { id: resolvedSite.id, displayName: resolvedSite.displayName, webUrl: resolvedSite.webUrl } });
     } catch (err: any) {
       console.error(err);
-      res.status(500).json({ message: "Internal server error" });
+      res.status(500).json({ message: err.message || "Internal server error" });
     }
   });
 

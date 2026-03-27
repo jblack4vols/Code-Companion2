@@ -53,8 +53,10 @@ export default function SharePointSyncPage() {
   });
 
   const saveSiteMutation = useMutation({
-    mutationFn: async (siteId: string) => {
-      const res = await apiRequest("POST", "/api/sharepoint/site", { siteId });
+    mutationFn: async (input: string) => {
+      const isUrl = input.startsWith("http://") || input.startsWith("https://");
+      const body = isUrl ? { siteUrl: input } : { siteId: input };
+      const res = await apiRequest("POST", "/api/sharepoint/site", body);
       return res.json();
     },
     onSuccess: (data) => {
@@ -178,11 +180,11 @@ export default function SharePointSyncPage() {
               )}
 
               <div className="border-t pt-3">
-                <Label htmlFor="manual-site-id" className="text-xs text-muted-foreground mb-1 block">Or enter Site ID directly</Label>
+                <Label htmlFor="manual-site-id" className="text-xs text-muted-foreground mb-1 block">Or enter SharePoint URL or Site ID directly</Label>
                 <div className="flex gap-2">
                   <Input
                     id="manual-site-id"
-                    placeholder="e.g. contoso.sharepoint.com,guid,guid"
+                    placeholder="e.g. https://tenant.sharepoint.com/sites/SiteName"
                     value={selectedSiteId}
                     onChange={(e) => setSelectedSiteId(e.target.value)}
                     data-testid="input-manual-site-id"
