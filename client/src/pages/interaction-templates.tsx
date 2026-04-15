@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import type { LucideIcon } from "lucide-react";
 import { Plus, Edit2, Trash2, FileText, Users, Phone, Mail, Calendar, Coffee, MoreHorizontal, Sparkles } from "lucide-react";
 import type { InteractionTemplate } from "@shared/schema";
 
@@ -25,7 +26,7 @@ const typeBadgeStyles: Record<string, string> = {
   OTHER: "bg-muted text-muted-foreground",
 };
 
-const typeIcons: Record<string, any> = {
+const typeIcons: Record<string, LucideIcon> = {
   VISIT: Users,
   CALL: Phone,
   EMAIL: Mail,
@@ -74,7 +75,7 @@ export default function InteractionTemplatesPage() {
       closeDialog();
       toast({ title: "Template created" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
@@ -90,7 +91,7 @@ export default function InteractionTemplatesPage() {
       closeDialog();
       toast({ title: "Template updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -101,7 +102,7 @@ export default function InteractionTemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/interaction-templates"] });
       toast({ title: "Template removed" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const seedMutation = useMutation({
@@ -114,7 +115,7 @@ export default function InteractionTemplatesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/interaction-templates"] });
       toast({ title: "Starter templates created" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const closeDialog = () => {

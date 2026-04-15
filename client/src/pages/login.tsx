@@ -42,8 +42,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-    } catch (err: any) {
-      const msg = err.message || "Invalid credentials";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid credentials";
       if (msg.includes("locked") || msg.includes("Locked")) {
         setIsLocked(true);
       }
@@ -64,8 +64,8 @@ export default function LoginPage() {
     try {
       await apiRequest("POST", "/api/auth/register", { name, email, password });
       setView("register-success");
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -78,8 +78,8 @@ export default function LoginPage() {
     try {
       await apiRequest("POST", "/api/auth/forgot-password", { email });
       setView("forgot-success");
-    } catch (err: any) {
-      setError(err.message || "Failed to send reset email");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send reset email");
     } finally {
       setLoading(false);
     }

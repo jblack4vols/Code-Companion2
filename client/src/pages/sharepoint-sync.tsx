@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { LucideIcon } from "lucide-react";
 import { Cloud, RefreshCw, CheckCircle, XCircle, Loader2, Globe, Database, Clock, AlertTriangle, Stethoscope, FileText, MessageSquare, ClipboardList, MapPin } from "lucide-react";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +28,7 @@ interface SPSite {
   webUrl: string;
 }
 
-const ENTITY_META: Record<string, { label: string; icon: any; description: string }> = {
+const ENTITY_META: Record<string, { label: string; icon: LucideIcon; description: string }> = {
   physicians: { label: "Referring Providers", icon: Stethoscope, description: "Referring provider directory" },
   referrals: { label: "Referrals", icon: FileText, description: "Patient referral cases" },
   interactions: { label: "Interactions", icon: MessageSquare, description: "Outreach and visit logs" },
@@ -63,8 +64,8 @@ export default function SharePointSyncPage() {
       toast({ title: "Site configured", description: `Connected to ${data.site?.displayName || "SharePoint site"}` });
       queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] });
     },
-    onError: (err: any) => {
-      toast({ title: "Failed to configure site", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Failed to configure site", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -77,8 +78,8 @@ export default function SharePointSyncPage() {
       toast({ title: "Sync started", description: `Syncing ${ENTITY_META[entity]?.label || entity} to SharePoint...` });
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] }), 3000);
     },
-    onError: (err: any) => {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Sync failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -91,8 +92,8 @@ export default function SharePointSyncPage() {
       toast({ title: "Full sync started", description: "Syncing all entities to SharePoint Lists..." });
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] }), 5000);
     },
-    onError: (err: any) => {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Sync failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 

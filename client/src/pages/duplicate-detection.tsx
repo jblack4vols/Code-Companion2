@@ -69,8 +69,8 @@ export default function DuplicateDetectionPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
       toast({ title: "Referring providers merged successfully" });
     },
-    onError: (err: any) => {
-      toast({ title: "Merge failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Merge failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 

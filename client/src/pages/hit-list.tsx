@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import type { LucideIcon } from "lucide-react";
 import {
   ChevronLeft, ChevronRight, Calendar, ClipboardList, MessageSquare,
   MapPin, Clock, Users, Phone, Mail, Coffee, MoreHorizontal,
@@ -22,7 +23,7 @@ const EVENT_TYPE_COLORS: Record<string, string> = {
   OTHER: "bg-gray-500",
 };
 
-const typeIcons: Record<string, any> = {
+const typeIcons: Record<string, LucideIcon> = {
   VISIT: Users,
   CALL: Phone,
   EMAIL: Mail,
@@ -121,7 +122,7 @@ export default function HitListPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/hit-list"] });
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const toggleTaskMutation = useMutation({
@@ -132,7 +133,7 @@ export default function HitListPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/dashboard/hit-list"] });
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const goToPhysician = (physicianId: string | null) => {
