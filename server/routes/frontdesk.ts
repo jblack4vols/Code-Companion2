@@ -118,8 +118,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
   app.get("/api/frontdesk/slots", ACCESS, async (req, res) => {
     try {
-      const locationId = req.query.locationId as string | undefined;
-      const dateFrom = req.query.dateFrom as string || new Date().toISOString().slice(0, 10);
+      const locationId = (req.query.locationId ? String(req.query.locationId) : undefined);
+      const dateFrom = (req.query.dateFrom ? String(req.query.dateFrom) : null) || new Date().toISOString().slice(0, 10);
 
       let conditions = [
         eq(appointmentSlots.isAvailable, true),
@@ -202,7 +202,8 @@ export function registerFrontDeskRoutes(app: Express) {
 
   app.patch("/api/frontdesk/requests/:id/cancel", ACCESS, async (req, res) => {
     try {
-      const [existing] = await db.select().from(patientRequests).where(eq(patientRequests.id, req.params.id));
+      const requestId = String(req.params.id);
+      const [existing] = await db.select().from(patientRequests).where(eq(patientRequests.id, requestId));
       if (!existing) return res.status(404).json({ message: "Not found" });
 
       if (existing.appointmentSlotId) {
@@ -215,7 +216,7 @@ export function registerFrontDeskRoutes(app: Express) {
       const [updated] = await db.update(patientRequests).set({
         status: "CANCELLED",
         updatedAt: new Date(),
-      }).where(eq(patientRequests.id, req.params.id)).returning();
+      }).where(eq(patientRequests.id, requestId)).returning();
 
       res.json(updated);
     } catch (err: any) {

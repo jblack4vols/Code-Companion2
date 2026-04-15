@@ -9,7 +9,7 @@ export function registerLocationRoutes(app: Express) {
   });
 
   app.get("/api/locations/:id", requireAuth, async (req, res) => {
-    const loc = await storage.getLocation(req.params.id);
+    const loc = await storage.getLocation(String(req.params.id));
     if (!loc) return res.status(404).json({ message: "Not found" });
     res.json(loc);
   });
@@ -28,7 +28,7 @@ export function registerLocationRoutes(app: Express) {
   app.patch("/api/locations/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const validated = insertLocationSchema.partial().parse(req.body);
-      const loc = await storage.updateLocation(req.params.id, validated);
+      const loc = await storage.updateLocation(String(req.params.id), validated);
       if (!loc) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Location", entityId: loc.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(loc);
@@ -39,8 +39,8 @@ export function registerLocationRoutes(app: Express) {
 
   app.delete("/api/locations/:id", requireRole("OWNER"), async (req, res) => {
     try {
-      await storage.deleteLocation(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Location", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.deleteLocation(String(req.params.id));
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Location", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(409).json({ message: err.message });

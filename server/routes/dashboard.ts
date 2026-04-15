@@ -4,7 +4,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql, eq, and, gte, lt, lte, isNull, asc, desc } from "drizzle-orm";
 import { referrals as referralsTable, calendarEvents, tasks, interactions, physicians, locations } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, qstrReq, getUserLocationScope } from "./shared";
 
 export function registerDashboardRoutes(app: Express) {
   app.get("/api/tiering-weights", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
@@ -112,9 +112,10 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/dashboard/territory/:territoryId", requireAuth, async (req, res) => {
-    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
-    const summary = await storage.getTerritoryMonthlySummaries({ territoryId: req.params.territoryId, month });
-    const territory = await storage.getTerritory(req.params.territoryId);
+    const month = qstr(req.query.month) || new Date().toISOString().slice(0, 7) + "-01";
+    const territoryId = String(req.params.territoryId);
+    const summary = await storage.getTerritoryMonthlySummaries({ territoryId, month });
+    const territory = await storage.getTerritory(territoryId);
     res.json({ territory, summaries: summary, month });
   });
 
@@ -125,16 +126,16 @@ export function registerDashboardRoutes(app: Express) {
     if (locationScope !== null && !locationScope.includes(locationId)) {
       return res.status(403).json({ message: "Forbidden: no access to this location" });
     }
-    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
-    const summaries = await storage.getLocationMonthlySummaries({ locationId: req.params.locationId, month });
-    const loc = await storage.getLocation(req.params.locationId);
+    const month = qstr(req.query.month) || new Date().toISOString().slice(0, 7) + "-01";
+    const summaries = await storage.getLocationMonthlySummaries({ locationId, month });
+    const loc = await storage.getLocation(locationId);
 
     const monthStart = new Date(month);
     const monthEnd = new Date(monthStart);
     monthEnd.setMonth(monthEnd.getMonth() + 1);
     const locationReferrals = await db.select().from(referralsTable).where(
       and(
-        eq(referralsTable.locationId, req.params.locationId),
+        eq(referralsTable.locationId, locationId),
         gte(referralsTable.referralDate, monthStart.toISOString().slice(0, 10)),
         lt(referralsTable.referralDate, monthEnd.toISOString().slice(0, 10))
       )
@@ -167,18 +168,18 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/physicians/:id/monthly", requireAuth, async (req, res) => {
-    const months = req.query.months ? parseInt(req.query.months as string) : 6;
-    const summaries = await storage.getPhysicianMonthlySummaries({ physicianId: req.params.id, months });
+    const months = req.query.months ? parseInt(qstrReq(req.query.months)) : 6;
+    const summaries = await storage.getPhysicianMonthlySummaries({ physicianId: String(req.params.id), months });
     res.json(summaries);
   });
 
   app.get("/api/dashboard/funnel", requireAuth, async (req, res) => {
     try {
       const locationScope = await getUserLocationScope(req);
-      const startDate = req.query.startDate as string | undefined;
-      const endDate = req.query.endDate as string | undefined;
-      const locationId = req.query.locationId as string | undefined;
-      const territoryId = req.query.territoryId as string | undefined;
+      const startDate = qstr(req.query.startDate);
+      const endDate = qstr(req.query.endDate);
+      const locationId = qstr(req.query.locationId);
+      const territoryId = qstr(req.query.territoryId);
 
       if (locationScope !== null && locationId && !locationScope.includes(locationId)) {
         return res.status(403).json({ message: "Forbidden: no access to this location" });
@@ -280,7 +281,7 @@ export function registerDashboardRoutes(app: Express) {
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     const locationScope = await getUserLocationScope(req);
     // If user requested a specific location, verify they have access to it
-    const requestedLocationId = req.query.locationId as string | undefined;
+    const requestedLocationId = qstr(req.query.locationId);
     if (locationScope !== null && requestedLocationId && !locationScope.includes(requestedLocationId)) {
       return res.status(403).json({ message: "Forbidden: no access to this location" });
     }
@@ -289,11 +290,11 @@ export function registerDashboardRoutes(app: Express) {
       ? locationScope[0]
       : requestedLocationId;
     const filters = {
-      startDate: req.query.startDate as string | undefined,
-      endDate: req.query.endDate as string | undefined,
+      startDate: qstr(req.query.startDate),
+      endDate: qstr(req.query.endDate),
       locationId: effectiveLocationId,
-      territoryId: req.query.territoryId as string | undefined,
-      physicianId: req.query.physicianId as string | undefined,
+      territoryId: qstr(req.query.territoryId),
+      physicianId: qstr(req.query.physicianId),
     };
     res.json(await storage.getDashboardStats(filters));
   });
@@ -398,8 +399,8 @@ export function registerDashboardRoutes(app: Express) {
 
   app.get("/api/dashboard/hit-list", requireAuth, async (req, res) => {
     try {
-      const startDate = req.query.startDate as string;
-      const endDate = req.query.endDate as string;
+      const startDate = qstrReq(req.query.startDate);
+      const endDate = qstrReq(req.query.endDate);
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
       }

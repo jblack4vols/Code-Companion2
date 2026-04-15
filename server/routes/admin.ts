@@ -3,15 +3,15 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { eq, lt } from "drizzle-orm";
 import { appSettings, auditLogs, insertScheduledReportSchema } from "@shared/schema";
-import { requireRole, getClientIp, qstr } from "./shared";
+import { requireRole, getClientIp, qstr, qstrReq } from "./shared";
 
 export function registerAdminRoutes(app: Express) {
   app.get("/api/audit-logs", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     const filters = {
-      userId: req.query.userId as string | undefined,
-      entity: req.query.entity as string | undefined,
-      action: req.query.action as string | undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      userId: qstr(req.query.userId),
+      entity: qstr(req.query.entity),
+      action: qstr(req.query.action),
+      limit: req.query.limit ? parseInt(qstrReq(req.query.limit)) : undefined,
     };
     res.json(await storage.getAuditLogs(filters));
   });
@@ -239,9 +239,9 @@ export function registerAdminRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
       }
-      const existing = await storage.getScheduledReport(req.params.id);
+      const existing = await storage.getScheduledReport(String(req.params.id));
       if (!existing) return res.status(404).json({ message: "Not found" });
-      const report = await storage.updateScheduledReport(req.params.id, parsed.data);
+      const report = await storage.updateScheduledReport(String(req.params.id), parsed.data);
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "ScheduledReport", entityId: report.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(report);
     } catch (err: any) {
@@ -251,10 +251,10 @@ export function registerAdminRoutes(app: Express) {
 
   app.delete("/api/scheduled-reports/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const existing = await storage.getScheduledReport(req.params.id);
+      const existing = await storage.getScheduledReport(String(req.params.id));
       if (!existing) return res.status(404).json({ message: "Not found" });
-      await storage.deleteScheduledReport(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "ScheduledReport", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.deleteScheduledReport(String(req.params.id));
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "ScheduledReport", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);
@@ -264,7 +264,7 @@ export function registerAdminRoutes(app: Express) {
 
   app.post("/api/scheduled-reports/:id/run", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const report = await storage.getScheduledReport(req.params.id);
+      const report = await storage.getScheduledReport(String(req.params.id));
       if (!report) return res.status(404).json({ message: "Not found" });
 
       let csv = "";

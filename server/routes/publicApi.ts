@@ -65,7 +65,7 @@ export function registerPublicApiRoutes(app: Express) {
 
   app.post("/api/api-keys/:id/rotate", requireRole("OWNER"), async (req, res) => {
     try {
-      const oldKey = await storage.getApiKeyById(req.params.id);
+      const oldKey = await storage.getApiKeyById(String(req.params.id));
       if (!oldKey) return res.status(404).json({ message: "Not found" });
 
       await storage.deactivateApiKey(oldKey.id);
@@ -104,9 +104,9 @@ export function registerPublicApiRoutes(app: Express) {
 
   app.delete("/api/api-keys/:id", requireRole("OWNER"), async (req, res) => {
     try {
-      const deactivated = await storage.deactivateApiKey(req.params.id);
+      const deactivated = await storage.deactivateApiKey(String(req.params.id));
       if (!deactivated) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DEACTIVATE_API_KEY", entity: "ApiKey", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);
@@ -149,7 +149,7 @@ export function registerPublicApiRoutes(app: Express) {
 
   app.get("/api/public/physicians/:id", requireApiKey("physicians:read"), async (req, res) => {
     try {
-      const phys = await storage.getPhysician(req.params.id);
+      const phys = await storage.getPhysician(String(req.params.id));
       if (!phys) return res.status(404).json({ error: "Not found" });
       res.json(phys);
     } catch (err: any) {

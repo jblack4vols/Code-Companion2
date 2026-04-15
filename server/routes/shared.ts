@@ -20,12 +20,14 @@ declare module "express-session" {
   }
 }
 
-export function qstr(val: string | string[] | undefined): string | undefined {
-  return Array.isArray(val) ? val[0] : val;
+export function qstr(val: unknown): string | undefined {
+  if (Array.isArray(val)) return typeof val[0] === "string" ? val[0] : undefined;
+  return typeof val === "string" ? val : undefined;
 }
 
-export function qstrReq(val: string | string[] | undefined): string {
-  return (Array.isArray(val) ? val[0] : val) || "";
+export function qstrReq(val: unknown): string {
+  if (Array.isArray(val)) return typeof val[0] === "string" ? val[0] : "";
+  return typeof val === "string" ? val : "";
 }
 
 export function requireAuth(req: Request, res: Response, next: NextFunction) {

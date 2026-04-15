@@ -112,10 +112,11 @@ export function registerFeedbackRoutes(app: Express) {
 
   app.get("/api/feedback/:id", requireAuth, async (req, res) => {
     try {
+      const feedbackId = String(req.params.id);
       const [item] = await db
         .select()
         .from(feedbackItems)
-        .where(eq(feedbackItems.id, req.params.id));
+        .where(eq(feedbackItems.id, feedbackId));
       if (!item) return res.status(404).json({ message: "Not found" });
 
       const notes = await db
@@ -129,7 +130,7 @@ export function registerFeedbackRoutes(app: Express) {
         })
         .from(feedbackNotes)
         .leftJoin(users, eq(feedbackNotes.userId, users.id))
-        .where(eq(feedbackNotes.feedbackItemId, req.params.id))
+        .where(eq(feedbackNotes.feedbackItemId, feedbackId))
         .orderBy(desc(feedbackNotes.createdAt));
 
       const allUsers = await db.select({ id: users.id, name: users.name }).from(users);
@@ -248,10 +249,11 @@ export function registerFeedbackRoutes(app: Express) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
       }
 
+      const feedbackId = String(req.params.id);
       const [existing] = await db
         .select()
         .from(feedbackItems)
-        .where(eq(feedbackItems.id, req.params.id));
+        .where(eq(feedbackItems.id, feedbackId));
       if (!existing) return res.status(404).json({ message: "Not found" });
 
       const user = await storage.getUser(req.session.userId!);
@@ -286,14 +288,14 @@ export function registerFeedbackRoutes(app: Express) {
       const [updated] = await db
         .update(feedbackItems)
         .set(updates)
-        .where(eq(feedbackItems.id, req.params.id))
+        .where(eq(feedbackItems.id, feedbackId))
         .returning();
 
       await storage.createAuditLog({
         userId: req.session.userId!,
         action: "UPDATE",
         entity: "feedback",
-        entityId: req.params.id,
+        entityId: feedbackId,
         detailJson: updates,
       });
 
@@ -306,10 +308,11 @@ export function registerFeedbackRoutes(app: Express) {
 
   app.delete("/api/feedback/:id", requireAuth, async (req, res) => {
     try {
+      const feedbackId = String(req.params.id);
       const [existing] = await db
         .select()
         .from(feedbackItems)
-        .where(eq(feedbackItems.id, req.params.id));
+        .where(eq(feedbackItems.id, feedbackId));
       if (!existing) return res.status(404).json({ message: "Not found" });
 
       const user = await storage.getUser(req.session.userId!);
@@ -326,14 +329,14 @@ export function registerFeedbackRoutes(app: Express) {
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       }
 
-      await db.delete(feedbackNotes).where(eq(feedbackNotes.feedbackItemId, req.params.id));
-      await db.delete(feedbackItems).where(eq(feedbackItems.id, req.params.id));
+      await db.delete(feedbackNotes).where(eq(feedbackNotes.feedbackItemId, feedbackId));
+      await db.delete(feedbackItems).where(eq(feedbackItems.id, feedbackId));
 
       await storage.createAuditLog({
         userId: req.session.userId!,
         action: "DELETE",
         entity: "feedback",
-        entityId: req.params.id,
+        entityId: feedbackId,
         detailJson: { title: existing.title },
       });
 
@@ -346,6 +349,7 @@ export function registerFeedbackRoutes(app: Express) {
 
   app.post("/api/feedback/:id/notes", requireAuth, async (req, res) => {
     try {
+      const feedbackId = String(req.params.id);
       const parsed = createNoteSchema.safeParse(req.body);
       if (!parsed.success) {
         return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
@@ -354,13 +358,13 @@ export function registerFeedbackRoutes(app: Express) {
       const [existing] = await db
         .select()
         .from(feedbackItems)
-        .where(eq(feedbackItems.id, req.params.id));
+        .where(eq(feedbackItems.id, feedbackId));
       if (!existing) return res.status(404).json({ message: "Feedback item not found" });
 
       const [note] = await db
         .insert(feedbackNotes)
         .values({
-          feedbackItemId: req.params.id,
+          feedbackItemId: feedbackId,
           userId: req.session.userId!,
           content: parsed.data.content,
         })
@@ -369,7 +373,7 @@ export function registerFeedbackRoutes(app: Express) {
       await db
         .update(feedbackItems)
         .set({ updatedAt: new Date() })
-        .where(eq(feedbackItems.id, req.params.id));
+        .where(eq(feedbackItems.id, feedbackId));
 
       const user = await storage.getUser(req.session.userId!);
 

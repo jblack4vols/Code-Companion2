@@ -37,7 +37,7 @@ export function registerReferralRoutes(app: Express) {
     if (locationScope !== null && locationScope.length === 0) {
       return res.json([]);
     }
-    const physicianId = req.query.physicianId as string | undefined;
+    const physicianId = qstr(req.query.physicianId);
     res.json(await storage.getReferrals(physicianId, locationScope ?? undefined));
   });
 
@@ -120,9 +120,9 @@ export function registerReferralRoutes(app: Express) {
       if (!parsed.success) return res.status(400).json({ message: parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ") });
       if (Object.keys(parsed.data).length === 0) return res.status(400).json({ message: "No valid fields to update" });
 
-      const updated = await storage.updateReferral(req.params.id, parsed.data as any);
+      const updated = await storage.updateReferral(String(req.params.id), parsed.data as any);
       if (!updated) return res.status(404).json({ message: "Referral not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Referral", entityId: req.params.id, detailJson: { fields: Object.keys(parsed.data) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Referral", entityId: String(req.params.id), detailJson: { fields: Object.keys(parsed.data) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -168,9 +168,9 @@ export function registerReferralRoutes(app: Express) {
 
   app.delete("/api/referrals/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const deleted = await storage.softDeleteReferral(req.params.id);
+      const deleted = await storage.softDeleteReferral(String(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);
@@ -180,9 +180,9 @@ export function registerReferralRoutes(app: Express) {
 
   app.post("/api/referrals/:id/restore", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const restored = await storage.restoreReferral(req.params.id);
+      const restored = await storage.restoreReferral(String(req.params.id));
       if (!restored) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);

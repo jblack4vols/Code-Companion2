@@ -173,7 +173,7 @@ export default function ProviderOfficeLinkerPage() {
   const handleBulkAssign = () => {
     if (!bulkPractice.trim() || selectedIds.size === 0) return;
     const newLinks: PendingLink[] = [];
-    for (const id of selectedIds) {
+    for (const id of Array.from(selectedIds)) {
       const p = physicians.find(ph => ph.id === id);
       if (!p) continue;
       if (pendingLinks.some(l => l.physicianId === id)) {

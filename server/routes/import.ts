@@ -246,7 +246,7 @@ export async function registerImportRoutes(app: Express) {
       const allLocations = await storage.getLocations();
       const locationCache = new Map<string, string>();
 
-      function parseDate(val: any): string | null {
+      const parseDate = (val: any): string | null => {
         if (!val) return null;
         if (val instanceof Date) {
           const y = val.getFullYear(); const m = String(val.getMonth() + 1).padStart(2, "0"); const d = String(val.getDate()).padStart(2, "0");
@@ -265,9 +265,9 @@ export async function registerImportRoutes(app: Express) {
           return `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
         }
         return null;
-      }
+      };
 
-      async function resolveLocation(name: string): Promise<string | null> {
+      const resolveLocation = async (name: string): Promise<string | null> => {
         if (!name) return null;
         if (locationCache.has(name)) return locationCache.get(name)!;
         const found = allLocations.find(l => l.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(l.name.toLowerCase()));
@@ -275,9 +275,9 @@ export async function registerImportRoutes(app: Express) {
         const dbFound = await storage.findLocationByName(name);
         if (dbFound) { locationCache.set(name, dbFound.id); return dbFound.id; }
         return null;
-      }
+      };
 
-      async function resolvePhysician(doctorName: string, npi?: string): Promise<string | null> {
+      const resolvePhysician = async (doctorName: string, npi?: string): Promise<string | null> => {
         if (!doctorName) return null;
         const cleaned = doctorName.replace(/^(Dr\.?\s*|MD\.?\s*)/i, "").trim();
         const parts = cleaned.split(/\s+/);
@@ -289,7 +289,7 @@ export async function registerImportRoutes(app: Express) {
         const fuzzyResults = await storage.fuzzyFindPhysicians(lastName, firstName);
         if (fuzzyResults.length === 1) return fuzzyResults[0].id;
         return null;
-      }
+      };
 
       const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
 

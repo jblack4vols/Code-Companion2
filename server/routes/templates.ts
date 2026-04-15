@@ -49,7 +49,7 @@ export function registerTemplateRoutes(app: Express) {
   app.patch("/api/interaction-templates/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const { name, type, defaultSummary, defaultNextStep, isActive } = req.body;
-      const updated = await storage.updateInteractionTemplate(req.params.id, {
+      const updated = await storage.updateInteractionTemplate(String(req.params.id), {
         ...(name !== undefined && { name }),
         ...(type !== undefined && { type }),
         ...(defaultSummary !== undefined && { defaultSummary }),
@@ -67,7 +67,7 @@ export function registerTemplateRoutes(app: Express) {
 
   app.delete("/api/interaction-templates/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      await storage.deleteInteractionTemplate(req.params.id);
+      await storage.deleteInteractionTemplate(String(req.params.id));
       res.json({ message: "Template deactivated" });
     } catch (err: any) {
       console.error(err);

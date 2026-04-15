@@ -2,7 +2,7 @@ import type { Express } from "express";
 import { z } from "zod";
 import { storage } from "../storage";
 import { insertCollectionSchema } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, getUserLocationScope } from "./shared";
+import { requireAuth, requireRole, getClientIp, getUserLocationScope, qstr } from "./shared";
 
 export function registerTerritoryRoutes(app: Express) {
   app.get("/api/territories", requireAuth, async (req, res) => {
@@ -10,7 +10,7 @@ export function registerTerritoryRoutes(app: Express) {
   });
 
   app.get("/api/territories/:id", requireAuth, async (req, res) => {
-    const t = await storage.getTerritory(req.params.id);
+    const t = await storage.getTerritory(String(req.params.id));
     if (!t) return res.status(404).json({ message: "Not found" });
     res.json(t);
   });
@@ -45,9 +45,9 @@ export function registerTerritoryRoutes(app: Express) {
       if (!parsed.success) {
         return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
       }
-      const territory = await storage.updateTerritory(req.params.id, parsed.data);
+      const territory = await storage.updateTerritory(String(req.params.id), parsed.data);
       if (!territory) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: req.params.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: String(req.params.id), detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(territory);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -56,8 +56,8 @@ export function registerTerritoryRoutes(app: Express) {
 
   app.delete("/api/territories/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      await storage.deleteTerritory(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Territory", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.deleteTerritory(String(req.params.id));
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Territory", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -71,11 +71,11 @@ export function registerTerritoryRoutes(app: Express) {
       return res.json([]);
     }
     const filters = {
-      physicianId: req.query.physicianId as string | undefined,
-      locationId: req.query.locationId as string | undefined,
+      physicianId: qstr(req.query.physicianId),
+      locationId: qstr(req.query.locationId),
       locationIds: locationScope ?? undefined,
-      dateFrom: req.query.dateFrom as string | undefined,
-      dateTo: req.query.dateTo as string | undefined,
+      dateFrom: qstr(req.query.dateFrom),
+      dateTo: qstr(req.query.dateTo),
     };
     res.json(await storage.getCollections(filters));
   });

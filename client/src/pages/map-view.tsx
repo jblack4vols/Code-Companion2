@@ -60,7 +60,7 @@ export default function MapViewPage() {
     if (!physicians) return [];
     const cities = new Set<string>();
     physicians.forEach(p => { if (p.city) cities.add(p.city.trim()); });
-    return [...cities].sort();
+    return Array.from(cities).sort();
   }, [physicians]);
 
   const filtered = useMemo(() => {
