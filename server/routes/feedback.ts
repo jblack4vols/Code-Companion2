@@ -24,11 +24,9 @@ const ALLOWED_MIME_TYPES: Record<string, string> = {
   "application/pdf": ".pdf",
 };
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
-const UPLOAD_DIR = path.resolve("uploads/feedback");
+const UPLOAD_DIR = process.env.VERCEL ? path.join("/tmp", "uploads/feedback") : path.resolve("uploads/feedback");
 
-if (!fs.existsSync(UPLOAD_DIR)) {
-  fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-}
+try { fs.mkdirSync(UPLOAD_DIR, { recursive: true }); } catch { /* read-only fs */ }
 
 const createFeedbackSchema = z.object({
   title: z.string().min(1, "Title is required").max(500),

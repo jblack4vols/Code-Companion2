@@ -1,61 +1,4 @@
-import "dotenv/config";
-import express, { type Request, Response, NextFunction } from "express";
-import { registerRoutes } from "./routes";
-import { serveStatic } from "./static";
-import { createServer } from "http";
-import { validateEnv } from "./middleware/envValidation";
-import { globalErrorHandler } from "./middleware/errorHandler";
-
-validateEnv();
-
-const app = express();
-app.set("trust proxy", 1);
-const httpServer = createServer(app);
-
-app.get("/health", (_req, res) => {
-  res.status(200).send("OK");
-});
-
-declare module "http" {
-  interface IncomingMessage {
-    rawBody: unknown;
-  }
-}
-
-app.use(
-  express.json({
-    verify: (req, _res, buf) => {
-      req.rawBody = buf;
-    },
-  }),
-);
-
-app.use(express.urlencoded({ extended: false }));
-
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
-
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
-
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
-    }
-  });
-
-  next();
-});
+import { app, httpServer, initializeApp, log } from "./app";
 
 let appReady = false;
 
@@ -77,13 +20,9 @@ httpServer.listen(
 
     (async () => {
       try {
-        await registerRoutes(httpServer, app);
+        await initializeApp();
 
-        app.use(globalErrorHandler as any);
-
-        if (process.env.NODE_ENV === "production") {
-          serveStatic(app);
-        } else {
+        if (process.env.NODE_ENV !== "production") {
           const { setupVite } = await import("./vite");
           await setupVite(httpServer, app);
         }

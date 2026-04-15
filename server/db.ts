@@ -7,12 +7,15 @@ if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL must be set");
 }
 
+const isProduction = process.env.NODE_ENV === "production";
+const isServerless = !!process.env.VERCEL;
+
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  max: 20,
-  idleTimeoutMillis: 30000,
-  connectionTimeoutMillis: 5000,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: true } : undefined,
+  max: isServerless ? 3 : 20,
+  idleTimeoutMillis: isServerless ? 10000 : 30000,
+  connectionTimeoutMillis: 10000,
+  ssl: isProduction ? { rejectUnauthorized: false } : undefined,
 });
 
 export const db = drizzle(pool, { schema });
