@@ -368,3 +368,61 @@ Shadows are defined as CSS variables (`--shadow-2xs` through `--shadow-2xl`) but
 Drop shadows should only be used:
 - On elements sharing the same background color as their container
 - On floating elements (modals, toasts)
+
+## Accessibility (HIPAA-Critical)
+
+### Requirements
+- **Contrast**: Minimum 4.5:1 ratio for normal text, 3:1 for large text (WCAG AA)
+- **Touch targets**: Minimum 44x44px on all interactive elements
+- **Focus rings**: Visible 3-4px focus rings for keyboard navigation (uses `--ring` token)
+- **Motion**: Respect `prefers-reduced-motion` for all animations
+- **Labels**: All form inputs must have associated `<label>` elements
+- **ARIA**: Icon-only buttons require `aria-label`
+- **Color**: Never use color as the sole indicator — pair with icon or text
+
+### Test IDs
+Every interactive element needs `data-testid`. Patterns:
+- Interactive: `button-submit`, `input-email`, `link-profile`
+- Display: `text-username`, `status-payment`
+- Dynamic: `card-product-${id}`, `row-user-${index}`
+
+## Chart Guidelines
+
+### Chart Type Selection
+
+| Data Type | Chart | Pages |
+|-----------|-------|-------|
+| Trends over time | Line/Area Chart | Executive, Location, Territory dashboards |
+| Category comparison | Bar Chart (horizontal) | Revenue, ROI Calculator |
+| Tier/status distribution | Bar Chart (vertical) | Physician Tiering, Claims |
+| Revenue breakdown | Stacked Bar | Revenue Claims, Billing Lag |
+| KPI metrics | Stat Cards with sparklines | All dashboards |
+| Geographic data | Map markers | Map View |
+
+### Chart Colors
+Use `chart-1` through `chart-5` tokens. For multi-series:
+- Primary series: `chart-1` (blue)
+- Secondary: `chart-2` (teal)
+- Tertiary: `chart-3` (gold)
+- Additional: `chart-4` (green), `chart-5` (pink)
+- Fill areas: 20% opacity of the line color
+
+### Chart Accessibility
+- Add pattern overlays for colorblind users on multi-series charts
+- Provide data table alternative for screen readers
+- Hover tooltips with exact values
+- Limit radar/spider charts to 5-8 axes
+
+## Anti-Patterns
+
+| Do NOT | Do Instead |
+|--------|------------|
+| Use emoji as icons | Use Lucide SVG icons |
+| Add `hover:bg-*` to Button/Badge | Use built-in `hover-elevate` / variant props |
+| Nest Cards inside Cards | Use sections or dividers within a single Card |
+| Use `display: none` for hover reveal | Use `visibility: hidden/visible` |
+| Use layout-shifting scale transforms on hover | Use color/opacity transitions |
+| Mix different icon libraries | Stick to Lucide (lucide-react) |
+| Use literal colors without dark variant | Use semantic tokens (`bg-card`, `text-foreground`) |
+| Skip `data-testid` on interactive elements | Always add descriptive test IDs |
+| Log PHI in error messages | Show generic user-facing errors |
