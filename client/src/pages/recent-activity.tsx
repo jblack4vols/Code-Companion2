@@ -20,7 +20,8 @@ const TYPE_FILTERS = [
 export default function RecentActivityPage() {
   const [, navigate] = useLocation();
   const [typeFilter, setTypeFilter] = useState("all");
-  const { data: activities, isLoading, isError, refetch, dataUpdatedAt } = useQuery<any[]>({
+  interface ActivityItem { id: string; activity_type: string; timestamp: string; user_name?: string; type?: string; physician_last_name?: string; summary?: string; physician_name?: string; location_name?: string; }
+  const { data: activities, isLoading, isError, refetch, dataUpdatedAt } = useQuery<ActivityItem[]>({
     queryKey: ["/api/activity-feed?limit=50"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -29,7 +30,7 @@ export default function RecentActivityPage() {
     typeFilter === "all" ? true : a.activity_type === typeFilter
   ) || [];
 
-  const getActivityLink = (activity: any): string | null => {
+  const getActivityLink = (activity: ActivityItem): string | null => {
     switch (activity.activity_type) {
       case "referral":
         return "/referrals";
@@ -42,8 +43,8 @@ export default function RecentActivityPage() {
     }
   };
 
-  const getActivityDetails = (activity: any) => {
-    let icon: any;
+  const getActivityDetails = (activity: ActivityItem) => {
+    let icon: typeof MessageSquare;
     let colorClass: string;
     let description: string;
     let badge: string;

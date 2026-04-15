@@ -46,23 +46,11 @@ export function log(message: string, source = "express") {
 app.use((req, res, next) => {
   const start = Date.now();
   const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
 
   res.on("finish", () => {
     const duration = Date.now() - start;
     if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
+      log(`${req.method} ${path} ${res.statusCode} in ${duration}ms`);
     }
   });
 
@@ -103,10 +91,8 @@ httpServer.listen(
         appReady = true;
         log("Application fully initialized");
 
-        const { ensureSearchIndexes, ensureRevenueRecoveryTables, ensureFrontDeskTables } = await import("./db");
+        const { ensureSearchIndexes } = await import("./db");
         await ensureSearchIndexes().catch(err => console.error("Index error:", err));
-        await ensureRevenueRecoveryTables().catch(err => console.error("Revenue recovery tables error:", err));
-        await ensureFrontDeskTables().catch(err => console.error("Front desk tables error:", err));
 
         const { seed } = await import("./seed");
         await seed().catch(err => console.error("Seed error:", err));

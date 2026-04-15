@@ -23,11 +23,7 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return next();
   }
 
-  if (req.headers["x-api-key"] || req.headers["x-tristar-api-key"]) {
-    return next();
-  }
-
-  if (req.path.startsWith("/api/public/")) {
+  if (req.path.startsWith("/api/public/") && (req.headers["x-api-key"] || req.headers["x-tristar-api-key"])) {
     return next();
   }
 

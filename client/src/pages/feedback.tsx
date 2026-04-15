@@ -28,7 +28,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
-const categoryConfig: Record<string, { label: string; icon: any; color: string }> = {
+const categoryConfig: Record<string, { label: string; icon: typeof Lightbulb; color: string }> = {
   FEATURE_IDEA: { label: "Feature Idea", icon: Lightbulb, color: "bg-chart-2/15 text-chart-2" },
   BUG: { label: "Bug / Issue", icon: Bug, color: "bg-red-500/15 text-red-500" },
   IMPROVEMENT: { label: "Improvement", icon: ArrowUpCircle, color: "bg-chart-1/15 text-chart-1" },
@@ -829,7 +829,7 @@ export default function FeedbackPage() {
             <AlertDialogCancel data-testid="button-cancel-delete">Cancel</AlertDialogCancel>
             <AlertDialogAction
               onClick={() => deleteId && deleteMutation.mutate(deleteId)}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              className="bg-destructive text-destructive-foreground"
               data-testid="button-confirm-delete"
             >
               Delete

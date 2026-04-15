@@ -16,7 +16,9 @@ import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useDebounce } from "@/hooks/use-debounce";
-import type { Physician, Location } from "@shared/schema";
+import type { Physician, Location, Referral } from "@shared/schema";
+
+type ReferralRow = Referral & { physicianFirstName?: string; physicianLastName?: string; physicianCredentials?: string; locationName?: string };
 import { format, parse, endOfMonth } from "date-fns";
 
 const statusBadge: Record<string, string> = {
@@ -58,9 +60,9 @@ export default function ReferralsPage() {
   const [dateFrom, setDateFrom] = useState<string>(initialDateFrom);
   const [dateTo, setDateTo] = useState<string>(initialDateTo);
   const [showAdd, setShowAdd] = useState(false);
-  const [selectedReferral, setSelectedReferral] = useState<any>(null);
+  const [selectedReferral, setSelectedReferral] = useState<ReferralRow | null>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [editData, setEditData] = useState<Record<string, any>>({});
+  const [editData, setEditData] = useState<Record<string, string | number>>({});
   const [page, setPage] = useState(1);
   const [sortBy, setSortBy] = useState<string>("");
   const [sortDir, setSortDir] = useState<string>("desc");
@@ -95,7 +97,7 @@ export default function ReferralsPage() {
   }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo, sortBy, sortDir]);
 
   const queryParams = buildQueryParams();
-  const { data: result, isLoading, isError, refetch } = useQuery<any>({
+  const { data: result, isLoading, isError, refetch } = useQuery<{ data: ReferralRow[]; total: number; totalPages: number; activeCount?: number; dischargedCount?: number }>({
     queryKey: ["/api/referrals/paginated", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/referrals/paginated?${queryParams}`, { credentials: "include" });
@@ -123,7 +125,7 @@ export default function ReferralsPage() {
     if (selectedIds.size === referrals.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(referrals.map((r: any) => r.id)));
+      setSelectedIds(new Set(referrals.map((r) => r.id)));
     }
   };
 
@@ -140,7 +142,7 @@ export default function ReferralsPage() {
       setSelectedIds(new Set());
       toast({ title: `${data.count} referral${data.count === 1 ? "" : "s"} deleted` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const [showDeleteAllConfirm, setShowDeleteAllConfirm] = useState(false);
@@ -161,7 +163,7 @@ export default function ReferralsPage() {
       setDeleteAllConfirmText("");
       toast({ title: `All ${data.count} referrals deleted`, description: "You can restore them using the Restore All button." });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const restoreAllMutation = useMutation({
@@ -177,12 +179,12 @@ export default function ReferralsPage() {
       setShowRestoreAllConfirm(false);
       toast({ title: `${data.count} referrals restored` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const [physicianSearch, setPhysicianSearch] = useState("");
-  const [physicianResults, setPhysicianResults] = useState<any[]>([]);
-  const [selectedPhysician, setSelectedPhysician] = useState<any>(null);
+  const [physicianResults, setPhysicianResults] = useState<Physician[]>([]);
+  const [selectedPhysician, setSelectedPhysician] = useState<Physician | null>(null);
   const [showPhysicianDropdown, setShowPhysicianDropdown] = useState(false);
   const [showNewProvider, setShowNewProvider] = useState(false);
   const [newProviderData, setNewProviderData] = useState({ firstName: "", lastName: "", credentials: "", npi: "", practiceName: "", specialty: "" });
@@ -190,16 +192,16 @@ export default function ReferralsPage() {
   const debouncedPhysicianSearch = useDebounce(physicianSearch, 300);
 
   const [editPhysicianSearch, setEditPhysicianSearch] = useState("");
-  const [editPhysicianResults, setEditPhysicianResults] = useState<any[]>([]);
+  const [editPhysicianResults, setEditPhysicianResults] = useState<Physician[]>([]);
   const [showEditPhysicianDropdown, setShowEditPhysicianDropdown] = useState(false);
   const editPhysicianSearchRef = useRef<HTMLDivElement>(null);
   const debouncedEditPhysicianSearch = useDebounce(editPhysicianSearch, 300);
 
   useEffect(() => {
     if (debouncedPhysicianSearch.length >= 2) {
-      fetch(`/api/physicians/search?q=${encodeURIComponent(debouncedPhysicianSearch)}`, { credentials: "include" })
+      apiRequest("GET", `/api/physicians/search?q=${encodeURIComponent(debouncedPhysicianSearch)}`)
         .then(r => r.json())
-        .then(data => { setPhysicianResults(data); setShowPhysicianDropdown(true); })
+        .then((data: Physician[]) => { setPhysicianResults(data); setShowPhysicianDropdown(true); })
         .catch(() => setPhysicianResults([]));
     } else {
       setPhysicianResults([]);
@@ -209,9 +211,9 @@ export default function ReferralsPage() {
 
   useEffect(() => {
     if (debouncedEditPhysicianSearch.length >= 2) {
-      fetch(`/api/physicians/search?q=${encodeURIComponent(debouncedEditPhysicianSearch)}`, { credentials: "include" })
+      apiRequest("GET", `/api/physicians/search?q=${encodeURIComponent(debouncedEditPhysicianSearch)}`)
         .then(r => r.json())
-        .then(data => { setEditPhysicianResults(data); setShowEditPhysicianDropdown(true); })
+        .then((data: Physician[]) => { setEditPhysicianResults(data); setShowEditPhysicianDropdown(true); })
         .catch(() => setEditPhysicianResults([]));
     } else {
       setEditPhysicianResults([]);
@@ -242,7 +244,7 @@ export default function ReferralsPage() {
   };
 
   const addMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/referrals", data);
       return res.json();
     },
@@ -253,11 +255,11 @@ export default function ReferralsPage() {
       resetAddForm();
       toast({ title: "Referral added" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: Record<string, any> }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, string | number> }) => {
       const res = await apiRequest("PATCH", `/api/referrals/${id}`, data);
       return res.json();
     },
@@ -268,10 +270,10 @@ export default function ReferralsPage() {
       setSelectedReferral(null);
       toast({ title: "Referral updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
-  const startEditing = (r: any) => {
+  const startEditing = (r: ReferralRow) => {
     setEditPhysicianSearch("");
     setEditPhysicianResults([]);
     setShowEditPhysicianDropdown(false);
@@ -316,7 +318,7 @@ export default function ReferralsPage() {
       ? (nameParts[0][0] + nameParts[nameParts.length - 1][0]).toUpperCase()
       : patientName.slice(0, 2).toUpperCase();
 
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       locationId: fd.get("locationId"),
       referralDate: fd.get("referralDate"),
       patientInitialsOrAnonId: initials || "XX",
@@ -367,7 +369,7 @@ export default function ReferralsPage() {
     if (dateFrom) params.set("dateFrom", dateFrom);
     if (dateTo) params.set("dateTo", dateTo);
 
-    const res = await fetch(`/api/export/referrals?${params.toString()}`, { credentials: "include" });
+    const res = await apiRequest("GET", `/api/export/referrals?${params.toString()}`);
     if (!res.ok) return;
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
@@ -562,7 +564,7 @@ export default function ReferralsPage() {
                         </div>
                         {showPhysicianDropdown && (
                           <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-48 overflow-y-auto">
-                            {physicianResults.length > 0 ? physicianResults.map((p: any) => (
+                            {physicianResults.length > 0 ? physicianResults.map((p) => (
                               <button
                                 key={p.id}
                                 type="button"
@@ -793,7 +795,7 @@ export default function ReferralsPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {referrals.map((r: any) => (
+                  {referrals.map((r) => (
                     <TableRow key={r.id} className="hover-elevate cursor-pointer" onClick={() => setSelectedReferral(r)} data-testid={`row-referral-${r.id}`}>
                       {isOwner && (
                         <TableCell className="w-10" onClick={(e) => e.stopPropagation()}>
@@ -1036,7 +1038,7 @@ export default function ReferralsPage() {
                   </div>
                   {showEditPhysicianDropdown && (
                     <div className="absolute z-50 mt-1 w-full rounded-md border bg-popover shadow-md max-h-48 overflow-y-auto">
-                      {editPhysicianResults.length > 0 ? editPhysicianResults.map((p: any) => (
+                      {editPhysicianResults.length > 0 ? editPhysicianResults.map((p) => (
                         <button
                           key={p.id}
                           type="button"

@@ -47,7 +47,8 @@ export default function ExecutiveDashboardPage() {
   const monthOptions = generateMonthOptions();
   const [selectedMonth, setSelectedMonth] = useState(monthOptions[1]?.value || monthOptions[0].value);
 
-  const { data: execData, isLoading: loadingExec, isError: execError, refetch, dataUpdatedAt } = useQuery<any>({
+  interface ExecData { totalReferrals: number; totalRevenue: number; concentrationRisk: number; volatilityIndex: number; topReferrersByRevenue: Array<{ physicianId: string; referralsCount: number; revenueGenerated: number; arrivalRate: number; tierLabel: string }>; growthRates: Array<{ month: string; rate: number }>; monthlyTotals: Record<string, number>; monthlyRevenue?: Record<string, number>; }
+  const { data: execData, isLoading: loadingExec, isError: execError, refetch, dataUpdatedAt } = useQuery<ExecData>({
     queryKey: ["/api/dashboard/executive", { month: selectedMonth }],
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/executive?month=${selectedMonth}`, { credentials: "include" });
@@ -60,7 +61,8 @@ export default function ExecutiveDashboardPage() {
     queryKey: ["/api/physicians"],
   });
 
-  const { data: correlationData } = useQuery<any[]>({
+  interface CorrelationPoint { physicianId: string; name: string; interactions: number; referrals: number; stage: string; }
+  const { data: correlationData } = useQuery<CorrelationPoint[]>({
     queryKey: ["/api/dashboard/correlation"],
     queryFn: async () => {
       const res = await fetch("/api/dashboard/correlation", { credentials: "include" });
@@ -69,7 +71,8 @@ export default function ExecutiveDashboardPage() {
     },
   });
 
-  const { data: geoData } = useQuery<any[]>({
+  interface GeoPoint { city: string; state: string; referrals: number; providers: number; }
+  const { data: geoData } = useQuery<GeoPoint[]>({
     queryKey: ["/api/dashboard/geographic"],
     queryFn: async () => {
       const res = await fetch("/api/dashboard/geographic", { credentials: "include" });
@@ -89,7 +92,7 @@ export default function ExecutiveDashboardPage() {
   }, [execData?.topReferrersByRevenue]);
 
   const growthRateData = useMemo(() => {
-    return (execData?.growthRates || []).map((g: any) => ({
+    return (execData?.growthRates || []).map((g) => ({
       month: format(new Date(g.month), "MMM yy"),
       rate: Number(g.rate),
     }));
@@ -254,7 +257,7 @@ export default function ExecutiveDashboardPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {topReferrers.map((r: any, idx: number) => {
+                  {topReferrers.map((r, idx: number) => {
                     const phys = physicianMap.get(r.physicianId);
                     const name = phys ? `Dr. ${phys.firstName} ${phys.lastName}` : "Unknown";
                     return (
@@ -486,7 +489,7 @@ export default function ExecutiveDashboardPage() {
           <CardContent className="p-4 pt-0">
             {geoData && geoData.length > 0 ? (
               <div className="space-y-2">
-                {geoData.slice(0, 12).map((city: any, i: number) => {
+                {geoData.slice(0, 12).map((city, i: number) => {
                   const maxCount = geoData[0]?.referrals || 1;
                   const pct = Math.round((city.referrals / maxCount) * 100);
                   return (

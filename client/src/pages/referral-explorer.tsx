@@ -62,7 +62,9 @@ export default function ReferralExplorerPage() {
 
   const queryParams = params.toString();
 
-  const { data, isLoading, isError } = useQuery<any>({
+  interface ReferralRow { id: string; referralDate: string; locationName?: string; patientFullName?: string; patientInitialsOrAnonId?: string; referringProviderName?: string; physicianFirstName?: string; physicianLastName?: string; physicianCredentials?: string; referralSource?: string; primaryPayerType?: string; status: string; discipline?: string; caseTherapist?: string; diagnosisCategory?: string; primaryInsurance?: string; scheduledVisits?: number; dischargeDate?: string; dischargeReason?: string; }
+  interface ReferralsResult { data: ReferralRow[]; total: number; totalPages: number; activeCount: number; dischargedCount: number; }
+  const { data, isLoading, isError } = useQuery<ReferralsResult>({
     queryKey: ["/api/referrals/paginated", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/referrals/paginated?${queryParams}`, { credentials: "include" });
@@ -72,7 +74,8 @@ export default function ReferralExplorerPage() {
   });
 
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
-  const { data: filterOptions } = useQuery<any>({
+  interface FilterOptions { referralSources: string[]; payerTypes: string[]; disciplines: string[]; }
+  const { data: filterOptions } = useQuery<FilterOptions>({
     queryKey: ["/api/referrals/filter-options"],
   });
 
@@ -327,7 +330,7 @@ export default function ReferralExplorerPage() {
                   </TableCell>
                 </TableRow>
               ) : (
-                referrals.map((r: any) => {
+                referrals.map((r) => {
                   const isExpanded = expandedId === r.id;
                   const docName = r.physicianLastName
                     ? `${r.physicianFirstName || ""} ${r.physicianLastName}${r.physicianCredentials ? `, ${r.physicianCredentials}` : ""}`
@@ -363,7 +366,7 @@ export default function ReferralExplorerPage() {
             </TableBody>
           </Table>
 
-          {referrals.map((r: any) => {
+          {referrals.map((r) => {
             if (expandedId !== r.id) return null;
             return (
               <div key={`detail-${r.id}`} className="border-t bg-muted/30 px-6 py-4">

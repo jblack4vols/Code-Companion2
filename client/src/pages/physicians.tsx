@@ -133,7 +133,7 @@ export default function PhysiciansPage() {
   }, [page, debouncedSearch, statusFilter, stageFilter, priorityFilter, practiceFilter, sortBy, sortOrder]);
 
   const queryParams = buildQueryParams();
-  const { data: result, isLoading, isError, refetch } = useQuery<any>({
+  const { data: result, isLoading, isError, refetch } = useQuery<{ data: (Physician & { referralCount?: number })[]; total: number; totalPages: number }>({
     queryKey: ["/api/physicians/paginated", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/paginated?${queryParams}`, { credentials: "include" });
@@ -145,10 +145,10 @@ export default function PhysiciansPage() {
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
 
-  const [quickAddPhysician, setQuickAddPhysician] = useState<any>(null);
+  const [quickAddPhysician, setQuickAddPhysician] = useState<Physician | null>(null);
 
   const quickInteractionMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/interactions", data);
       return res.json();
     },
@@ -158,14 +158,14 @@ export default function PhysiciansPage() {
       setQuickAddPhysician(null);
       toast({ title: "Interaction logged" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const canCreate = user ? hasPermission(user.role, "create", "physician") : false;
   const canBulkAction = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
 
   const addMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/physicians", data);
       return res.json();
     },
@@ -174,7 +174,7 @@ export default function PhysiciansPage() {
       setShowAdd(false);
       toast({ title: "Referring provider added" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const bulkStatusMutation = useMutation({
@@ -187,7 +187,7 @@ export default function PhysiciansPage() {
       setSelectedIds(new Set());
       toast({ title: `${data.count} referring provider(s) updated` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const bulkAssignMutation = useMutation({
@@ -200,7 +200,7 @@ export default function PhysiciansPage() {
       setSelectedIds(new Set());
       toast({ title: `${data.count} referring provider(s) reassigned` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const bulkDeleteMutation = useMutation({
@@ -215,7 +215,7 @@ export default function PhysiciansPage() {
       setShowBulkDelete(false);
       toast({ title: `${data.count} referring provider(s) deleted` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const handleBulkAssign = (marketerId: string) => {
@@ -232,7 +232,7 @@ export default function PhysiciansPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
       toast({ title: "Referring providers merged successfully" });
     },
-    onError: (err: any) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Merge failed", description: err.message, variant: "destructive" }),
   });
 
   const enrichAllMutation = useMutation({
@@ -240,12 +240,12 @@ export default function PhysiciansPage() {
       const res = await apiRequest("POST", "/api/import/enrich-npis", {});
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { total: number; enriched: number; alreadyComplete: number; failed: number }) => {
       setEnrichResult(data);
       setShowEnrichDialog(true);
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
     },
-    onError: (err: any) => toast({ title: "Enrichment failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Enrichment failed", description: err.message, variant: "destructive" }),
   });
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {
@@ -269,7 +269,7 @@ export default function PhysiciansPage() {
   };
 
   const allPhysicians = result?.data || [];
-  const physicians = showFavoritesOnly ? allPhysicians.filter((p: any) => favoriteIds.includes(p.id)) : allPhysicians;
+  const physicians = showFavoritesOnly ? allPhysicians.filter((p) => favoriteIds.includes(p.id)) : allPhysicians;
   const total = showFavoritesOnly ? physicians.length : (result?.total || 0);
   const totalPages = showFavoritesOnly ? 1 : (result?.totalPages || 1);
 
@@ -298,7 +298,7 @@ export default function PhysiciansPage() {
     if (selectedIds.size === physicians.length) {
       setSelectedIds(new Set());
     } else {
-      setSelectedIds(new Set(physicians.map((p: any) => p.id)));
+      setSelectedIds(new Set(physicians.map((p) => p.id)));
     }
   };
 
@@ -722,7 +722,7 @@ export default function PhysiciansPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {physicians.map((p: any) => {
+                    {physicians.map((p) => {
                       const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
                       return (
                         <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
@@ -817,7 +817,7 @@ export default function PhysiciansPage() {
               </div>
 
               <div className="sm:hidden divide-y">
-                {physicians.map((p: any) => {
+                {physicians.map((p) => {
                   const owner = users?.find((u: User) => u.id === p.assignedOwnerId);
                   return (
                     <div key={p.id} className="p-3 hover-elevate" data-testid={`card-physician-mobile-${p.id}`}>
@@ -955,13 +955,13 @@ export default function PhysiciansPage() {
 function MergeByNpiPanel({ mergeNpi, setMergeNpi, mergeMutation, onClose }: {
   mergeNpi: string;
   setMergeNpi: (v: string) => void;
-  mergeMutation: any;
+  mergeMutation: { mutate: (args: { keepId: string; removeId: string }, opts?: { onSuccess?: () => void }) => void; isPending: boolean };
   onClose: () => void;
 }) {
   const [keepId, setKeepId] = useState<string | null>(null);
   const debouncedNpi = useDebounce(mergeNpi, 400);
 
-  const { data: matches, isLoading } = useQuery<any[]>({
+  const { data: matches, isLoading } = useQuery<(Physician & { referralCount?: number })[]>({
     queryKey: ["/api/physicians/by-npi", debouncedNpi],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/by-npi?npi=${encodeURIComponent(debouncedNpi)}`, { credentials: "include" });
@@ -1019,7 +1019,7 @@ function MergeByNpiPanel({ mergeNpi, setMergeNpi, mergeMutation, onClose }: {
             {matches.length} providers share NPI <span className="font-mono font-medium">{debouncedNpi}</span>. Select the primary record to keep, then merge duplicates into it.
           </p>
           <div className="space-y-2">
-            {matches.map((p: any) => (
+            {matches.map((p) => (
               <div
                 key={p.id}
                 className={`flex items-center gap-3 p-3 rounded-md border cursor-pointer transition-colors ${keepId === p.id ? "border-primary bg-primary/5" : ""}`}
@@ -1075,7 +1075,7 @@ function MergeByNpiPanel({ mergeNpi, setMergeNpi, mergeMutation, onClose }: {
 }
 
 function PracticeDetailDialog({ practiceName, onClose, onFilterByPractice }: { practiceName: string | null; onClose: () => void; onFilterByPractice: (name: string) => void }) {
-  const { data: result } = useQuery<any>({
+  const { data: result } = useQuery<{ data: (Physician & { referralCount?: number })[] }>({
     queryKey: ["/api/physicians/paginated", "practice-detail", practiceName],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -1104,7 +1104,7 @@ function PracticeDetailDialog({ practiceName, onClose, onFilterByPractice }: { p
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-2">
-          {providers.map((p: any) => (
+          {providers.map((p) => (
             <Link key={p.id} href={`/physicians/${p.id}`}>
               <div className="flex items-center gap-3 p-3 rounded-md border hover-elevate cursor-pointer" data-testid={`practice-provider-${p.id}`}>
                 <div className="w-8 h-8 rounded-md bg-primary/10 flex items-center justify-center text-primary text-xs font-medium shrink-0">

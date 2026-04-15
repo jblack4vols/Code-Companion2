@@ -55,7 +55,7 @@ export default function AdminUsersPage() {
   }
 
   const addMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: { name: FormDataEntryValue | null; email: FormDataEntryValue | null; password: string; role: FormDataEntryValue | null }) => {
       const res = await apiRequest("POST", "/api/users", data);
       return res.json();
     },
@@ -64,11 +64,11 @@ export default function AdminUsersPage() {
       setShowAdd(false);
       toast({ title: "User created successfully" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, FormDataEntryValue | string | null> }) => {
       const res = await apiRequest("PATCH", `/api/users/${id}`, data);
       return res.json();
     },
@@ -77,7 +77,7 @@ export default function AdminUsersPage() {
       setEditUser(null);
       toast({ title: "User updated successfully" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -90,9 +90,9 @@ export default function AdminUsersPage() {
       setDeleteUser(null);
       toast({ title: "User deleted" });
     },
-    onError: (err: any) => {
+    onError: (err: unknown) => {
       setDeleteUser(null);
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -106,7 +106,7 @@ export default function AdminUsersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/users"] });
       toast({ title: "User approved" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const rejectMutation = useMutation({
@@ -118,7 +118,7 @@ export default function AdminUsersPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/pending-users"] });
       toast({ title: "User rejected" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const validatePassword = (pw: string): string | null => {
@@ -152,7 +152,7 @@ export default function AdminUsersPage() {
     if (!editUser) return;
     const fd = new FormData(e.currentTarget);
     const password = fd.get("password") as string;
-    const data: any = {
+    const data: Record<string, FormDataEntryValue | string | null> = {
       name: fd.get("name"),
       email: fd.get("email"),
       role: fd.get("role"),
@@ -258,7 +258,7 @@ export default function AdminUsersPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-chart-2 border-chart-2/30 hover:bg-chart-2/10"
+                        className="text-chart-2 border-chart-2/30"
                         onClick={() => approveMutation.mutate({ id: u.id, role: approveRoles[u.id] || "MARKETER" })}
                         disabled={approveMutation.isPending}
                         data-testid={`button-approve-user-${u.id}`}
@@ -269,7 +269,7 @@ export default function AdminUsersPage() {
                       <Button
                         size="sm"
                         variant="outline"
-                        className="text-destructive border-destructive/30 hover:bg-destructive/10"
+                        className="text-destructive border-destructive/30"
                         onClick={() => rejectMutation.mutate(u.id)}
                         disabled={rejectMutation.isPending}
                         data-testid={`button-reject-user-${u.id}`}

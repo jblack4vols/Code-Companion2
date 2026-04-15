@@ -433,23 +433,18 @@ export const insertUserSchema = createInsertSchema(users).omit({
   id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true, forcePasswordChange: true, approvalStatus: true, passwordResetToken: true, passwordResetExpires: true,
 });
 
-export const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  password: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-    .regex(/[0-9]/, "Password must contain at least one number")
-    .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character"),
-});
-
 export const passwordSchema = z.string()
   .min(8, "Password must be at least 8 characters")
   .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
   .regex(/[a-z]/, "Password must contain at least one lowercase letter")
   .regex(/[0-9]/, "Password must contain at least one number")
   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
+
+export const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: passwordSchema,
+});
 export const insertLocationSchema = createInsertSchema(locations).omit({
   id: true, createdAt: true, updatedAt: true,
 });
@@ -861,15 +856,31 @@ export type PatientRequest = typeof patientRequests.$inferSelect;
 export type InsertAppointmentSlot = z.infer<typeof insertAppointmentSlotSchema>;
 export type AppointmentSlot = typeof appointmentSlots.$inferSelect;
 
-export type InsertClaim = typeof claims.$inferInsert;
+export const insertClaimSchema = createInsertSchema(claims).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertClaimPaymentSchema = createInsertSchema(claimPayments).omit({
+  id: true, createdAt: true,
+});
+export const insertPayerRateSchema = createInsertSchema(payerRateSchedule).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertAppealTemplateSchema = createInsertSchema(appealTemplates).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertAppealSchema = createInsertSchema(appeals).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export type InsertClaim = z.infer<typeof insertClaimSchema>;
 export type Claim = typeof claims.$inferSelect;
-export type InsertClaimPayment = typeof claimPayments.$inferInsert;
+export type InsertClaimPayment = z.infer<typeof insertClaimPaymentSchema>;
 export type ClaimPayment = typeof claimPayments.$inferSelect;
-export type InsertPayerRate = typeof payerRateSchedule.$inferInsert;
+export type InsertPayerRate = z.infer<typeof insertPayerRateSchema>;
 export type PayerRate = typeof payerRateSchedule.$inferSelect;
-export type InsertAppealTemplate = typeof appealTemplates.$inferInsert;
+export type InsertAppealTemplate = z.infer<typeof insertAppealTemplateSchema>;
 export type AppealTemplate = typeof appealTemplates.$inferSelect;
-export type InsertAppeal = typeof appeals.$inferInsert;
+export type InsertAppeal = z.infer<typeof insertAppealSchema>;
 export type Appeal = typeof appeals.$inferSelect;
 
 // ── Feedback & Ideas ────────────────────────────────────────────────────

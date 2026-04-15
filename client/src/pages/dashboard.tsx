@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, type ElementType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -111,7 +111,7 @@ function SortableTile({ id, children }: { id: string; children: React.ReactNode 
   );
 }
 
-function StatCard({ icon: Icon, label, value, sub, color, onClick, prevValue }: { icon: any; label: string; value: string | number; sub?: string; color: string; onClick?: () => void; prevValue?: number | null }) {
+function StatCard({ icon: Icon, label, value, sub, color, onClick, prevValue }: { icon: ElementType; label: string; value: string | number; sub?: string; color: string; onClick?: () => void; prevValue?: number | null }) {
   const numVal = typeof value === "number" ? value : parseInt(String(value), 10);
   const showChange = prevValue != null && !isNaN(numVal);
   let changePercent = 0;
@@ -212,7 +212,13 @@ export default function DashboardPage() {
   const queryString = params.toString();
 
   const statsUrl = queryString ? `/api/dashboard/stats?${queryString}` : "/api/dashboard/stats";
-  const { data: stats, isLoading: loadingStats, isError: statsError, refetch: refetchStats, dataUpdatedAt } = useQuery<any>({
+  const { data: stats, isLoading: loadingStats, isError: statsError, refetch: refetchStats, dataUpdatedAt } = useQuery<{
+    totalReferrals?: number; newReferrals?: number; scheduledReferrals?: number; conversionRate?: number;
+    activePhysicians?: number; totalInteractions?: number; openTasks?: number; avgResponseDays?: number;
+    atRiskPhysicians?: number; avgTimeToFirstVisit?: number | null; momGrowth?: number;
+    topReferrers?: { physicianId: string; count: string | number }[];
+    referralsByMonth?: { month: string; count: string | number }[];
+  }>({
     queryKey: [statsUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -227,14 +233,18 @@ export default function DashboardPage() {
   if (territoryId) prevParams.set("territoryId", territoryId);
   if (physicianId) prevParams.set("physicianId", physicianId);
 
-  const { data: prevStats } = useQuery<any>({
+  const { data: prevStats } = useQuery<{
+    totalReferrals?: number; newReferrals?: number; scheduledReferrals?: number; conversionRate?: number;
+    activePhysicians?: number; totalInteractions?: number; openTasks?: number; avgResponseDays?: number;
+    atRiskPhysicians?: number; avgTimeToFirstVisit?: number | null;
+  }>({
     queryKey: [`/api/dashboard/stats?${prevParams.toString()}`],
     queryFn: getQueryFn({ on401: "throw" }),
     enabled: comparePeriod,
   });
 
   const funnelUrl = queryString ? `/api/dashboard/funnel?${queryString}` : "/api/dashboard/funnel";
-  const { data: funnelData } = useQuery<any[]>({
+  const { data: funnelData } = useQuery<{ stage: string; count: number }[]>({
     queryKey: [funnelUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -258,14 +268,14 @@ export default function DashboardPage() {
   }, [physicians, physicianId]);
 
   const topReferrers = useMemo(() => {
-    return stats?.topReferrers?.map((r: any) => {
+    return stats?.topReferrers?.map((r) => {
       const phys = physicians?.find(p => p.id === r.physicianId);
       return { name: phys ? `Dr. ${phys.lastName}` : "Unknown", count: Number(r.count) };
     }) || [];
   }, [stats?.topReferrers, physicians]);
 
   const referralTrendData = useMemo(() => {
-    return stats?.referralsByMonth?.map((r: any) => ({
+    return stats?.referralsByMonth?.map((r) => ({
       month: r.month,
       count: r.count,
     })) || [];
@@ -519,7 +529,7 @@ export default function DashboardPage() {
                         <StatCard
                           icon={BarChart3}
                           label="MoM Growth"
-                          value={`${stats?.momGrowth > 0 ? '+' : ''}${stats?.momGrowth || 0}%`}
+                          value={`${(stats?.momGrowth ?? 0) > 0 ? '+' : ''}${stats?.momGrowth || 0}%`}
                           sub="Referrals vs prior month"
                           color={`${(stats?.momGrowth || 0) >= 0 ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}
                         />
@@ -536,7 +546,7 @@ export default function DashboardPage() {
                   );
 
                 case "conversion-funnel":
-                  if (!funnelData || !funnelData.some((d: any) => d.count > 0)) return null;
+                  if (!funnelData || !funnelData.some((d) => d.count > 0)) return null;
                   return (
                     <SortableTile key={tileId} id={tileId}>
                       <Card>
@@ -548,7 +558,7 @@ export default function DashboardPage() {
                         </CardHeader>
                         <CardContent className="p-4 pt-0">
                           <div className="grid grid-cols-4 gap-2 sm:gap-4">
-                            {funnelData.map((stage: any, i: number) => {
+                            {funnelData.map((stage, i: number) => {
                               const prevCount = i > 0 ? funnelData[i - 1].count : stage.count;
                               const dropRate = prevCount > 0 && i > 0 ? Math.round(((prevCount - stage.count) / prevCount) * 100) : 0;
                               const colors = ["bg-chart-1/15 text-chart-1", "bg-chart-2/15 text-chart-2", "bg-chart-4/15 text-chart-4", "bg-green-500/15 text-green-600 dark:text-green-400"];
@@ -616,7 +626,7 @@ export default function DashboardPage() {
                             <Users className="w-4 h-4 text-muted-foreground" />
                           </CardHeader>
                           <CardContent className="p-4 pt-0">
-                            {topReferrers.length > 0 && topReferrers.some((r: any) => r.count > 0) ? (
+                            {topReferrers.length > 0 && topReferrers.some((r) => r.count > 0) ? (
                               <ResponsiveContainer width="100%" height={240}>
                                 <BarChart data={topReferrers} layout="vertical">
                                   <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
@@ -736,14 +746,14 @@ function LocationConversionCard({ startDate, endDate, navigate }: { startDate: s
   const qs = params.toString();
   const url = qs ? `/api/dashboard/location-conversion?${qs}` : "/api/dashboard/location-conversion";
 
-  const conversionData = useQuery<any[]>({
+  const conversionData = useQuery<{ location_id: string; location_name: string; total_referrals: number; total_scheduled: number; total_arrived: number; arrival_rate: number }[]>({
     queryKey: [url],
     queryFn: getQueryFn({ on401: "throw" }),
   });
 
   const rows = conversionData.data || [];
 
-  const maxScheduled = Math.max(...rows.map((r: any) => Number(r.total_scheduled) || 0), 1);
+  const maxScheduled = Math.max(...rows.map((r) => Number(r.total_scheduled) || 0), 1);
 
   return (
     <Card>
@@ -783,7 +793,7 @@ function LocationConversionCard({ startDate, endDate, navigate }: { startDate: s
                 </tr>
               </thead>
               <tbody>
-                {rows.map((row: any) => {
+                {rows.map((row) => {
                   const rate = Number(row.arrival_rate) || 0;
                   const scheduled = Number(row.total_scheduled) || 0;
                   const arrived = Number(row.total_arrived) || 0;
@@ -843,7 +853,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
   const atRiskQs = atRiskParams.toString();
   const atRiskUrl = atRiskQs ? `/api/at-risk-sources?${atRiskQs}` : "/api/at-risk-sources";
 
-  const { data: atRiskData, isLoading: atRiskLoading, isError: atRiskError, refetch: refetchAtRisk } = useQuery<any>({
+  const { data: atRiskData, isLoading: atRiskLoading, isError: atRiskError, refetch: refetchAtRisk } = useQuery<{ data: { physician: Physician; changePercent: number; riskSignal: string; daysSinceContact?: number }[]; total: number }>({
     queryKey: [atRiskUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -879,7 +889,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
           </div>
         ) : items.length > 0 ? (
           <div className="space-y-2">
-            {items.slice(0, 10).map((item: any) => {
+            {items.slice(0, 10).map((item) => {
               const phys = item.physician;
               if (!phys) return null;
               return (
@@ -932,7 +942,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
 
 function ActivityFeed({ limit = 15 }: { limit?: number }) {
   const [, navigate] = useLocation();
-  const { data: rawActivities, isLoading, isError, refetch } = useQuery<any[]>({
+  const { data: rawActivities, isLoading, isError, refetch } = useQuery<{ id: string; activity_type: string; user_name: string; type?: string; physician_last_name?: string; physician_name?: string; location_name?: string; summary?: string; details?: string; timestamp: string }[]>({
     queryKey: ["/api/activity-feed?limit=15"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -973,7 +983,7 @@ function ActivityFeed({ limit = 15 }: { limit?: number }) {
     );
   }
 
-  const getActivityLink = (activity: any): string | null => {
+  const getActivityLink = (activity: { activity_type: string; id?: string }): string | null => {
     switch (activity.activity_type) {
       case "referral":
         return "/referrals";
@@ -989,7 +999,7 @@ function ActivityFeed({ limit = 15 }: { limit?: number }) {
   return (
     <div className="max-h-[400px] overflow-auto space-y-2">
       {activities.map(activity => {
-        let icon: any;
+        let icon: ElementType;
         let colorClass: string;
         let description: string;
 

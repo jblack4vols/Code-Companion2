@@ -114,7 +114,7 @@ export default function CalendarPage() {
       setNewOfficeName("");
       toast({ title: "Office created", description: `"${vars.practiceName}" added and selected.` });
     },
-    onError: (err: any) => toast({ title: "Error creating office", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error creating office", description: err.message, variant: "destructive" }),
   });
 
   const [practiceDetailName, setPracticeDetailName] = useState<string | null>(null);
@@ -163,7 +163,7 @@ export default function CalendarPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/calendar-events", data);
       return res.json();
     },
@@ -175,11 +175,11 @@ export default function CalendarPage() {
       setSelectedPracticeName("");
       toast({ title: "Event created" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const updateMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
       const res = await apiRequest("PATCH", `/api/calendar-events/${id}`, data);
       return res.json();
     },
@@ -191,7 +191,7 @@ export default function CalendarPage() {
       setSelectedPracticeName("");
       toast({ title: "Event updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -205,7 +205,7 @@ export default function CalendarPage() {
       setSelectedPracticeName("");
       toast({ title: "Event deleted" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const syncOutlookMutation = useMutation({
@@ -217,7 +217,7 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
       toast({ title: "Synced to Outlook" });
     },
-    onError: (err: any) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
   });
 
   const toggleCompleteMutation = useMutation({
@@ -229,13 +229,13 @@ export default function CalendarPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
       toast({ title: data.completed ? "Event marked complete" : "Event marked incomplete" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     const fd = new FormData(e.currentTarget);
-    const payload: any = {
+    const payload: Record<string, unknown> = {
       title: fd.get("title"),
       description: fd.get("description") || null,
       eventType: fd.get("eventType"),
@@ -265,7 +265,7 @@ export default function CalendarPage() {
 
   const openEditDialog = (event: CalendarEvent) => {
     setEditingEvent(event);
-    setSelectedPracticeName((event as any).practiceName || "");
+    setSelectedPracticeName(event.practiceName || "");
     setSelectedDate(null);
     setDialogOpen(true);
   };
@@ -498,7 +498,7 @@ export default function CalendarPage() {
           ) : (
             sortedEvents.map((evt) => {
               const loc = locations?.find((l) => l.id === evt.locationId);
-              const evtPractice = (evt as any).practiceName;
+              const evtPractice = evt.practiceName;
               return (
                 <Card
                   key={evt.id}
@@ -828,7 +828,7 @@ export default function CalendarPage() {
                       type="button"
                       variant={editingEvent.completed ? "outline" : "default"}
                       size="sm"
-                      className={editingEvent.completed ? "" : "bg-green-600 hover:bg-green-700 text-white"}
+                      className={editingEvent.completed ? "" : "bg-green-600 text-white"}
                       onClick={() => toggleCompleteMutation.mutate({ id: editingEvent.id, completed: !editingEvent.completed })}
                       disabled={toggleCompleteMutation.isPending}
                       data-testid="button-toggle-complete"

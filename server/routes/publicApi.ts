@@ -206,7 +206,7 @@ export function registerPublicApiRoutes(app: Express) {
   app.post("/api/public/webhook", requireApiKey("webhook:write"), async (req, res) => {
     try {
       const body = req.body || {};
-      console.log(`[Webhook] RAW BODY:`, JSON.stringify(body).slice(0, 2000));
+      console.log(`[Webhook] RAW BODY received, keys: ${Object.keys(body).join(", ")}`);
 
       const event = body.event || body.type || body.action;
       const data = body.data || body.payload || body.contact || body;
@@ -301,7 +301,7 @@ export function registerPublicApiRoutes(app: Express) {
             status: "RECEIVED",
           });
 
-          console.log(`[Webhook] SUCCESS: Created referral ${newReferral.id} for patient: ${patientName || "Unknown"}, location: ${matchedLocationId}, physician: ${physicianId || "none"}`);
+          console.log(`[Webhook] SUCCESS: Created referral ${newReferral.id}, locationId: ${matchedLocationId}, physicianId: ${physicianId || "none"}`);
           return res.json({ received: true, event, referralId: newReferral.id, created: true });
         } catch (procErr: any) {
           console.error("[Webhook] ERROR processing referral:", procErr.message, procErr.stack?.slice(0, 300));

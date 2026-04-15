@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Upload, FileSpreadsheet, ArrowRight, CheckCircle2, AlertTriangle, Loader2, X, ArrowLeft, Info, Plus, Trash2, ShieldCheck, ShieldX, Shield, Sparkles, Download } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 
 function getCsrfToken(): string | null {
   const match = document.cookie.match(/(?:^|;\s*)csrf-token=([^;]*)/);
@@ -138,7 +139,7 @@ export default function ImportPage() {
   const [step, setStep] = useState<Step>("select");
   const [importType, setImportType] = useState<ImportType>("physicians");
   const [file, setFile] = useState<File | null>(null);
-  const [preview, setPreview] = useState<{ headers: string[]; sampleRows: any[]; totalRows: number; sheetName: string } | null>(null);
+  const [preview, setPreview] = useState<{ headers: string[]; sampleRows: Record<string, string>[]; totalRows: number; sheetName: string } | null>(null);
   const [mapping, setMapping] = useState<Record<string, string>>({});
   const [customFieldMappings, setCustomFieldMappings] = useState<{ csvHeader: string; label: string }[]>([]);
   const [loading, setLoading] = useState(false);
@@ -184,8 +185,8 @@ export default function ImportPage() {
       }
       setMapping(autoMapping);
       setStep("map");
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setLoading(false);
     }
@@ -244,8 +245,8 @@ export default function ImportPage() {
       const data = await res.json();
       setResult(data);
       setStep("result");
-    } catch (err: any) {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Import failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
       setStep("map");
     } finally {
       setLoading(false);
@@ -287,12 +288,7 @@ export default function ImportPage() {
       }
       const allUniqueNpis = Array.from(npiSet);
 
-      const res = await fetch("/api/import/verify-npis", {
-        method: "POST",
-        credentials: "include",
-        headers,
-        body: JSON.stringify({ npis: allUniqueNpis.slice(0, 200) }),
-      });
+      const res = await apiRequest("POST", "/api/import/verify-npis", { npis: allUniqueNpis.slice(0, 200) });
       if (!res.ok) {
         const err = await res.json();
         throw new Error(err.message);
@@ -303,8 +299,8 @@ export default function ImportPage() {
         title: "NPI Verification Complete",
         description: `${data.valid} valid, ${data.invalid} invalid out of ${data.total} NPIs checked.`,
       });
-    } catch (err: any) {
-      toast({ title: "NPI Verification Failed", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "NPI Verification Failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setNpiVerifying(false);
     }

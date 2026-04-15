@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { UserPlus, AlertTriangle, Calendar, Clock, MapPin, Loader2, Activity, CheckCircle, XCircle, ListFilter } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import type { Location, PatientRequest, AppointmentSlot } from "@shared/schema";
 
 const TRIAGE_COLORS: Record<string, string> = {
   RED: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-300",
@@ -35,7 +36,7 @@ export default function FrontDeskPage() {
   const { toast } = useToast();
   const [showIntakeForm, setShowIntakeForm] = useState(false);
   const [showScheduleDialog, setShowScheduleDialog] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState<any>(null);
+  const [selectedRequest, setSelectedRequest] = useState<PatientRequest | null>(null);
   const [statusFilter, setStatusFilter] = useState<string>("all");
 
   const [patientName, setPatientName] = useState("");
@@ -45,11 +46,11 @@ export default function FrontDeskPage() {
 
   const [triagePreview, setTriagePreview] = useState<{ level: string; notes: string } | null>(null);
 
-  const { data: locations } = useQuery<any[]>({
+  const { data: locations } = useQuery<Location[]>({
     queryKey: ["/api/locations"],
   });
 
-  const { data: stats, isLoading: statsLoading } = useQuery<any>({
+  const { data: stats, isLoading: statsLoading } = useQuery<{ requests?: { total?: number; new_count?: number; triaged_count?: number; scheduled_count?: number }; slots?: { available_slots?: number } }>({
     queryKey: ["/api/frontdesk/stats"],
     queryFn: () => fetch("/api/frontdesk/stats", { credentials: "include" }).then(r => r.json()),
   });
@@ -58,12 +59,12 @@ export default function FrontDeskPage() {
     ? "/api/frontdesk/requests"
     : `/api/frontdesk/requests?status=${statusFilter}`;
 
-  const { data: requests, isLoading: requestsLoading } = useQuery<any[]>({
+  const { data: requests, isLoading: requestsLoading } = useQuery<PatientRequest[]>({
     queryKey: ["/api/frontdesk/requests", statusFilter],
     queryFn: () => fetch(requestsUrl, { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: availableSlots } = useQuery<any[]>({
+  const { data: availableSlots } = useQuery<{ slot: AppointmentSlot; locationName?: string }[]>({
     queryKey: ["/api/frontdesk/slots", selectedRequest?.locationPreference],
     queryFn: () => {
       const params = new URLSearchParams();
@@ -81,7 +82,7 @@ export default function FrontDeskPage() {
   });
 
   const createMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/frontdesk/requests", data);
       return res.json();
     },
@@ -104,7 +105,7 @@ export default function FrontDeskPage() {
         });
       }
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
     },
   });
@@ -122,7 +123,7 @@ export default function FrontDeskPage() {
       setSelectedRequest(null);
       toast({ title: "Appointment scheduled successfully" });
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({ title: "Scheduling failed", description: err.message, variant: "destructive" });
     },
   });
@@ -290,7 +291,7 @@ export default function FrontDeskPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {requests.map((req: any) => (
+                {requests.map((req) => (
                   <TableRow key={req.id} data-testid={`row-request-${req.id}`}>
                     <TableCell className="font-medium" data-testid={`text-patient-name-${req.id}`}>{req.patientName}</TableCell>
                     <TableCell>{req.phone}</TableCell>
@@ -390,7 +391,7 @@ export default function FrontDeskPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="any">Any Location</SelectItem>
-                  {locations?.map((loc: any) => (
+                  {locations?.map((loc) => (
                     <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
                   ))}
                 </SelectContent>
@@ -483,7 +484,7 @@ export default function FrontDeskPage() {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {availableSlots.map((item: any) => (
+                  {availableSlots.map((item) => (
                     <TableRow key={item.slot.id}>
                       <TableCell>{new Date(item.slot.date).toLocaleDateString()}</TableCell>
                       <TableCell>{item.slot.startTime} – {item.slot.endTime}</TableCell>
@@ -496,7 +497,7 @@ export default function FrontDeskPage() {
                       <TableCell>
                         <Button
                           size="sm"
-                          onClick={() => scheduleMutation.mutate({ requestId: selectedRequest.id, slotId: item.slot.id })}
+                          onClick={() => selectedRequest && scheduleMutation.mutate({ requestId: selectedRequest.id, slotId: item.slot.id })}
                           disabled={scheduleMutation.isPending}
                           data-testid={`button-book-slot-${item.slot.id}`}
                         >

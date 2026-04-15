@@ -234,10 +234,15 @@ export function registerAdminRoutes(app: Express) {
 
   app.patch("/api/scheduled-reports/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
+      const patchSchema = insertScheduledReportSchema.partial();
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
       const existing = await storage.getScheduledReport(req.params.id);
       if (!existing) return res.status(404).json({ message: "Not found" });
-      const report = await storage.updateScheduledReport(req.params.id, req.body);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "ScheduledReport", entityId: report.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      const report = await storage.updateScheduledReport(req.params.id, parsed.data);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "ScheduledReport", entityId: report.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(report);
     } catch (err: any) {
       res.status(400).json({ message: err.message });

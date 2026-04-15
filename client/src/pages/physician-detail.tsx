@@ -84,7 +84,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     }
   }, [editing, physician]);
 
-  const { data: healthScore } = useQuery<any>({
+  const { data: healthScore } = useQuery<{ healthScore: number } | null>({
     queryKey: ["/api/physicians", params.id, "health-score"],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/${params.id}/health-score`, { credentials: "include" });
@@ -99,7 +99,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
 
   const updateMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("PATCH", `/api/physicians/${params.id}`, data);
       return res.json();
     },
@@ -109,7 +109,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setEditing(false);
       toast({ title: "Referring provider updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const linkOfficeMutation = useMutation({
@@ -125,11 +125,11 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setLinkOfficeName("");
       toast({ title: "Office linked successfully" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const addInteraction = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/interactions", data);
       return res.json();
     },
@@ -141,7 +141,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setShowInteraction(false);
       toast({ title: "Interaction logged" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const addCommentMutation = useMutation({
@@ -154,7 +154,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setNewComment("");
       toast({ title: "Comment added" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const updateCommentMutation = useMutation({
@@ -168,7 +168,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setEditingCommentContent("");
       toast({ title: "Comment updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const deleteCommentMutation = useMutation({
@@ -180,7 +180,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id, "comments"] });
       toast({ title: "Comment deleted" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -193,7 +193,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       toast({ title: "Referring provider deleted" });
       setLoc("/physicians");
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const setInactiveMutation = useMutation({
@@ -206,7 +206,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
       toast({ title: "Referring provider set to inactive" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const handleAddComment = () => {

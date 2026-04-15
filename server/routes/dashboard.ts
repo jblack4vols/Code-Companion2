@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { db } from "../db";
 import { sql, eq, and, gte, lt, lte, isNull, asc, desc } from "drizzle-orm";
@@ -11,11 +12,22 @@ export function registerDashboardRoutes(app: Express) {
     res.json(weights || {});
   });
 
+  const tieringWeightsSchema = z.object({
+    referralWeight: z.number().optional(),
+    revenueWeight: z.number().optional(),
+    interactionWeight: z.number().optional(),
+    growthWeight: z.number().optional(),
+  }).catchall(z.number());
+
   app.patch("/api/tiering-weights", requireRole("OWNER"), async (req, res) => {
     try {
-      const updated = await storage.updateTieringWeights(req.body);
+      const parsed = tieringWeightsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const updated = await storage.updateTieringWeights(parsed.data);
       if (!updated) return res.status(404).json({ message: "No weights configured" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -181,7 +193,7 @@ export function registerDashboardRoutes(app: Express) {
       const effectiveLocFilter = locationId
         ? sql`AND r.location_id = ${locationId}`
         : locationScope !== null
-          ? sql`AND r.location_id IN ${sql.raw(`('${locationScope.join("','")}')`)}` 
+          ? sql`AND r.location_id = ANY(${locationScope})`
           : sql``;
       const terrFilter = territoryId
         ? sql`AND r.physician_id IN (SELECT id FROM physicians WHERE territory_id = ${territoryId} AND deleted_at IS NULL)`

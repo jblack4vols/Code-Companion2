@@ -12,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Loader2, Link2, UserX, Search, ArrowRight, Sparkles, UserPlus, CheckCircle2, Copy } from "lucide-react";
 import { getQueryFn } from "@/lib/queryClient";
 import { useMemo } from "react";
+import type { Referral, Physician } from "@shared/schema";
 
 export default function UnlinkedReferralsPage() {
   const [page, setPage] = useState(1);
@@ -20,7 +21,7 @@ export default function UnlinkedReferralsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [showCreateProvider, setShowCreateProvider] = useState(false);
   const [npiLookup, setNpiLookup] = useState("");
-  const [npiResult, setNpiResult] = useState<any>(null);
+  const [npiResult, setNpiResult] = useState<{ valid: boolean; npi: string; name?: string; specialty?: string; city?: string; state?: string } | null>(null);
   const [npiLoading, setNpiLoading] = useState(false);
   const [createFirstName, setCreateFirstName] = useState("");
   const [createLastName, setCreateLastName] = useState("");
@@ -31,7 +32,7 @@ export default function UnlinkedReferralsPage() {
   const [createState, setCreateState] = useState("");
   const { toast } = useToast();
 
-  const { data, isLoading } = useQuery<any>({
+  const { data, isLoading } = useQuery<{ data: Referral[]; total?: number; totalPages?: number }>({
     queryKey: ["/api/referrals/unlinked", page],
     queryFn: async () => {
       const res = await fetch(`/api/referrals/unlinked?page=${page}&pageSize=25`);
@@ -39,7 +40,7 @@ export default function UnlinkedReferralsPage() {
     },
   });
 
-  const { data: searchResults } = useQuery<any[]>({
+  const { data: searchResults } = useQuery<Physician[]>({
     queryKey: ["/api/physicians/search", searchQuery],
     queryFn: async () => {
       if (searchQuery.length < 2) return [];
@@ -49,7 +50,7 @@ export default function UnlinkedReferralsPage() {
     enabled: searchQuery.length >= 2,
   });
 
-  const { data: suggestedMatches, isLoading: loadingSuggestions } = useQuery<any[]>({
+  const { data: suggestedMatches, isLoading: loadingSuggestions } = useQuery<Physician[]>({
     queryKey: ["/api/referrals", linkingReferralId, "suggested-matches"],
     queryFn: getQueryFn({ on401: "throw" }),
     enabled: !!linkingReferralId,
@@ -68,7 +69,7 @@ export default function UnlinkedReferralsPage() {
       setSearchQuery("");
       setLinkAll(false);
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const selfReferralMutation = useMutation({
@@ -80,11 +81,11 @@ export default function UnlinkedReferralsPage() {
       toast({ title: "Categorized", description: "Marked as self-referral / walk-in." });
       queryClient.invalidateQueries({ queryKey: ["/api/referrals/unlinked"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const createProviderMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/physicians", data);
       return res.json();
     },
@@ -96,7 +97,7 @@ export default function UnlinkedReferralsPage() {
       }
       resetCreateForm();
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const resetCreateForm = () => {
@@ -117,13 +118,7 @@ export default function UnlinkedReferralsPage() {
     setNpiLoading(true);
     setNpiResult(null);
     try {
-      const res = await fetch("/api/import/verify-npis", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ npis: [npiLookup.trim()] }),
-      });
-      if (!res.ok) throw new Error("Lookup failed");
+      const res = await apiRequest("POST", "/api/import/verify-npis", { npis: [npiLookup.trim()] });
       const data = await res.json();
       const result = data.results?.[0] || data[0];
       if (result?.valid) {
@@ -162,13 +157,13 @@ export default function UnlinkedReferralsPage() {
     });
   };
 
-  const currentRef = data?.data?.find((r: any) => r.id === linkingReferralId);
+  const currentRef = data?.data?.find((r) => r.id === linkingReferralId);
   const showSuggestions = !!linkingReferralId && searchQuery.length < 2 && suggestedMatches && suggestedMatches.length > 0;
 
   const providerNameCounts = useMemo(() => {
     if (!data?.data) return {};
     const counts: Record<string, number> = {};
-    data.data.forEach((r: any) => {
+    data.data.forEach((r) => {
       const key = r.referringProviderName;
       if (key) counts[key] = (counts[key] || 0) + 1;
     });
@@ -197,7 +192,7 @@ export default function UnlinkedReferralsPage() {
             <p className="text-center py-8 text-muted-foreground">All referrals are linked. Great job!</p>
           ) : (
             <div className="space-y-2">
-              {data.data.map((ref: any) => (
+              {data.data.map((ref) => (
                 <div key={ref.id} className="flex items-center justify-between gap-3 p-3 rounded-lg border bg-card hover:bg-accent/50 transition" data-testid={`unlinked-referral-${ref.id}`}>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -226,12 +221,12 @@ export default function UnlinkedReferralsPage() {
                   </div>
                 </div>
               ))}
-              {data.totalPages > 1 && (
+              {(data.totalPages ?? 1) > 1 && (
                 <div className="flex items-center justify-between pt-3">
-                  <span className="text-sm text-muted-foreground">Page {page} of {data.totalPages}</span>
+                  <span className="text-sm text-muted-foreground">Page {page} of {data.totalPages ?? 1}</span>
                   <div className="flex gap-2">
                     <Button size="sm" variant="outline" disabled={page <= 1} onClick={() => setPage(p => p - 1)}>Previous</Button>
-                    <Button size="sm" variant="outline" disabled={page >= data.totalPages} onClick={() => setPage(p => p + 1)}>Next</Button>
+                    <Button size="sm" variant="outline" disabled={page >= (data.totalPages ?? 1)} onClick={() => setPage(p => p + 1)}>Next</Button>
                   </div>
                 </div>
               )}
@@ -273,7 +268,7 @@ export default function UnlinkedReferralsPage() {
                     <span className="text-xs font-medium text-amber-600 dark:text-amber-400">Suggested Matches</span>
                   </div>
                   <div className="space-y-1">
-                    {suggestedMatches.map((p: any) => (
+                    {suggestedMatches.map((p) => (
                       <button
                         key={p.id}
                         className="w-full text-left px-3 py-2 rounded border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 hover:bg-amber-100 dark:hover:bg-amber-950/50 flex items-center justify-between text-sm transition"
@@ -301,7 +296,7 @@ export default function UnlinkedReferralsPage() {
               )}
 
               <div className="max-h-60 overflow-y-auto space-y-1">
-                {searchQuery.length >= 2 && searchResults?.map((p: any) => (
+                {searchQuery.length >= 2 && searchResults?.map((p) => (
                   <button key={p.id} className="w-full text-left px-3 py-2 rounded hover:bg-accent flex items-center justify-between text-sm" onClick={() => linkMutation.mutate({ referralId: linkingReferralId!, physicianId: p.id })} data-testid={`link-provider-${p.id}`}>
                     <div>
                       <span className="font-medium">{p.lastName}, {p.firstName}</span>

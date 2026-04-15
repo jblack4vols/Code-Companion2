@@ -31,7 +31,9 @@ export default function PhysicianTieringPage() {
   params.set("year", String(year));
   if (period === "month") params.set("month", String(month));
 
-  const { data, isLoading } = useQuery<any>({
+  interface TieringPhysician { id: string; firstName: string; lastName: string; credentials?: string; practiceName?: string; specialty?: string; npi?: string; tier: string; referralCount: number; }
+  interface TieringResult { physicians: TieringPhysician[]; summary: Record<string, number>; thresholds: { A: number; B: number; C: number }; }
+  const { data, isLoading } = useQuery<TieringResult>({
     queryKey: ["/api/physicians/tiering", period, year, month],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/tiering?${params.toString()}`, { credentials: "include" });
@@ -44,7 +46,7 @@ export default function PhysicianTieringPage() {
   const summary = data?.summary || { A: 0, B: 0, C: 0, D: 0 };
   const thresholds = data?.thresholds || { A: 20, B: 5, C: 1 };
 
-  const filtered = allPhysicians.filter((p: any) => {
+  const filtered = allPhysicians.filter((p) => {
     if (filterTier !== "all" && p.tier !== filterTier) return false;
     if (search) {
       const term = search.toLowerCase();
@@ -189,7 +191,7 @@ export default function PhysicianTieringPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filtered.slice(0, 200).map((p: any) => (
+                {filtered.slice(0, 200).map((p) => (
                   <TableRow key={p.id} data-testid={`row-tiering-${p.id}`}>
                     <TableCell>
                       <Badge variant="outline" className={`text-[10px] ${tierConfig[p.tier]?.color || ""}`}>

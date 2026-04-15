@@ -9,6 +9,8 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { ThemeProvider } from "@/components/theme-provider";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { AuthProvider, useAuth } from "@/lib/auth";
+import { RoleGuard } from "@/components/role-guard";
+import { User } from "@shared/schema";
 import { ErrorBoundary } from "@/components/error-boundary";
 import NotFound from "@/pages/not-found";
 import LoginPage from "@/pages/login";
@@ -82,10 +84,23 @@ function LazyFallback() {
   );
 }
 
+const ADMIN = ["OWNER", "DIRECTOR"];
+const ANALYTICS = ["OWNER", "DIRECTOR", "ANALYST"];
+const OUTREACH = ["OWNER", "DIRECTOR", "MARKETER"];
+
+function guard(roles: string[], Page: React.ComponentType) {
+  return () => (
+    <RoleGuard roles={roles}>
+      <Page />
+    </RoleGuard>
+  );
+}
+
 function AuthenticatedRouter() {
   return (
     <Suspense fallback={<LazyFallback />}>
       <Switch>
+        {/* Open to all authenticated users */}
         <Route path="/" component={DashboardPage} />
         <Route path="/dashboard" component={DashboardPage} />
         <Route path="/physicians" component={PhysiciansPage} />
@@ -96,50 +111,61 @@ function AuthenticatedRouter() {
         <Route path="/referral-explorer" component={ReferralExplorerPage} />
         <Route path="/provider-offices" component={ProviderOfficesPage} />
         <Route path="/provider-office-linker" component={ProviderOfficeLinkerPage} />
-        <Route path="/tasks" component={TasksPage} />
-        <Route path="/calendar" component={CalendarPage} />
+        <Route path="/activity" component={RecentActivityPage} />
         <Route path="/tiering" component={PhysicianTieringPage} />
         <Route path="/declining" component={DecliningReferralsPage} />
-        <Route path="/territories" component={TerritoriesPage} />
-        <Route path="/map" component={MapViewPage} />
-        <Route path="/dashboards/executive" component={ExecutiveDashboardPage} />
-        <Route path="/dashboards/territory" component={TerritoryDashboardPage} />
-        <Route path="/dashboards/location" component={LocationDashboardPage} />
-        <Route path="/import" component={ImportPage} />
-        <Route path="/admin/sharepoint" component={SharePointSyncPage} />
-        <Route path="/admin/duplicates" component={DuplicateDetectionPage} />
-        <Route path="/admin/reports" component={UserActivityReportsPage} />
-        <Route path="/admin/users" component={AdminUsersPage} />
-        <Route path="/admin/locations" component={AdminLocationsPage} />
-        <Route path="/admin/settings" component={AdminSettingsPage} />
-        <Route path="/admin/audit-log" component={AuditLogPage} />
-        <Route path="/admin/integrations" component={IntegrationsPage} />
-        <Route path="/admin/scheduled-reports" component={ScheduledReportsPage} />
-        <Route path="/admin/unlinked-referrals" component={UnlinkedReferralsPage} />
-        <Route path="/admin/developer-guide" component={DeveloperGuidePage} />
-        <Route path="/goals" component={GoalTrackingPage} />
-        <Route path="/quick-log" component={QuickLogPage} />
-        <Route path="/roi-calculator" component={ROICalculatorPage} />
-        <Route path="/leaderboard" component={TeamLeaderboardPage} />
-        <Route path="/activity" component={RecentActivityPage} />
-        <Route path="/hit-list" component={HitListPage} />
         <Route path="/practices" component={PracticeIntelligencePage} />
         <Route path="/practices/:name" component={PracticeIntelligencePage} />
-        <Route path="/admin/templates" component={InteractionTemplatesPage} />
-        <Route path="/unit-economics" component={UnitEconomicsDashboardPage} />
-        <Route path="/unit-economics/location/:id" component={UnitEconomicsLocationDetailPage} />
-        <Route path="/unit-economics/providers" component={UnitEconomicsProviderProductivityPage} />
-        <Route path="/unit-economics/alerts" component={UnitEconomicsAlertsPage} />
-        <Route path="/unit-economics/targets" component={UnitEconomicsTargetsPage} />
-        <Route path="/unit-economics/import" component={UnitEconomicsDataImportPage} />
-        <Route path="/revenue" component={RevenueDashboardPage} />
-        <Route path="/revenue/claims" component={RevenueClaimsPage} />
-        <Route path="/revenue/denials" component={RevenueDenialsPage} />
-        <Route path="/revenue/billing-lag" component={RevenueBillingLagPage} />
-        <Route path="/revenue/appeals" component={RevenueAppealsPage} />
-        <Route path="/revenue/import" component={RevenueImportPage} />
-        <Route path="/frontdesk" component={FrontDeskPage} />
+        <Route path="/map" component={MapViewPage} />
         <Route path="/feedback" component={FeedbackPage} />
+
+        {/* Outreach: OWNER, DIRECTOR, MARKETER */}
+        <Route path="/quick-log" component={guard(OUTREACH, QuickLogPage)} />
+        <Route path="/tasks" component={guard(OUTREACH, TasksPage)} />
+        <Route path="/calendar" component={guard(OUTREACH, CalendarPage)} />
+        <Route path="/hit-list" component={guard(OUTREACH, HitListPage)} />
+        <Route path="/goals" component={guard(OUTREACH, GoalTrackingPage)} />
+
+        {/* Analytics: OWNER, DIRECTOR, ANALYST */}
+        <Route path="/dashboards/executive" component={guard(ANALYTICS, ExecutiveDashboardPage)} />
+        <Route path="/dashboards/territory" component={guard(ANALYTICS, TerritoryDashboardPage)} />
+        <Route path="/dashboards/location" component={guard(ANALYTICS, LocationDashboardPage)} />
+        <Route path="/roi-calculator" component={guard(ANALYTICS, ROICalculatorPage)} />
+        <Route path="/leaderboard" component={guard(ANALYTICS, TeamLeaderboardPage)} />
+
+        {/* Finance: OWNER, DIRECTOR, ANALYST */}
+        <Route path="/unit-economics" component={guard(ANALYTICS, UnitEconomicsDashboardPage)} />
+        <Route path="/unit-economics/location/:id" component={guard(ANALYTICS, UnitEconomicsLocationDetailPage)} />
+        <Route path="/unit-economics/providers" component={guard(ANALYTICS, UnitEconomicsProviderProductivityPage)} />
+        <Route path="/unit-economics/alerts" component={guard(ANALYTICS, UnitEconomicsAlertsPage)} />
+        <Route path="/unit-economics/targets" component={guard(ANALYTICS, UnitEconomicsTargetsPage)} />
+        <Route path="/unit-economics/import" component={guard(ANALYTICS, UnitEconomicsDataImportPage)} />
+        <Route path="/revenue" component={guard(ANALYTICS, RevenueDashboardPage)} />
+        <Route path="/revenue/claims" component={guard(ANALYTICS, RevenueClaimsPage)} />
+        <Route path="/revenue/denials" component={guard(ANALYTICS, RevenueDenialsPage)} />
+        <Route path="/revenue/billing-lag" component={guard(ANALYTICS, RevenueBillingLagPage)} />
+        <Route path="/revenue/appeals" component={guard(ANALYTICS, RevenueAppealsPage)} />
+        <Route path="/revenue/import" component={guard(ANALYTICS, RevenueImportPage)} />
+
+        {/* Admin: OWNER, DIRECTOR */}
+        <Route path="/import" component={guard(ADMIN, ImportPage)} />
+        <Route path="/admin/users" component={guard(ADMIN, AdminUsersPage)} />
+        <Route path="/admin/locations" component={AdminLocationsPage} />
+        <Route path="/admin/settings" component={guard(ADMIN, AdminSettingsPage)} />
+        <Route path="/admin/audit-log" component={guard(ADMIN, AuditLogPage)} />
+        <Route path="/admin/duplicates" component={guard(ADMIN, DuplicateDetectionPage)} />
+        <Route path="/admin/unlinked-referrals" component={guard(ADMIN, UnlinkedReferralsPage)} />
+        <Route path="/admin/scheduled-reports" component={guard(ADMIN, ScheduledReportsPage)} />
+        <Route path="/admin/reports" component={guard(ADMIN, UserActivityReportsPage)} />
+        <Route path="/admin/integrations" component={guard(ADMIN, IntegrationsPage)} />
+        <Route path="/admin/sharepoint" component={guard(ADMIN, SharePointSyncPage)} />
+        <Route path="/admin/templates" component={guard(ADMIN, InteractionTemplatesPage)} />
+        <Route path="/admin/developer-guide" component={guard(ADMIN, DeveloperGuidePage)} />
+
+        {/* Operations with specific role restrictions */}
+        <Route path="/territories" component={guard(ADMIN, TerritoriesPage)} />
+        <Route path="/frontdesk" component={guard([...ADMIN, "FRONT_DESK"], FrontDeskPage)} />
+
         <Route component={NotFound} />
       </Switch>
     </Suspense>
@@ -173,7 +199,7 @@ function AppLayout() {
     "--sidebar-width-icon": "3rem",
   };
 
-  const showForcePasswordChange = !!(user as any).forcePasswordChange;
+  const showForcePasswordChange = !!(user as User & { forcePasswordChange?: boolean }).forcePasswordChange;
 
   const handlePasswordChanged = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });

@@ -109,7 +109,7 @@ export default function GoalTrackingPage() {
       toast({ title: "Missing fields", description: "Please select a scope and set target referrals.", variant: "destructive" });
       return;
     }
-    const payload: any = {
+    const payload: { month: string; scopeType: string; scopeId: string; targetReferrals: number; targetRevenue?: number } = {
       month: monthParam,
       scopeType,
       scopeId,

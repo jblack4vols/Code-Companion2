@@ -17,7 +17,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSepara
 const coreItems = [
   { title: "Dashboard", url: "/", icon: LayoutDashboard, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Hit List", url: "/hit-list", icon: ListChecks, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
-  { title: "Referring Providers", url: "/physicians", icon: Stethoscope, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Referring Providers", url: "/physicians", icon: Stethoscope },
   { title: "Patients", url: "/referrals", icon: FileText },
   { title: "Calendar", url: "/calendar", icon: Calendar, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
 ];

@@ -5,7 +5,7 @@ import cookieParser from "cookie-parser";
 import connectPgSimple from "connect-pg-simple";
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import { apiLimiter } from "./middleware/rateLimiter";
+import { apiLimiter, publicApiLimiter } from "./middleware/rateLimiter";
 import { csrfProtection, csrfTokenEndpoint } from "./middleware/csrf";
 import { SESSION_TIMEOUT_MS } from "./routes/shared";
 import { registerAuthRoutes } from "./routes/auth";
@@ -89,6 +89,7 @@ export async function registerRoutes(
   );
 
   app.use("/api", apiLimiter);
+  app.use("/api/public", publicApiLimiter);
 
   app.use("/api", csrfProtection);
   app.get("/api/csrf-token", csrfTokenEndpoint);

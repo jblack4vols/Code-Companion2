@@ -1,5 +1,7 @@
 import type { Express } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
+import { insertCollectionSchema } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, getUserLocationScope } from "./shared";
 
 export function registerTerritoryRoutes(app: Express) {
@@ -13,21 +15,39 @@ export function registerTerritoryRoutes(app: Express) {
     res.json(t);
   });
 
+  const territorySchema = z.object({
+    name: z.string().min(1),
+    description: z.string().optional(),
+  });
+
   app.post("/api/territories", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const territory = await storage.createTerritory(req.body);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Territory", entityId: territory.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      const parsed = territorySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const territory = await storage.createTerritory(parsed.data);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Territory", entityId: territory.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(territory);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
   });
 
+  const territoryPatchSchema = z.object({
+    name: z.string().min(1).optional(),
+    description: z.string().optional(),
+  });
+
   app.patch("/api/territories/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const territory = await storage.updateTerritory(req.params.id, req.body);
+      const parsed = territoryPatchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const territory = await storage.updateTerritory(req.params.id, parsed.data);
       if (!territory) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: req.params.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Territory", entityId: req.params.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(territory);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -62,8 +82,12 @@ export function registerTerritoryRoutes(app: Express) {
 
   app.post("/api/collections", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const col = await storage.createCollection(req.body);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Collection", entityId: col.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      const parsed = insertCollectionSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const col = await storage.createCollection(parsed.data);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Collection", entityId: col.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(col);
     } catch (err: any) {
       res.status(400).json({ message: err.message });

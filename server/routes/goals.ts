@@ -1,4 +1,5 @@
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../db";
 import { sql, eq, and } from "drizzle-orm";
 import { goals, territories, locations, territoryMonthlySummary, locationMonthlySummary } from "@shared/schema";
@@ -24,12 +25,21 @@ export function registerGoalRoutes(app: Express) {
     }
   });
 
+  const goalBodySchema = z.object({
+    month: z.string().min(1),
+    scopeType: z.enum(["TERRITORY", "LOCATION"]),
+    scopeId: z.string().min(1),
+    targetReferrals: z.number().int().optional(),
+    targetRevenue: z.number().nullable().optional(),
+  });
+
   app.post("/api/goals", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const { month, scopeType, scopeId, targetReferrals, targetRevenue } = req.body;
-      if (!month || !scopeType || !scopeId) {
-        return res.status(400).json({ message: "month, scopeType, and scopeId are required" });
+      const parsed = goalBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
       }
+      const { month, scopeType, scopeId, targetReferrals, targetRevenue } = parsed.data;
 
       const existing = await db.select().from(goals).where(
         and(eq(goals.month, month), eq(goals.scopeType, scopeType), eq(goals.scopeId, scopeId))
@@ -58,7 +68,7 @@ export function registerGoalRoutes(app: Express) {
         action: "CREATE",
         entity: "Goal",
         entityId: created.id,
-        detailJson: req.body,
+        detailJson: parsed.data,
         ipAddress: getClientIp(req),
         userAgent: req.headers["user-agent"] || null,
       });

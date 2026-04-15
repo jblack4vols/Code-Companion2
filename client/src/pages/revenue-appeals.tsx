@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,13 +51,16 @@ export default function RevenueAppealsPage() {
   params.set("pageSize", "50");
   if (statusFilter !== "ALL") params.set("status", statusFilter);
 
-  const { data, isLoading } = useQuery<any>({
+  interface AppealItem { id: string; claimId: string; status: string; createdAt: string; submittedAt?: string; recoveredAmount?: string; claim?: { claimNumber: string; payer: string }; }
+  interface AppealsResult { data: AppealItem[]; total: number; }
+  interface AppealsStats { total: number; winRate: number; totalRecovered: number; avgRecovered: number; }
+  const { data, isLoading } = useQuery<AppealsResult>({
     queryKey: ["/api/revenue/appeals", params.toString()],
     queryFn: () =>
       fetch(`/api/revenue/appeals?${params.toString()}`, { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: stats } = useQuery<any>({
+  const { data: stats } = useQuery<AppealsStats>({
     queryKey: ["/api/revenue/appeals/stats"],
     queryFn: () =>
       fetch("/api/revenue/appeals/stats", { credentials: "include" }).then(r => r.json()),
@@ -65,12 +68,7 @@ export default function RevenueAppealsPage() {
 
   const submitMutation = useMutation({
     mutationFn: async (appealId: string) => {
-      const res = await fetch(`/api/revenue/appeals/${appealId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ status: "SUBMITTED" }),
-      });
+      const res = await apiRequest("PATCH", `/api/revenue/appeals/${appealId}`, { status: "SUBMITTED" });
       if (!res.ok) throw new Error((await res.json()).message || "Failed");
       return res.json();
     },
@@ -79,20 +77,15 @@ export default function RevenueAppealsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/appeals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/appeals/stats"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const outcomeMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch(`/api/revenue/appeals/${outcomeAppealId}`, {
-        method: "PATCH",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          status: outcomeStatus,
-          notes: outcomeNotes || undefined,
-          recoveredAmount: outcomeStatus === "WON" && outcomeAmount ? parseFloat(outcomeAmount) : undefined,
-        }),
+      const res = await apiRequest("PATCH", `/api/revenue/appeals/${outcomeAppealId}`, {
+        status: outcomeStatus,
+        notes: outcomeNotes || undefined,
+        recoveredAmount: outcomeStatus === "WON" && outcomeAmount ? parseFloat(outcomeAmount) : undefined,
       });
       if (!res.ok) throw new Error((await res.json()).message || "Failed");
       return res.json();
@@ -105,7 +98,7 @@ export default function RevenueAppealsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/appeals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/appeals/stats"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   function openOutcomeDialog(appealId: string, status: "WON" | "LOST") {
@@ -116,7 +109,7 @@ export default function RevenueAppealsPage() {
     setOutcomeDialogOpen(true);
   }
 
-  const appeals: any[] = data?.data || [];
+  const appeals = data?.data || [];
   const total: number = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
@@ -193,7 +186,7 @@ export default function RevenueAppealsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    appeals.map((a: any) => (
+                    appeals.map((a) => (
                       <TableRow key={a.id}>
                         <TableCell className="font-mono text-xs">{a.claim?.claimNumber || a.claimId?.slice(0, 8)}</TableCell>
                         <TableCell className="text-sm">{a.claim?.payer || "—"}</TableCell>
@@ -222,7 +215,7 @@ export default function RevenueAppealsPage() {
                               <>
                                 <Button
                                   size="sm"
-                                  className="h-6 text-xs bg-green-600 hover:bg-green-700"
+                                  className="h-6 text-xs bg-green-600 text-white"
                                   onClick={() => openOutcomeDialog(a.id, "WON")}
                                 >
                                   Won
@@ -299,7 +292,7 @@ export default function RevenueAppealsPage() {
             <Button
               onClick={() => outcomeMutation.mutate()}
               disabled={outcomeMutation.isPending}
-              className={outcomeStatus === "WON" ? "bg-green-600 hover:bg-green-700" : ""}
+              className={outcomeStatus === "WON" ? "bg-green-600 text-white" : ""}
               variant={outcomeStatus === "LOST" ? "destructive" : "default"}
             >
               {outcomeMutation.isPending && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}

@@ -72,7 +72,8 @@ export default function ProviderOfficeLinkerPage() {
   queryParams.set("pageSize", "500");
   if (debouncedSearch) queryParams.set("search", debouncedSearch);
 
-  const { data, isLoading } = useQuery<any>({
+  interface PaginatedPhysiciansResult { data: Physician[]; total: number; totalPages: number; }
+  const { data, isLoading } = useQuery<PaginatedPhysiciansResult>({
     queryKey: ["/api/physicians/paginated", debouncedSearch, "linker"],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/paginated?${queryParams.toString()}`, { credentials: "include" });
@@ -81,14 +82,15 @@ export default function ProviderOfficeLinkerPage() {
     },
   });
 
-  const { data: officesList } = useQuery<any>({
+  interface OfficesListResult { data?: Array<{ office_name?: string; officeName?: string }> }
+  const { data: officesList } = useQuery<OfficesListResult | Array<{ office_name?: string; officeName?: string }>>({
     queryKey: ["/api/provider-offices"],
   });
 
   const existingOffices = useMemo(() => {
     if (!officesList) return [];
-    const items = Array.isArray(officesList) ? officesList : (officesList as any)?.data || [];
-    return items.map((o: any) => o.office_name || o.officeName).filter(Boolean).sort();
+    const items = Array.isArray(officesList) ? officesList : ((officesList as OfficesListResult)?.data || []);
+    return (items.map((o) => o.office_name || o.officeName).filter((n): n is string => !!n)).sort();
   }, [officesList]);
 
   const physicians: Physician[] = useMemo(() => {
@@ -117,7 +119,7 @@ export default function ProviderOfficeLinkerPage() {
     setIsLookingUp(true);
 
     try {
-      const body: any = {};
+      const body: { npi?: string; firstName?: string; lastName?: string } = {};
       if (physician.npi) {
         body.npi = physician.npi;
       } else {
@@ -201,7 +203,7 @@ export default function ProviderOfficeLinkerPage() {
       const res = await apiRequest("POST", "/api/import/bulk-link-offices", { links: pendingLinks });
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { updated: number; failed: number }) => {
       toast({
         title: "Offices linked",
         description: `${data.updated} provider${data.updated !== 1 ? "s" : ""} updated${data.failed > 0 ? `, ${data.failed} failed` : ""}`,
@@ -504,7 +506,7 @@ export default function ProviderOfficeLinkerPage() {
                 <Select value="" onValueChange={v => setBulkPractice(v)}>
                   <SelectTrigger data-testid="select-existing-office"><SelectValue placeholder="Select existing..." /></SelectTrigger>
                   <SelectContent>
-                    {existingOffices.map((name: string) => (
+                    {existingOffices.map((name) => (
                       <SelectItem key={name} value={name}>{name}</SelectItem>
                     ))}
                   </SelectContent>

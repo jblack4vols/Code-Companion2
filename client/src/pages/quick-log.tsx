@@ -73,7 +73,7 @@ export default function QuickLogPage() {
   }, [templates, interactionType]);
 
   const interactionMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/interactions", data);
       return res.json();
     },
@@ -81,18 +81,18 @@ export default function QuickLogPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/interactions"] });
       queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const taskMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/tasks", data);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
     },
-    onError: (err: any) => toast({ title: "Error creating follow-up", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error creating follow-up", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const handleSubmit = async () => {
