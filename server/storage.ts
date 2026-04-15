@@ -281,6 +281,7 @@ export interface IStorage {
 
   // Location scoping
   getUserLocationIds(userId: string): Promise<string[]>;
+  assignUserToAllLocations(userId: string): Promise<void>;
 
   // Interaction templates
   getInteractionTemplates(): Promise<InteractionTemplate[]>;
@@ -1993,6 +1994,17 @@ export class DatabaseStorage implements IStorage {
       .from(userLocationAccess)
       .where(eq(userLocationAccess.userId, userId));
     return rows.map(r => r.locationId);
+  }
+
+  async assignUserToAllLocations(userId: string): Promise<void> {
+    const allLocations = await db.select({ id: locations.id }).from(locations);
+    const existing = await this.getUserLocationIds(userId);
+    const existingSet = new Set(existing);
+    for (const loc of allLocations) {
+      if (!existingSet.has(loc.id)) {
+        await db.insert(userLocationAccess).values({ userId, locationId: loc.id });
+      }
+    }
   }
 
   async getPhysicianIdsByLocations(locationIds: string[]): Promise<Set<string>> {

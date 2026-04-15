@@ -194,6 +194,9 @@ export function registerAuthRoutes(app: Express) {
       if (!user) return res.status(404).json({ message: "User not found" });
       if (user.approvalStatus !== "PENDING") return res.status(400).json({ message: "User is not in pending status" });
       await storage.updateUser(user.id, { approvalStatus: "APPROVED", role: assignRole } as any);
+      if (assignRole !== "OWNER" && assignRole !== "DIRECTOR") {
+        await storage.assignUserToAllLocations(user.id);
+      }
       await storage.createAuditLog({ userId: req.session.userId!, action: "APPROVE_USER", entity: "User", entityId: user.id, detailJson: { name: user.name, email: user.email, role: assignRole }, ipAddress: getClientIp(req), userAgent: (req.headers["user-agent"] as string) || null });
       res.json({ success: true });
     } catch (err: any) {
