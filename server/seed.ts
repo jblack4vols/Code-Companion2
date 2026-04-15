@@ -60,9 +60,32 @@ async function syncUserCredentials() {
   }
 }
 
+async function ensureUserLocationAccess() {
+  const allUsers = await db.select({ id: users.id, role: users.role }).from(users);
+  const allLocations = await db.select({ id: locations.id }).from(locations);
+  if (allLocations.length === 0) return;
+
+  for (const user of allUsers) {
+    if (user.role === "OWNER" || user.role === "DIRECTOR") continue;
+    const existing = await db.select({ locationId: userLocationAccess.locationId })
+      .from(userLocationAccess)
+      .where(eq(userLocationAccess.userId, user.id));
+    const existingSet = new Set(existing.map(e => e.locationId));
+    for (const loc of allLocations) {
+      if (!existingSet.has(loc.id)) {
+        await db.insert(userLocationAccess).values({ userId: user.id, locationId: loc.id });
+      }
+    }
+    if (existing.length < allLocations.length) {
+      console.log(`[seed] Assigned ${allLocations.length - existing.length} locations to user ${user.id}`);
+    }
+  }
+}
+
 export async function seed() {
   await syncOwnerCredentials();
   await syncUserCredentials();
+  await ensureUserLocationAccess();
 
   const existingUsers = await db.select().from(users);
   const existingPhysicians = await db.select({ id: physicians.id }).from(physicians).limit(20);
