@@ -369,15 +369,21 @@ export const clinicFinancials = pgTable("clinic_financials", {
   index("clinic_fin_location_idx").on(table.locationId),
 ]);
 
+export const providerTypeEnum = pgEnum("provider_type", [
+  "PT", "PTA", "OT", "OTA",
+]);
+
 export const providerProductivity = pgTable("provider_productivity", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  providerType: providerTypeEnum("provider_type"),
   weekStartDate: date("week_start_date").notNull(),
   totalVisits: integer("total_visits").notNull().default(0),
   totalUnits: integer("total_units").notNull().default(0),
   unitsPerHour: real("units_per_hour").default(0),
   hoursWorked: real("hours_worked").default(0),
+  daysWorked: integer("days_worked").default(5),
   revenueGenerated: numeric("revenue_generated", { precision: 12, scale: 2 }).notNull().default("0"),
   revenueTarget: numeric("revenue_target", { precision: 12, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

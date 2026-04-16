@@ -162,9 +162,11 @@ export function registerProviderProductivityV2Routes(app: Express) {
           const last4 = sorted.slice(-4);
           const current = last4[last4.length - 1];
 
-          const daysWorked = current.hoursWorked
-            ? Math.max(1, Math.round((current.hoursWorked ?? 0) / 8))
-            : 5; // default 5-day week if no hours data
+          const daysWorked = (current as Record<string, unknown>).daysWorked
+            ? Number((current as Record<string, unknown>).daysWorked)
+            : current.hoursWorked
+              ? Math.max(1, Math.round((current.hoursWorked ?? 0) / 8))
+              : 5;
 
           const vpdCurrent = current.totalVisits / daysWorked;
           const upvCurrent =
@@ -173,9 +175,11 @@ export function registerProviderProductivityV2Routes(app: Express) {
               : 0;
 
           const vpdHistory = last4.map((r) => {
-            const d = r.hoursWorked
-              ? Math.max(1, Math.round((r.hoursWorked ?? 0) / 8))
-              : 5;
+            const d = (r as Record<string, unknown>).daysWorked
+              ? Number((r as Record<string, unknown>).daysWorked)
+              : r.hoursWorked
+                ? Math.max(1, Math.round((r.hoursWorked ?? 0) / 8))
+                : 5;
             return r.totalVisits / d;
           });
 
@@ -190,7 +194,7 @@ export function registerProviderProductivityV2Routes(app: Express) {
 
           providerRecords.push({
             providerName: current.userName,
-            providerRole: current.userRole,
+            providerRole: (current as Record<string, unknown>).providerType as string ?? current.userRole,
             locationName: current.locationName,
             locationId: current.locationId,
             vpdCurrent: +vpdCurrent.toFixed(1),
