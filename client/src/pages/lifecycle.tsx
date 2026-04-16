@@ -60,7 +60,7 @@ export default function LifecyclePage() {
   const queryParams = new URLSearchParams({ dateFrom: dates.from, dateTo: dates.to });
   if (locationId !== "all") queryParams.set("locationId", locationId);
 
-  const { data, isLoading } = useQuery<FunnelData>({
+  const { data, isLoading, isError } = useQuery<FunnelData>({
     queryKey: ["/api/lifecycle/funnel", queryParams.toString()],
     queryFn: async () => {
       const res = await fetch(`/api/lifecycle/funnel?${queryParams}`, { credentials: "include" });
@@ -119,6 +119,12 @@ export default function LifecyclePage() {
             {[1, 2, 3, 4].map(i => <Card key={i}><CardContent className="p-4"><Skeleton className="h-16 w-full" /></CardContent></Card>)}
           </div>
           <Skeleton className="h-64 w-full" />
+        </div>
+      )}
+
+      {isError && (
+        <div className="text-center py-12 text-muted-foreground">
+          <p>Failed to load lifecycle data. Please try again.</p>
         </div>
       )}
 

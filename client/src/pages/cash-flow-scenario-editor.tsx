@@ -53,6 +53,14 @@ export function CashFlowScenarioEditor({ open, onOpenChange, scenario, onSaved }
 
   const handleSave = async () => {
     if (!fields.name.trim()) { toast({ title: "Name is required", variant: "destructive" }); return; }
+    const requiredNumeric = ["weeklyVisits", "rpv", "laborPct"] as const;
+    for (const key of requiredNumeric) {
+      const val = fields[key];
+      if (val === "" || isNaN(Number(val))) {
+        toast({ title: `${key} must be a valid number`, variant: "destructive" });
+        return;
+      }
+    }
     setSaving(true);
     try {
       const payload = {

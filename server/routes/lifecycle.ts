@@ -30,6 +30,13 @@ export function registerLifecycleRoutes(app: Express) {
         const dateTo = (req.query.dateTo as string) || new Date().toISOString().slice(0, 10);
         const locationId = req.query.locationId as string | undefined;
 
+        // Guard: reject if requested locationId is outside user's scope
+        if (locationId && locationId !== "all" && locationScope !== null) {
+          if (!locationScope.includes(locationId)) {
+            return res.status(403).json({ message: "Forbidden" });
+          }
+        }
+
         const locFilter = locationId && locationId !== "all"
           ? sql`AND r.location_id = ${locationId}`
           : locationScope !== null

@@ -7,7 +7,7 @@ import type { Express } from "express";
 import crypto from "crypto";
 import { Client } from "@microsoft/microsoft-graph-client";
 import { db } from "../db";
-import { userOauthTokens } from "@shared/schema";
+import { userOauthTokens, users } from "@shared/schema";
 import { storage } from "../storage";
 import { getClientIp } from "./shared";
 import {
@@ -115,21 +115,18 @@ export function registerMicrosoftSsoRoutes(app: Express) {
       }
 
       if (!user) {
-        // Create new SSO user with PENDING approval
-        user = await storage.createUser({
+        // Create new SSO user with PENDING approval in a single insert to avoid race window
+        const [created] = await db.insert(users).values({
           name: displayName,
           email,
-          password: "",
+          password: null,
           role: "MARKETER",
-        });
-        await storage.updateUser(user.id, {
           microsoftId: oid,
           authProvider: "microsoft",
           approvalStatus: "PENDING",
           forcePasswordChange: false,
-          password: null,
-        } as any);
-        user = await storage.getUser(user.id);
+        } as any).returning();
+        user = created;
       }
 
       if (!user) {

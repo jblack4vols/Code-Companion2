@@ -112,7 +112,11 @@ export function LifecycleAttendanceTab({ totalScheduled, totalArrived, arrivalRa
                     <TableCell className="text-right">{loc.scheduled.toLocaleString()}</TableCell>
                     <TableCell className="text-right">{loc.arrived.toLocaleString()}</TableCell>
                     <TableCell className="text-right">
-                      <Badge variant="outline" className={rateBadgeClass(loc.arrivalRate, 85)}>
+                      <Badge variant="outline" className={
+                        loc.arrivalRate >= 85 ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
+                        : loc.arrivalRate >= 78 ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
+                        : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
+                      }>
                         {loc.arrivalRate}%
                       </Badge>
                     </TableCell>

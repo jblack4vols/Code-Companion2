@@ -33,6 +33,13 @@ export function registerCashFlowRoutes(app: Express) {
         const scenarioId = req.query.scenarioId as string | undefined;
         const locationId = req.query.locationId as string | undefined;
 
+        // Guard: reject if requested locationId is outside user's scope
+        if (locationId && locationId !== "all" && locationScope !== null) {
+          if (!locationScope.includes(locationId)) {
+            return res.status(403).json({ message: "Forbidden" });
+          }
+        }
+
         const locFilter = locationId && locationId !== "all"
           ? sql`AND cf.location_id = ${locationId}`
           : locationScope !== null

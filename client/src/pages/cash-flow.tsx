@@ -154,7 +154,7 @@ export default function CashFlowPage() {
             {activeScenario && (
               <>
                 <Button size="sm" variant="outline" onClick={() => { setEditingScenario(activeScenario); setEditorOpen(true); }} data-testid="button-edit-scenario"><Pencil className="w-3.5 h-3.5 mr-1" />Edit</Button>
-                <Button size="sm" variant="outline" onClick={() => deleteMutation.mutate(activeScenario.id)} disabled={deleteMutation.isPending} data-testid="button-delete-scenario"><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button>
+                <Button size="sm" variant="outline" onClick={() => { if (window.confirm(`Delete scenario "${activeScenario.name}"?`)) deleteMutation.mutate(activeScenario.id); }} disabled={deleteMutation.isPending} data-testid="button-delete-scenario"><Trash2 className="w-3.5 h-3.5 mr-1" />Delete</Button>
               </>
             )}
           </>
