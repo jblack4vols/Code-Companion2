@@ -33,6 +33,8 @@ import { registerRevenueRecoveryRoutes } from "./routes/revenue-recovery";
 import { registerBillingLagRoutes } from "./routes/billing-lag";
 import { registerRevenueRecoveryAppealsRoutes } from "./routes/revenue-recovery-appeals";
 import { registerFrontDeskRoutes } from "./routes/frontdesk";
+import { registerRpvAnalyticsRoutes } from "./routes/rpv-analytics";
+import { registerReferralIntelligenceRoutes } from "./routes/referral-intelligence";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -119,6 +121,8 @@ export async function registerRoutes(
   await registerRevenueRecoveryAppealsRoutes(app);
   registerFrontDeskRoutes(app);
   registerFeedbackRoutes(app);
+  registerRpvAnalyticsRoutes(app);
+  registerReferralIntelligenceRoutes(app);
 
   return httpServer;
 }

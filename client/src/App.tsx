@@ -65,6 +65,8 @@ const UnitEconomicsProviderProductivityPage = lazy(() => import("@/pages/unit-ec
 const UnitEconomicsAlertsPage = lazy(() => import("@/pages/unit-economics-alerts"));
 const UnitEconomicsTargetsPage = lazy(() => import("@/pages/unit-economics-targets"));
 const UnitEconomicsDataImportPage = lazy(() => import("@/pages/unit-economics-data-import"));
+const RpvAnalyticsPage = lazy(() => import("@/pages/rpv-analytics"));
+const ReferralIntelligencePage = lazy(() => import("@/pages/referral-intelligence"));
 const RevenueDashboardPage = lazy(() => import("@/pages/revenue-dashboard"));
 const RevenueClaimsPage = lazy(() => import("@/pages/revenue-claims"));
 const RevenueDenialsPage = lazy(() => import("@/pages/revenue-denials"));
@@ -133,6 +135,10 @@ function AuthenticatedRouter() {
         <Route path="/dashboards/location" component={guard(ANALYTICS, LocationDashboardPage)} />
         <Route path="/roi-calculator" component={guard(ANALYTICS, ROICalculatorPage)} />
         <Route path="/leaderboard" component={guard(ANALYTICS, TeamLeaderboardPage)} />
+
+        {/* Analytics: RPV + Referral Intelligence */}
+        <Route path="/rpv-analytics" component={guard(ANALYTICS, RpvAnalyticsPage)} />
+        <Route path="/referral-intelligence" component={guard(ANALYTICS, ReferralIntelligencePage)} />
 
         {/* Finance: OWNER, DIRECTOR, ANALYST */}
         <Route path="/unit-economics" component={guard(ANALYTICS, UnitEconomicsDashboardPage)} />
