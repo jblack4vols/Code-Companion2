@@ -66,9 +66,9 @@ export function WelcomeDashboard() {
   const isLoading = loadingTasks || loadingActivity || loadingReferrals;
 
   const quickActions = [
-    { label: "Log Interaction", icon: MessageSquare, path: "/interactions/new", testId: "button-quick-log-interaction" },
-    { label: "Add Provider", icon: UserPlus, path: "/physicians/new", testId: "button-quick-add-provider" },
-    { label: "Create Task", icon: ClipboardList, path: "/tasks/new", testId: "button-quick-create-task" },
+    { label: "Log Interaction", icon: MessageSquare, path: "/quick-log", testId: "button-quick-log-interaction" },
+    { label: "Add Provider", icon: UserPlus, path: "/physicians", testId: "button-quick-add-provider" },
+    { label: "Create Task", icon: ClipboardList, path: "/tasks", testId: "button-quick-create-task" },
   ];
 
   const stats = [

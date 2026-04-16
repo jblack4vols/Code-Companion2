@@ -23,12 +23,9 @@ const FILTER_TABS: { key: FilterTab; label: string }[] = [
   { key: "task", label: "Tasks" },
 ];
 
-function safeRelativeTime(timestamp: string): string {
-  try {
-    return formatDistanceToNow(new Date(timestamp), { addSuffix: true });
-  } catch {
-    return "";
-  }
+function safeRelativeTime(timestamp: string | undefined | null): string {
+  if (!timestamp) return "";
+  try { return formatDistanceToNow(new Date(timestamp), { addSuffix: true }); } catch { return ""; }
 }
 
 export function TeamActivityFeed() {
