@@ -4,16 +4,38 @@
  */
 import type { Express } from "express";
 import { db } from "../db";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
+import { appSettings } from "@shared/schema";
 import { requireRole, getUserLocationScope } from "./shared";
 
-/** Tier multipliers for ROI score calculation */
-const TIER_MULTIPLIER: Record<string, number> = { A: 1.0, B: 0.85, C: 0.60, D: 0.40 };
-const ROI_DIVISOR = 400;
+/** Default tier multipliers — overridable via app_settings key "tier_multipliers" (JSON) */
+const DEFAULT_TIER_MULTIPLIER: Record<string, number> = { A: 1.0, B: 0.85, C: 0.60, D: 0.40 };
+const DEFAULT_ROI_DIVISOR = 400;
+const DEFAULT_GONE_DARK_DAYS = 60;
 
-function computeRoi(casesYtd: number, avgVisits: number, tierLabel: string): number {
-  const mult = TIER_MULTIPLIER[tierLabel] ?? 0.40;
-  const raw = (casesYtd * avgVisits * mult) / ROI_DIVISOR * 100;
+/** Read a configurable value from app_settings with a fallback default */
+async function getSetting<T>(key: string, fallback: T, parse: (v: string) => T = (v) => v as unknown as T): Promise<T> {
+  try {
+    const [row] = await db.select().from(appSettings).where(eq(appSettings.key, key)).limit(1);
+    return row ? parse(row.value) : fallback;
+  } catch { return fallback; }
+}
+
+async function getConfiguredMultipliers(): Promise<Record<string, number>> {
+  return getSetting("tier_multipliers", DEFAULT_TIER_MULTIPLIER, JSON.parse);
+}
+
+async function getConfiguredRoiDivisor(): Promise<number> {
+  return getSetting("roi_divisor", DEFAULT_ROI_DIVISOR, Number);
+}
+
+async function getConfiguredGoneDarkDays(): Promise<number> {
+  return getSetting("gone_dark_days", DEFAULT_GONE_DARK_DAYS, Number);
+}
+
+function computeRoi(casesYtd: number, avgVisits: number, tierLabel: string, multipliers: Record<string, number>, roiDivisor: number): number {
+  const mult = multipliers[tierLabel] ?? 0.40;
+  const raw = (casesYtd * avgVisits * mult) / roiDivisor * 100;
   return Math.min(Math.round(raw * 10) / 10, 100);
 }
 
@@ -29,6 +51,12 @@ function dominantPayer(payerCsv: string | null): string {
 }
 
 async function fetchPhysicianIntelligence(locationScope: string[] | null) {
+  const [multipliers, roiDivisor, goneDarkDays] = await Promise.all([
+    getConfiguredMultipliers(),
+    getConfiguredRoiDivisor(),
+    getConfiguredGoneDarkDays(),
+  ]);
+
   const locFilter = locationScope !== null
     ? sql`AND r.location_id = ANY(${locationScope})`
     : sql``;
@@ -36,10 +64,10 @@ async function fetchPhysicianIntelligence(locationScope: string[] | null) {
   const currentYear = new Date().getFullYear();
   const priorYear = currentYear - 1;
   const now = new Date();
-  const sixtyDaysAgo = new Date(now);
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
-  const oneTwentyDaysAgo = new Date(now);
-  oneTwentyDaysAgo.setDate(oneTwentyDaysAgo.getDate() - 120);
+  const recentWindowStart = new Date(now);
+  recentWindowStart.setDate(recentWindowStart.getDate() - goneDarkDays);
+  const priorWindowStart = new Date(now);
+  priorWindowStart.setDate(priorWindowStart.getDate() - goneDarkDays * 2);
 
   const rows = await db.execute(sql`
     SELECT
@@ -61,11 +89,11 @@ async function fetchPhysicianIntelligence(locationScope: string[] | null) {
       END AS avg_visits_per_case,
       -- last referral date
       MAX(r.referral_date)::text AS last_referral_date,
-      -- recent 60-day window count
-      COUNT(DISTINCT CASE WHEN r.referral_date >= ${sixtyDaysAgo.toISOString().slice(0, 10)} THEN r.id END)::int  AS refs_last_60,
-      -- prior 60-day window count (60-120 days ago)
-      COUNT(DISTINCT CASE WHEN r.referral_date >= ${oneTwentyDaysAgo.toISOString().slice(0, 10)}
-                           AND r.referral_date < ${sixtyDaysAgo.toISOString().slice(0, 10)} THEN r.id END)::int  AS refs_prior_60,
+      -- recent window count (configurable, default 60 days)
+      COUNT(DISTINCT CASE WHEN r.referral_date >= ${recentWindowStart.toISOString().slice(0, 10)} THEN r.id END)::int  AS refs_last_60,
+      -- prior window count (same window length before recent)
+      COUNT(DISTINCT CASE WHEN r.referral_date >= ${priorWindowStart.toISOString().slice(0, 10)}
+                           AND r.referral_date < ${recentWindowStart.toISOString().slice(0, 10)} THEN r.id END)::int  AS refs_prior_60,
       -- dominant payer
       mode() WITHIN GROUP (ORDER BY r.primary_payer_type) AS dominant_payer_type,
       -- best tier label from monthly summary
@@ -87,7 +115,7 @@ async function fetchPhysicianIntelligence(locationScope: string[] | null) {
     const casesPrior = r.cases_prior_year ?? 0;
     const avgVisits = parseFloat(r.avg_visits_per_case) || 0;
     const tierLabel: string = r.tier_label ?? "D";
-    const roiScore = computeRoi(casesYtd, avgVisits, tierLabel);
+    const roiScore = computeRoi(casesYtd, avgVisits, tierLabel, multipliers, roiDivisor);
     const yoyDelta = casesPrior > 0
       ? Math.round(((casesYtd - casesPrior) / casesPrior) * 1000) / 10
       : casesYtd > 0 ? 100 : 0;

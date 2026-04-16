@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowUpDown, ArrowUp, ArrowDown } from "lucide-react";
+import { tierBadgeClass, daysBadgeClass, roiBadgeClass } from "@/lib/badge-helpers";
 
 export interface ReferralSource {
   id: string;
@@ -21,18 +22,6 @@ export interface ReferralSource {
 }
 
 type SortKey = keyof Pick<ReferralSource, "casesYtd" | "yoyDelta" | "roiScore" | "daysSinceReferral">;
-
-function tierBadgeClass(tier: "A" | "B" | "C"): string {
-  if (tier === "A") return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-  if (tier === "B") return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
-  return "bg-muted text-muted-foreground";
-}
-
-function daysBadgeClass(days: number): string {
-  if (days <= 30) return "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400";
-  if (days <= 60) return "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400";
-  return "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400";
-}
 
 function SortIcon({ field, current, dir }: { field: SortKey; current: SortKey; dir: "asc" | "desc" }) {
   if (field !== current) return <ArrowUpDown className="w-3.5 h-3.5 ml-1 inline opacity-40" />;
@@ -121,13 +110,7 @@ export function ReferralIntelligenceTable({ sources }: Props) {
                     </span>
                   </TableCell>
                   <TableCell>
-                    <Badge variant="outline" className={
-                      s.roiScore >= 80
-                        ? "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400"
-                        : s.roiScore >= 50
-                          ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400"
-                          : "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400"
-                    }>
+                    <Badge variant="outline" className={roiBadgeClass(s.roiScore)}>
                       {s.roiScore}
                     </Badge>
                   </TableCell>
