@@ -39,6 +39,7 @@ import { registerReferralIntelligenceRoutes } from "./routes/referral-intelligen
 import { registerProviderProductivityV2Routes } from "./routes/provider-productivity-v2";
 import { registerOutlookOAuthRoutes } from "./routes/outlook-oauth";
 import { registerLifecycleRoutes } from "./routes/lifecycle";
+import { registerCashFlowRoutes } from "./routes/cash-flow";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -131,6 +132,7 @@ export async function registerRoutes(
   registerProviderProductivityV2Routes(app);
   registerOutlookOAuthRoutes(app);
   registerLifecycleRoutes(app);
+  registerCashFlowRoutes(app);
 
   return httpServer;
 }

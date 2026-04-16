@@ -77,6 +77,7 @@ const FrontDeskPage = lazy(() => import("@/pages/frontdesk"));
 const FeedbackPage = lazy(() => import("@/pages/feedback"));
 const ProviderProductivityV2Page = lazy(() => import("@/pages/provider-productivity-v2"));
 const LifecyclePage = lazy(() => import("@/pages/lifecycle"));
+const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
 
 function LazyFallback() {
   return (
@@ -143,6 +144,7 @@ function AuthenticatedRouter() {
         <Route path="/referral-intelligence" component={guard(ANALYTICS, ReferralIntelligencePage)} />
         <Route path="/provider-productivity-v2" component={guard(ANALYTICS, ProviderProductivityV2Page)} />
         <Route path="/lifecycle" component={guard(ANALYTICS, LifecyclePage)} />
+        <Route path="/cash-flow" component={guard(ANALYTICS, CashFlowPage)} />
 
         {/* Finance: OWNER, DIRECTOR, ANALYST */}
         <Route path="/unit-economics" component={guard(ANALYTICS, UnitEconomicsDashboardPage)} />

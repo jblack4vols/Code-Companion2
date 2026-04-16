@@ -371,6 +371,20 @@ export const clinicFinancials = pgTable("clinic_financials", {
   index("clinic_fin_location_idx").on(table.locationId),
 ]);
 
+export const cashFlowScenarios = pgTable("cash_flow_scenarios", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  weeklyVisits: integer("weekly_visits").notNull(),
+  rpv: numeric("rpv", { precision: 8, scale: 2 }).notNull(),
+  laborPct: real("labor_pct").notNull(),
+  weeklyRent: numeric("weekly_rent", { precision: 10, scale: 2 }).notNull(),
+  weeklySupplies: numeric("weekly_supplies", { precision: 10, scale: 2 }).notNull(),
+  weeklyOther: numeric("weekly_other", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
 export const providerTypeEnum = pgEnum("provider_type", [
   "PT", "PTA", "OT", "OTA",
 ]);
@@ -705,6 +719,12 @@ export type FinancialAlert = typeof financialAlerts.$inferSelect;
 export type InsertFinancialAlert = z.infer<typeof insertFinancialAlertSchema>;
 export type FinancialTarget = typeof financialTargets.$inferSelect;
 export type InsertFinancialTarget = z.infer<typeof insertFinancialTargetSchema>;
+
+export const insertCashFlowScenarioSchema = createInsertSchema(cashFlowScenarios).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type CashFlowScenario = typeof cashFlowScenarios.$inferSelect;
+export type InsertCashFlowScenario = z.infer<typeof insertCashFlowScenarioSchema>;
 
 export const loginSchema = z.object({
   email: z.string().email(),
