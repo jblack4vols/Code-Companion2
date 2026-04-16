@@ -6,9 +6,14 @@ import { db } from "./db";
 import { eq } from "drizzle-orm";
 import { userOauthTokens } from "@shared/schema";
 
-const AZURE_CLIENT_ID = process.env.AZURE_AD_CLIENT_ID!;
-const AZURE_TENANT_ID = process.env.AZURE_AD_TENANT_ID!;
-const AZURE_CLIENT_SECRET = process.env.AZURE_AD_CLIENT_SECRET!;
+/** Read Azure AD env vars lazily to avoid dotenv timing issues */
+function getAzureConfig() {
+  return {
+    clientId: process.env.AZURE_AD_CLIENT_ID!,
+    tenantId: process.env.AZURE_AD_TENANT_ID!,
+    clientSecret: process.env.AZURE_AD_CLIENT_SECRET!,
+  };
+}
 
 export const IS_DEV = process.env.NODE_ENV !== "production";
 export const REDIRECT_URI = IS_DEV
@@ -20,9 +25,14 @@ export const SSO_REDIRECT_URI = IS_DEV
   : "https://crm.tristarpt.com/api/auth/microsoft/callback";
 
 export const SCOPES = ["Calendars.ReadWrite", "User.Read", "offline_access"];
-export const AUTH_URL = `https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/authorize`;
 
-const TOKEN_URL = `https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/token`;
+export function getAuthUrl() {
+  return `https://login.microsoftonline.com/${getAzureConfig().tenantId}/oauth2/v2.0/authorize`;
+}
+
+function getTokenUrl() {
+  return `https://login.microsoftonline.com/${getAzureConfig().tenantId}/oauth2/v2.0/token`;
+}
 
 export interface TokenResponse {
   access_token: string;
@@ -32,15 +42,16 @@ export interface TokenResponse {
 
 /** Exchange authorization code for access + refresh tokens */
 export async function exchangeCodeForTokens(code: string, redirectUri: string = REDIRECT_URI): Promise<TokenResponse> {
+  const { clientId, clientSecret } = getAzureConfig();
   const params = new URLSearchParams({
-    client_id: AZURE_CLIENT_ID,
-    client_secret: AZURE_CLIENT_SECRET,
+    client_id: clientId,
+    client_secret: clientSecret,
     code,
     redirect_uri: redirectUri,
     grant_type: "authorization_code",
   });
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetch(getTokenUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),
@@ -52,15 +63,16 @@ export async function exchangeCodeForTokens(code: string, redirectUri: string = 
 
 /** Use a refresh token to obtain a new access token */
 async function refreshAccessToken(refreshToken: string): Promise<TokenResponse> {
+  const { clientId, clientSecret } = getAzureConfig();
   const params = new URLSearchParams({
-    client_id: AZURE_CLIENT_ID,
-    client_secret: AZURE_CLIENT_SECRET,
+    client_id: clientId,
+    client_secret: clientSecret,
     refresh_token: refreshToken,
     grant_type: "refresh_token",
     scope: SCOPES.join(" "),
   });
 
-  const res = await fetch(TOKEN_URL, {
+  const res = await fetch(getTokenUrl(), {
     method: "POST",
     headers: { "Content-Type": "application/x-www-form-urlencoded" },
     body: params.toString(),

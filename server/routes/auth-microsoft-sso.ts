@@ -12,7 +12,7 @@ import { storage } from "../storage";
 import { getClientIp } from "./shared";
 import {
   exchangeCodeForTokens,
-  AUTH_URL,
+  getAuthUrl,
   SSO_REDIRECT_URI,
   SCOPES,
 } from "../outlook-oauth-token-helpers";
@@ -32,35 +32,48 @@ export function registerMicrosoftSsoRoutes(app: Express) {
     const state = crypto.randomBytes(32).toString("hex");
     req.session.oauthState = state;
 
-    const url = new URL(AUTH_URL);
-    url.searchParams.set("client_id", process.env.AZURE_AD_CLIENT_ID!);
-    url.searchParams.set("response_type", "code");
-    url.searchParams.set("redirect_uri", SSO_REDIRECT_URI);
-    url.searchParams.set("response_mode", "query");
-    url.searchParams.set("scope", SSO_SCOPES.join(" "));
-    url.searchParams.set("state", state);
+    // Force session save before redirect — saveUninitialized is false,
+    // so new sessions won't persist unless explicitly saved
+    req.session.save((err) => {
+      if (err) {
+        console.error("[SSO] Session save error:", err);
+        return res.redirect("/login?error=oauth_failed");
+      }
 
-    res.redirect(url.toString());
+      const url = new URL(getAuthUrl());
+      url.searchParams.set("client_id", process.env.AZURE_AD_CLIENT_ID!);
+      url.searchParams.set("response_type", "code");
+      url.searchParams.set("redirect_uri", SSO_REDIRECT_URI);
+      url.searchParams.set("response_mode", "query");
+      url.searchParams.set("scope", SSO_SCOPES.join(" "));
+      url.searchParams.set("state", state);
+
+      res.redirect(url.toString());
+    });
   });
 
   // Handle OAuth callback
   app.get("/api/auth/microsoft/callback", async (req, res) => {
-    const { code, state, error } = req.query as Record<string, string>;
+    const { code, state, error, error_description } = req.query as Record<string, string>;
     const ip = getClientIp(req);
     const ua = req.headers["user-agent"] || "unknown";
 
+    console.log("[SSO CALLBACK] query params:", { code: code ? "present" : "missing", state: state ? "present" : "missing", error, error_description });
+    console.log("[SSO CALLBACK] session oauthState:", req.session.oauthState ? "present" : "missing");
+
     if (error) {
-      console.error(`[SSO] OAuth denied: ${error}`);
+      console.error(`[SSO] OAuth denied: ${error} — ${error_description}`);
       return res.redirect("/login?error=oauth_denied");
     }
 
     if (!code || !state) {
+      console.error("[SSO] Missing code or state in callback");
       return res.redirect("/login?error=oauth_failed");
     }
 
     // CSRF check
     if (state !== req.session.oauthState) {
-      console.error("[SSO] State mismatch — possible CSRF");
+      console.error(`[SSO] State mismatch. Expected: ${req.session.oauthState?.slice(0, 8)}... Got: ${state?.slice(0, 8)}...`);
       return res.redirect("/login?error=oauth_failed");
     }
     delete req.session.oauthState;
@@ -176,7 +189,7 @@ export function registerMicrosoftSsoRoutes(app: Express) {
 
       res.redirect("/");
     } catch (err: any) {
-      console.error(`[SSO] Callback error: ${err.message}`);
+      console.error(`[SSO] Callback error:`, err.message, err.stack);
       res.redirect("/login?error=oauth_failed");
     }
   });

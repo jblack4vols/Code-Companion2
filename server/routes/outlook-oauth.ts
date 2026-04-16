@@ -14,7 +14,7 @@ import { storage } from "../storage";
 import {
   exchangeCodeForTokens,
   getValidAccessToken,
-  AUTH_URL,
+  getAuthUrl,
   REDIRECT_URI,
   SCOPES,
 } from "../outlook-oauth-token-helpers";
@@ -29,7 +29,7 @@ export function registerOutlookOAuthRoutes(app: Express) {
   // Redirect user to Microsoft OAuth consent screen
   app.get("/api/outlook/connect", requireAuth, (req, res) => {
     const state = Buffer.from(req.session.userId!).toString("base64");
-    const url = new URL(AUTH_URL);
+    const url = new URL(getAuthUrl());
     url.searchParams.set("client_id", process.env.AZURE_AD_CLIENT_ID!);
     url.searchParams.set("response_type", "code");
     url.searchParams.set("redirect_uri", REDIRECT_URI);

@@ -1,9 +1,8 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Alert, AlertDescription } from "@/components/ui/alert";
 import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2, Lock, CheckCircle2, ArrowLeft, Mail } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
@@ -21,21 +20,6 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
-  const [showEmailForm, setShowEmailForm] = useState(false);
-  const [ssoMessage, setSsoMessage] = useState<{ text: string; variant: "default" | "destructive" } | null>(null);
-
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("pending") === "true") {
-      setSsoMessage({ text: "Your account is pending approval by an administrator.", variant: "default" });
-    } else if (params.get("rejected") === "true") {
-      setSsoMessage({ text: "Your registration has been declined. Contact an administrator.", variant: "destructive" });
-    } else if (params.get("error") === "oauth_denied") {
-      setSsoMessage({ text: "Microsoft sign-in was cancelled.", variant: "destructive" });
-    } else if (params.get("error") === "oauth_failed") {
-      setSsoMessage({ text: "Microsoft sign-in failed. Try again or use email.", variant: "destructive" });
-    }
-  }, []);
 
   const resetForm = () => {
     setEmail("");
@@ -115,82 +99,47 @@ export default function LoginPage() {
             <CardHeader className="pb-4">
               <h2 className="text-lg font-semibold text-center">Sign in to your account</h2>
             </CardHeader>
-            <CardContent className="space-y-4">
-              {ssoMessage && (
-                <Alert variant={ssoMessage.variant} data-testid="alert-sso-message">
-                  <AlertDescription>{ssoMessage.text}</AlertDescription>
-                </Alert>
-              )}
+            <CardContent>
+              <form onSubmit={handleLogin} className="space-y-4">
+                {error && (
+                  <div className={`flex items-center gap-2 p-3 rounded-md text-sm ${isLocked ? "bg-chart-5/10 text-chart-5" : "bg-destructive/10 text-destructive"}`} data-testid="text-login-error">
+                    {isLocked ? <Lock className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
+                    {error}
+                  </div>
+                )}
 
-              <Button
-                className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300 shadow-sm"
-                onClick={() => { window.location.href = "/api/auth/microsoft"; }}
-                data-testid="button-sso-microsoft"
-              >
-                <svg className="w-4 h-4 mr-2" viewBox="0 0 21 21" fill="none">
-                  <rect x="1" y="1" width="9" height="9" fill="#F25022"/>
-                  <rect x="11" y="1" width="9" height="9" fill="#7FBA00"/>
-                  <rect x="1" y="11" width="9" height="9" fill="#00A4EF"/>
-                  <rect x="11" y="11" width="9" height="9" fill="#FFB900"/>
-                </svg>
-                Sign in with Microsoft
-              </Button>
-
-              {!showEmailForm && (
-                <div className="text-center">
-                  <button
-                    type="button"
-                    onClick={() => setShowEmailForm(true)}
-                    className="text-sm text-muted-foreground hover:text-foreground hover:underline"
-                    data-testid="link-use-email"
-                  >
-                    Use email instead
-                  </button>
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email" required autoComplete="email" data-testid="input-email" />
                 </div>
-              )}
 
-              {showEmailForm && (
-                <form onSubmit={handleLogin} className="space-y-4 pt-2 border-t">
-                  {error && (
-                    <div className={`flex items-center gap-2 p-3 rounded-md text-sm ${isLocked ? "bg-chart-5/10 text-chart-5" : "bg-destructive/10 text-destructive"}`} data-testid="text-login-error">
-                      {isLocked ? <Lock className="w-4 h-4 shrink-0" /> : <AlertCircle className="w-4 h-4 shrink-0" />}
-                      {error}
-                    </div>
-                  )}
-
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
-                      placeholder="Enter your email" required autoComplete="email" data-testid="input-email" />
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="password">Password</Label>
+                    <button type="button" onClick={() => switchView("forgot")}
+                      className="text-xs text-primary hover:underline" data-testid="link-forgot-password">
+                      Forgot password?
+                    </button>
                   </div>
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password" required autoComplete="current-password" data-testid="input-password" />
+                </div>
 
-                  <div className="space-y-2">
-                    <div className="flex items-center justify-between">
-                      <Label htmlFor="password">Password</Label>
-                      <button type="button" onClick={() => switchView("forgot")}
-                        className="text-xs text-primary hover:underline" data-testid="link-forgot-password">
-                        Forgot password?
-                      </button>
-                    </div>
-                    <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
-                      placeholder="Enter password" required autoComplete="current-password" data-testid="input-password" />
-                  </div>
+                <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
+                  {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign in"}
+                </Button>
 
-                  <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
-                    {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign in"}
-                  </Button>
-
-                  <div className="text-center pt-2">
-                    <p className="text-sm text-muted-foreground">
-                      Don't have an account?{" "}
-                      <button type="button" onClick={() => switchView("register")}
-                        className="text-primary font-medium hover:underline" data-testid="link-register">
-                        Sign up
-                      </button>
-                    </p>
-                  </div>
-                </form>
-              )}
+                <div className="text-center pt-2">
+                  <p className="text-sm text-muted-foreground">
+                    Don't have an account?{" "}
+                    <button type="button" onClick={() => switchView("register")}
+                      className="text-primary font-medium hover:underline" data-testid="link-register">
+                      Sign up
+                    </button>
+                  </p>
+                </div>
+              </form>
             </CardContent>
           </Card>
         )}
