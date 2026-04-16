@@ -891,6 +891,31 @@ export type Appeal = typeof appeals.$inferSelect;
 
 // ── Feedback & Ideas ────────────────────────────────────────────────────
 
+// ── Outlook OAuth Tokens ────────────────────────────────────────────────
+// Stores per-user Microsoft OAuth tokens for calendar integration.
+// NOTE: Tokens are stored in plaintext — consider adding at-rest encryption
+// (e.g. pgcrypto or application-level AES) for production hardening.
+
+export const userOauthTokens = pgTable("user_oauth_tokens", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id).unique(),
+  provider: text("provider").notNull().default("microsoft"),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  expiresAt: timestamp("expires_at"),
+  email: text("email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertUserOauthTokenSchema = createInsertSchema(userOauthTokens).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type UserOauthToken = typeof userOauthTokens.$inferSelect;
+export type InsertUserOauthToken = z.infer<typeof insertUserOauthTokenSchema>;
+
+// ── Feedback & Ideas ────────────────────────────────────────────────────
+
 export const feedbackCategoryEnum = pgEnum("feedback_category", [
   "FEATURE_IDEA", "BUG", "IMPROVEMENT", "OTHER",
 ]);

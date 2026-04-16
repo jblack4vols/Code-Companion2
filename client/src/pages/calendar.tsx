@@ -16,6 +16,8 @@ import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { CalendarEvent, Physician, Location } from "@shared/schema";
+import { CalendarOutlookConnect } from "./calendar-outlook-connect";
+import { CalendarUserFilter, buildUserColorMap, getUserColor } from "./calendar-user-filter";
 import {
   format,
   addMonths,
@@ -72,6 +74,9 @@ export default function CalendarPage() {
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
+  // selectedUserIds: empty Set = "all users" (default), non-empty = filtered subset
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
+
   const [selectedPracticeName, setSelectedPracticeName] = useState<string>("");
   const [practiceComboOpen, setPracticeComboOpen] = useState(false);
   const [practiceSearchInput, setPracticeSearchInput] = useState("");
@@ -124,12 +129,15 @@ export default function CalendarPage() {
   const startDate = format(monthStart, "yyyy-MM-dd");
   const endDate = format(monthEnd, "yyyy-MM-dd");
 
+  const userIdsParam = selectedUserIds.size > 0 ? Array.from(selectedUserIds).join(",") : undefined;
+
   const queryParams = new URLSearchParams({ startDate, endDate });
   if (locationFilter !== "all") queryParams.set("locationId", locationFilter);
   if (practiceFilter !== "all") queryParams.set("practiceName", practiceFilter);
+  if (userIdsParam) queryParams.set("userIds", userIdsParam);
 
   const { data: events, isLoading, isError, refetch } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar-events", startDate, endDate, locationFilter, practiceFilter],
+    queryKey: ["/api/calendar-events", startDate, endDate, locationFilter, practiceFilter, userIdsParam ?? "all"],
     queryFn: async () => {
       const res = await fetch(`/api/calendar-events?${queryParams.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch events");
@@ -139,6 +147,18 @@ export default function CalendarPage() {
 
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
   const { data: practiceNames } = useQuery<string[]>({ queryKey: ["/api/physicians/practice-names"] });
+  const { data: allUsers } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const res = await fetch("/api/users", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  // Stable map of userId → color index for consistent event coloring
+  const userColorMap = useMemo(() => buildUserColorMap(allUsers ?? []), [allUsers]);
 
   const { data: practicePhysicians } = useQuery<Physician[]>({
     queryKey: ["/api/physicians/by-practice", selectedPracticeName],
@@ -307,6 +327,7 @@ export default function CalendarPage() {
           <p className="text-xs sm:text-sm text-muted-foreground">Manage events and office visits</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <CalendarOutlookConnect />
           <Button
             variant={viewMode === "calendar" ? "default" : "outline"}
             size="sm"
@@ -419,6 +440,8 @@ export default function CalendarPage() {
         </Select>
       </div>
 
+      <CalendarUserFilter selectedUserIds={selectedUserIds} onChange={setSelectedUserIds} />
+
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -461,19 +484,22 @@ export default function CalendarPage() {
                       {format(day, "d")}
                     </div>
                     <div className="space-y-0.5">
-                      {dayEvents.slice(0, 3).map((evt) => (
+                      {dayEvents.slice(0, 3).map((evt) => {
+                        return (
                         <div
                           key={evt.id}
-                          className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer ${evt.completed ? "bg-green-600" : EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
+                          className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer flex items-center gap-1 ${evt.completed ? "bg-green-600" : EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
                           onClick={(e) => {
                             e.stopPropagation();
                             openEditDialog(evt);
                           }}
                           data-testid={`event-bar-${evt.id}`}
                         >
-                          {evt.title}
+                          <span className={`w-1.5 h-1.5 rounded-full shrink-0 bg-white/70`} />
+                          <span className="truncate">{evt.title}</span>
                         </div>
-                      ))}
+                        );
+                      })}
                       {dayEvents.length > 3 && (
                         <div className="text-[10px] text-muted-foreground pl-1">
                           +{dayEvents.length - 3} more
@@ -499,6 +525,9 @@ export default function CalendarPage() {
             sortedEvents.map((evt) => {
               const loc = locations?.find((l) => l.id === evt.locationId);
               const evtPractice = evt.practiceName;
+              const colorIdx = userColorMap.get(evt.organizerUserId);
+              const organizerColor = colorIdx !== undefined ? getUserColor(colorIdx) : null;
+              const organizerUser = allUsers?.find((u) => u.id === evt.organizerUserId);
               return (
                 <Card
                   key={evt.id}
@@ -521,6 +550,15 @@ export default function CalendarPage() {
                         <Badge variant="outline" className={`text-[10px] ${EVENT_TYPE_COLORS[evt.eventType]}`}>
                           {EVENT_TYPE_LABELS[evt.eventType]}
                         </Badge>
+                        {organizerUser && organizerColor && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${organizerColor.outline}`}
+                            data-testid={`organizer-chip-${evt.id}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${organizerColor.dot}`} />
+                            {organizerUser.name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {format(new Date(evt.startAt), "MMM d, yyyy h:mm a")} - {format(new Date(evt.endAt), "h:mm a")}
