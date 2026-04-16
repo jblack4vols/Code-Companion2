@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Users, FileText, Star, MoonStar } from "lucide-react";
 import { GoneDarkPanel, type GoneDarkSource } from "./referral-intelligence-gone-dark";
 import { ReferralIntelligenceTable, type ReferralSource } from "./referral-intelligence-table";
+import { PayerTierChart, type TierChartSource } from "./referral-intelligence-payer-tier-chart";
 
 interface ReferralSummary {
   active_referrers: number;
@@ -130,6 +131,8 @@ export default function ReferralIntelligencePage() {
           <StatCard key={c.label} {...c} />
         ))}
       </div>
+
+      <PayerTierChart sources={sources as unknown as TierChartSource[]} />
 
       <GoneDarkPanel sources={goneDark} />
 
