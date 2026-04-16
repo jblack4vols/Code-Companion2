@@ -38,6 +38,7 @@ import { registerRpvAnalyticsRoutes } from "./routes/rpv-analytics";
 import { registerReferralIntelligenceRoutes } from "./routes/referral-intelligence";
 import { registerProviderProductivityV2Routes } from "./routes/provider-productivity-v2";
 import { registerOutlookOAuthRoutes } from "./routes/outlook-oauth";
+import { registerLifecycleRoutes } from "./routes/lifecycle";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -129,6 +130,7 @@ export async function registerRoutes(
   registerReferralIntelligenceRoutes(app);
   registerProviderProductivityV2Routes(app);
   registerOutlookOAuthRoutes(app);
+  registerLifecycleRoutes(app);
 
   return httpServer;
 }
