@@ -75,6 +75,7 @@ const RevenueAppealsPage = lazy(() => import("@/pages/revenue-appeals"));
 const RevenueImportPage = lazy(() => import("@/pages/revenue-import"));
 const FrontDeskPage = lazy(() => import("@/pages/frontdesk"));
 const FeedbackPage = lazy(() => import("@/pages/feedback"));
+const ProviderProductivityV2Page = lazy(() => import("@/pages/provider-productivity-v2"));
 
 function LazyFallback() {
   return (
@@ -139,6 +140,7 @@ function AuthenticatedRouter() {
         {/* Analytics: RPV + Referral Intelligence */}
         <Route path="/rpv-analytics" component={guard(ANALYTICS, RpvAnalyticsPage)} />
         <Route path="/referral-intelligence" component={guard(ANALYTICS, ReferralIntelligencePage)} />
+        <Route path="/provider-productivity-v2" component={guard(ANALYTICS, ProviderProductivityV2Page)} />
 
         {/* Finance: OWNER, DIRECTOR, ANALYST */}
         <Route path="/unit-economics" component={guard(ANALYTICS, UnitEconomicsDashboardPage)} />

@@ -35,6 +35,7 @@ import { registerRevenueRecoveryAppealsRoutes } from "./routes/revenue-recovery-
 import { registerFrontDeskRoutes } from "./routes/frontdesk";
 import { registerRpvAnalyticsRoutes } from "./routes/rpv-analytics";
 import { registerReferralIntelligenceRoutes } from "./routes/referral-intelligence";
+import { registerProviderProductivityV2Routes } from "./routes/provider-productivity-v2";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -123,6 +124,7 @@ export async function registerRoutes(
   registerFeedbackRoutes(app);
   registerRpvAnalyticsRoutes(app);
   registerReferralIntelligenceRoutes(app);
+  registerProviderProductivityV2Routes(app);
 
   return httpServer;
 }

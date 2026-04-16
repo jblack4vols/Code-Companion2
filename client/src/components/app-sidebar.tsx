@@ -40,6 +40,7 @@ const analyticsItems = [
   { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Provider Productivity", url: "/provider-productivity-v2", icon: Activity, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
 ];
 
 const opsItems = [
@@ -96,7 +97,7 @@ const roleBadgeVariant: Record<string, string> = {
 };
 
 const outreachUrls = ["/quick-log", "/interactions", "/tasks", "/activity"];
-const analyticsUrls = ["/dashboards/", "/rpv-analytics", "/referral-intelligence", "/roi-calculator", "/leaderboard", "/tiering", "/declining", "/practices"];
+const analyticsUrls = ["/dashboards/", "/rpv-analytics", "/referral-intelligence", "/roi-calculator", "/leaderboard", "/tiering", "/declining", "/practices", "/provider-productivity-v2"];
 const opsUrls = ["/frontdesk", "/goals", "/map", "/territories", "/referral-explorer", "/provider-offices", "/provider-office-linker"];
 const financeUrls = ["/unit-economics", "/revenue"];
 const adminUrls = ["/admin/", "/import"];
