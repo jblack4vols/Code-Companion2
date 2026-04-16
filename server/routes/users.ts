@@ -25,7 +25,7 @@ export function registerUserRoutes(app: Express) {
       }
       const existing = await storage.getUserByEmail(validated.email);
       if (existing) return res.status(409).json({ message: "A user with this email already exists" });
-      const plainPassword = validated.password;
+      const plainPassword = validated.password!;
       const hashedPassword = await bcrypt.hash(plainPassword, 12);
       const user = await storage.createUser({ ...validated, password: hashedPassword });
       await storage.updateUser(user.id, { forcePasswordChange: true } as any);

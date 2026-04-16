@@ -15,6 +15,10 @@ export const REDIRECT_URI = IS_DEV
   ? "http://localhost:5000/api/outlook/callback"
   : "https://crm.tristarpt.com/api/outlook/callback";
 
+export const SSO_REDIRECT_URI = IS_DEV
+  ? "http://localhost:5000/api/auth/microsoft/callback"
+  : "https://crm.tristarpt.com/api/auth/microsoft/callback";
+
 export const SCOPES = ["Calendars.ReadWrite", "User.Read", "offline_access"];
 export const AUTH_URL = `https://login.microsoftonline.com/${AZURE_TENANT_ID}/oauth2/v2.0/authorize`;
 
@@ -27,12 +31,12 @@ export interface TokenResponse {
 }
 
 /** Exchange authorization code for access + refresh tokens */
-export async function exchangeCodeForTokens(code: string): Promise<TokenResponse> {
+export async function exchangeCodeForTokens(code: string, redirectUri: string = REDIRECT_URI): Promise<TokenResponse> {
   const params = new URLSearchParams({
     client_id: AZURE_CLIENT_ID,
     client_secret: AZURE_CLIENT_SECRET,
     code,
-    redirect_uri: REDIRECT_URI,
+    redirect_uri: redirectUri,
     grant_type: "authorization_code",
   });
 

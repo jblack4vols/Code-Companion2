@@ -51,7 +51,7 @@ export function registerOutlookOAuthRoutes(app: Express) {
 
     try {
       const userId = Buffer.from(state, "base64").toString("utf-8");
-      const tokens = await exchangeCodeForTokens(code);
+      const tokens = await exchangeCodeForTokens(code, REDIRECT_URI);
       const expiresAt = new Date(Date.now() + tokens.expires_in * 1000);
 
       // Fetch the user's Outlook email via Graph (non-fatal if it fails)

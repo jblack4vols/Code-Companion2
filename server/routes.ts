@@ -9,6 +9,7 @@ import { apiLimiter, publicApiLimiter } from "./middleware/rateLimiter";
 import { csrfProtection, csrfTokenEndpoint } from "./middleware/csrf";
 import { SESSION_TIMEOUT_MS } from "./routes/shared";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerMicrosoftSsoRoutes } from "./routes/auth-microsoft-sso";
 import { registerUserRoutes } from "./routes/users";
 import { registerLocationRoutes } from "./routes/locations";
 import { registerPhysicianRoutes } from "./routes/physicians";
@@ -99,6 +100,7 @@ export async function registerRoutes(
   app.get("/api/csrf-token", csrfTokenEndpoint);
 
   registerAuthRoutes(app);
+  registerMicrosoftSsoRoutes(app);
   registerUserRoutes(app);
   registerLocationRoutes(app);
   registerPhysicianRoutes(app);

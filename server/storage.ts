@@ -194,6 +194,7 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByMicrosoftId(microsoftId: string): Promise<User | undefined>;
   getUserByResetToken(token: string): Promise<User | undefined>;
   getUsersByApprovalStatus(status: string): Promise<User[]>;
   getUsers(): Promise<User[]>;
@@ -417,6 +418,7 @@ export class DatabaseStorage implements IStorage {
   // Users
   getUser = usersStorage.getUser;
   getUserByEmail = usersStorage.getUserByEmail;
+  getUserByMicrosoftId = usersStorage.getUserByMicrosoftId;
   getUserByResetToken = usersStorage.getUserByResetToken;
   getUsersByApprovalStatus = usersStorage.getUsersByApprovalStatus;
   getUsers = usersStorage.getUsers;

@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/lib/auth";
 
 interface OutlookStatus {
   connected: boolean;
@@ -16,6 +17,8 @@ interface OutlookStatus {
 
 export function CalendarOutlookConnect() {
   const { toast } = useToast();
+  const { user } = useAuth();
+  const isSsoUser = user?.authProvider === "microsoft";
 
   const { data: status, isLoading } = useQuery<OutlookStatus>({
     queryKey: ["/api/outlook/status"],
@@ -61,7 +64,7 @@ export function CalendarOutlookConnect() {
         onClick={() => { window.location.href = "/api/outlook/connect"; }}
         data-testid="button-connect-outlook"
       >
-        Connect Outlook Calendar
+        {isSsoUser ? "Reconnect Outlook Calendar" : "Connect Outlook Calendar"}
       </Button>
     );
   }
@@ -73,7 +76,9 @@ export function CalendarOutlookConnect() {
         className="bg-chart-3/10 text-chart-3 border-chart-3/30 text-xs"
         data-testid="badge-outlook-connected"
       >
-        Outlook: {status.email ?? "Connected"}
+        {isSsoUser
+          ? `Connected as ${status.email ?? "Microsoft account"}`
+          : `Outlook: ${status.email ?? "Connected"}`}
       </Badge>
       <Button
         variant="outline"
