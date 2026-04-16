@@ -1,50 +1,33 @@
-# Referral Intelligence
+---
+name: referral-feature
+description: Load referral intelligence business rules before coding any referral feature
+---
 
-Load payer tier logic, gone-dark rules, and referral business rules before coding referral features.
+Before writing any referral-related code, internalize these business rules for Tristar PT:
 
-## Payer Tiers
-- **Commercial** — highest value, target mix >40%
-- **Medicare** — moderate value, steady volume
-- **Medicaid** — lower reimbursement
-- **Workers Comp** — high per-visit but variable volume
-- **Auto/PI** — highest per-visit, lowest volume
+**Payer Tier Classification (used in all referral scoring):**
+- Tier A: BCBS TN, Medicare/Palmetto GBA — highest reimbursement, prioritize
+- Tier B: Commercial, Workers Comp, VA — mid-tier
+- Tier C: Medicaid, Self-Pay — lowest reimbursement
 
-## Physician Relationship Stages (auto-calculated by nightly ETL)
-- **NEW** — no referrals yet, recently added
-- **ACTIVE** — has recent referrals (last 90 days)
-- **AT_RISK** — had referrals 91-180 days ago but none in last 90 days
-- **INACTIVE** — no referrals in 180+ days (gone dark)
+**Gone-Dark Logic:**
+- A referral source is "gone dark" if they have sent 0 cases in the past 60 days AND had ≥2 cases in the prior 60-day period
+- Gone-dark sources should display a red badge and appear in a dedicated alert section
+- Never silently drop gone-dark sources from lists — always surface them
 
-## Stage Transition Logic (`server/etl-data-enrichment.ts`)
-- Recent referrals (0-90 days) → ACTIVE
-- Mid-range only (91-180 days, none recent) → AT_RISK
-- No referrals in 180+ days → INACTIVE
-- New physician with no referrals → NEW
+**Top Referrers (pre-loaded context):**
+- Angelo Sorce MD — NPI 1215968300 (Tier A, top priority)
+- Sonya Sartain APRN (Tier A)
+- Sadril Mohammad PA-S (Tier A)
+- David Caldwell PA — PERMANENTLY REMOVED, left state. Never display or include in any list.
 
-## Tiering Score (`server/etl-summary-generation.ts`)
-Weighted composite: `(revenueWeight * revNorm) + (trendWeight * trendNorm) + (conversionWeight * arrivalRate) + (payerMixWeight * commercialMixPct)`
-- Default weights: revenue 0.4, trend 0.2, conversion 0.2, payerMix 0.2
-- Tier A: score >= 70, Tier B: 40-69, Tier C: <40
+**Referral ROI Score formula:**
+ROI Score = (avg_visits_per_case × RPV × case_count × payer_tier_multiplier) / marketing_effort_score
+- Tier A multiplier: 1.0, Tier B: 0.85, Tier C: 0.60
+- RPV target: $95
 
-## At-Risk Detection (`server/routes/features.ts`)
-- Providers with declining referral counts month-over-month
-- Risk score: `(dependencyRatio * 0.6) + (declining ? 0.4 : 0)`
+**Table schema (`referral_sources` in Supabase `tkgygnninsbzzwlobtff`):**
+- `id`, `physician_name`, `npi`, `specialty`, `practice`, `payer_tier`, `cases_ytd`,
+  `cases_prior_year`, `avg_visits_per_case`, `last_referral_date`, `gone_dark` (bool)
 
-## Health Score Components
-- Referral volume (0-25 pts)
-- Interaction frequency (0-25 pts)
-- Conversion rate: >=70% → 25pts, >=50% → 15pts, >=30% → 10pts
-- Trend direction (0-25 pts)
-
-## Key Tables
-- `physicians` — provider records with `relationshipStage`, `tierScore`
-- `referrals` — patient referrals with `physicianId`, `locationId`, `status`
-- `physician_monthly_summary` — aggregated monthly stats per provider
-- `physician_stage_history` — stage change audit trail
-
-## Task
-When coding referral features for: $ARGUMENTS
-1. Read `server/etl-data-enrichment.ts` and `server/etl-summary-generation.ts` for business logic
-2. Use the stage/tier constants above
-3. Ensure location scoping via `getUserLocationScope()`
-4. Filter by `deletedAt IS NULL` for soft-deleted records
+Now implement the feature described in $ARGUMENTS using these rules.

@@ -1,33 +1,27 @@
-# Frontend Design
+---
+name: frontend-design
+description: Generate a polished, production-grade UI screen for crm.tristarpt.com
+---
 
-Generate polished, production-grade UI for Tristar 360 CRM screens. Apply Modern Clinical aesthetic.
+Build the screen or component described in $ARGUMENTS.
 
-## Design System
-- **Style:** Modern Clinical — clean, professional, subtle shadows, WCAG AA accessible
-- **Font:** DM Sans body, Montserrat headings (`font-heading` class)
-- **Shadows:** Enabled (subtle elevation on cards and containers)
-- **Radius:** 0.75rem (`rounded-lg`) — professional, not playful
-- **Colors:** Use CSS tokens (`bg-primary`, `text-foreground`, `bg-card`) — see `docs/design-system.md`
+**Stack:** Next.js App Router, Tailwind CSS, shadcn/ui, Lucide icons, Zustand for state.
 
-## Stack
-- React 18 + TypeScript, Vite, Tailwind CSS 3.4
-- shadcn/ui components (Button, Card, Badge, Table, Tabs, Dialog, Form, Select, etc.)
-- TanStack Query v5 for data fetching (`useQuery({ queryKey: ["/api/..."] })`)
-- Wouter for routing (`useLocation`, `Link`)
-- Lucide React for icons (no emoji)
-- Recharts for charts
+**Design requirements:**
+- Brand colors: primary `#FF8200`, accent `#FFEAD5`, dark `#000000`, light `#FFFFFF`
+- Use shadcn/ui primitives exclusively — Card, Table, Badge, Button, Dialog, Alert, Skeleton
+- Strong visual hierarchy: page title → section headers → data → actions
+- Data tables must be sortable on the primary numeric column
+- Every data view needs: loading state (Skeleton), empty state (message + CTA), error state (Alert destructive)
+- Dense, scannable layout — this is an ops dashboard for a practice owner, not a consumer app
+- Responsive: functional on 1280px+ desktop first; mobile is secondary
 
-## Rules
-- Files under 200 lines — split into sub-components if needed
-- `data-testid` on all interactive and key display elements
-- No `import React` (Vite JSX transform)
-- No `hover:bg-*` on Button/Badge — use built-in variants
-- Forms: `useForm` + `zodResolver` from `@/components/ui/form`
-- Mutations: `apiRequest("POST", "/api/...", data)` from `@/lib/queryClient`
-- Loading states: Skeleton components during data fetch
-- Responsive: mobile-first, test at 375px/768px/1024px
+**Code requirements:**
+- TypeScript with proper interfaces in `src/types/`
+- Server Component by default; add `"use client"` only if needed
+- Currency: `toLocaleString('en-US', { style: 'currency', currency: 'USD' })`
+- Percentages: `(ratio * 100).toFixed(1) + '%'`
+- Dates: `date-fns` format `MMM d, yyyy`
+- No `<form>` tags — use controlled inputs with onClick/onChange
 
-## Task
-Design and implement: $ARGUMENTS
-
-Read existing pages in `client/src/pages/` for pattern reference before coding.
+After building, run `/tristar-brand` to verify brand compliance.

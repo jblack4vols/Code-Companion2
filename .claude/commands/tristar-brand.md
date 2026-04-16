@@ -1,34 +1,22 @@
-# Tristar Brand Guidelines
+---
+name: tristar-brand
+description: Enforce Tristar PT brand tokens on the current component
+---
 
-Enforce Tristar Physical Therapy brand standards when editing any UI component.
+Review the component at $ARGUMENTS (or the currently open file if no argument given) and enforce Tristar PT brand standards:
 
-## Brand Colors (use CSS tokens, never raw hex)
-- Primary (light): `hsl(var(--primary))` — Orange #FF8200
-- Primary (dark): `hsl(var(--primary))` — shifts to blue automatically
-- Background: `bg-background` (white light / black dark)
-- Cards: `bg-card` (off-white light / dark blue-gray dark)
-- Text: `text-foreground` (near-black light / light-gray dark)
-- Muted: `text-muted-foreground` for secondary text
-- Destructive: `hsl(var(--destructive))` for errors/deletions
-- Chart colors: `chart-1` (blue), `chart-2` (teal), `chart-3` (gold), `chart-4` (green), `chart-5` (pink)
+**Brand tokens to enforce:**
+- Primary orange: `#FF8200` — use for CTAs, active nav states, badges, progress indicators
+- Accent/light orange: `#FFEAD5` — use for hover backgrounds, subtle highlights, card accents
+- Dark: `#000000` — primary text, nav backgrounds
+- Light: `#FFFFFF` — card backgrounds, input backgrounds
 
-## Typography
-- Body: DM Sans (`font-sans`) — 14-16px
-- Headings: Montserrat (`font-heading`) — use `font-heading` class on h1-h6
-- Mono: JetBrains Mono (`font-mono`) — code, IDs, account numbers
-- Heading weight: `font-semibold` (600) with `tracking-tight`
+**Rules to check and fix:**
+1. Replace any generic Tailwind colors (blue-500, indigo-600, etc.) with the brand palette equivalents
+2. Ensure all primary action buttons use the `#FF8200` background
+3. Ensure all shadcn/ui components use the correct CSS variable overrides — do not use inline styles
+4. Check that heading hierarchy uses at most 3 font sizes on the page
+5. Confirm empty states, loading skeletons, and error states are present
+6. Flag any hardcoded hex colors that are NOT in the brand palette
 
-## Component Rules
-- Use shadcn/ui components (Button, Card, Badge, etc.) — no custom reimplementations
-- No emoji as icons — use Lucide React only
-- No `hover:bg-*` or `active:bg-*` on Button or Badge — use built-in variants
-- Cards: never nest inside other cards
-- Border radius: `rounded-lg` (0.75rem) — tighter, professional
-- `data-testid` on all interactive elements
-
-## When editing $ARGUMENTS:
-1. Check all color values use CSS tokens, not raw hex
-2. Verify headings use `font-heading` class
-3. Ensure shadcn components used instead of raw HTML
-4. Confirm no emoji icons
-5. Check `data-testid` present on interactive elements
+After reviewing, apply all fixes directly to the file. List what you changed.

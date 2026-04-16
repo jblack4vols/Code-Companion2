@@ -1,36 +1,25 @@
-# Project Check-In
+---
+name: project-check
+description: Session check-in — surfaces what's next on the CRM roadmap and recent context
+---
 
-Run this at the start of each dev session to get oriented.
+Start this Claude Code session with a structured check-in for crm.tristarpt.com development.
 
-## Quick Status Check
-1. Run `git status` and `git log --oneline -5` to see current branch and recent changes
-2. Run `npx tsc --noEmit 2>&1 | grep "error TS" | wc -l` to verify zero TypeScript errors
-3. Run `npx vitest run 2>&1 | tail -5` to confirm all tests pass
-4. Check `curl -s https://crm.tristarpt.com/api/health` to verify production is up
+1. **Read the current state of the codebase** — scan `src/app/` for existing routes and `src/components/features/` for built modules. List what exists.
 
-## Project Context
-- **App:** Tristar 360 CRM — physician liaison tool for 8 PT clinics
-- **Live:** https://crm.tristarpt.com (Vercel + Neon PostgreSQL)
-- **Branch:** check with `git branch --show-current`
-- **PR:** check with `gh pr list --state open`
+2. **Check the roadmap from CLAUDE.md** and identify which features are complete vs. still to build:
+   - Referral Intelligence Dashboard
+   - RPV Analytics by Location
+   - Provider Productivity View
+   - Patient Lifecycle Funnel
+   - BCBS Audit Status Panel
+   - Cash Flow Projection
 
-## Architecture Quick Reference
-- Frontend: `client/src/pages/` (React + shadcn + TanStack Query)
-- API: `server/routes/` (Express 5 + Drizzle ORM)
-- Schema: `shared/schema.ts` (Drizzle tables + Zod validation)
-- Storage: `server/storage*.ts` (split by domain)
-- Tests: `server/__tests__/` (Vitest)
-- Design: `docs/design-system.md`
-- Permissions: `docs/permissions.md`
+3. **Surface any immediate issues:**
+   - TypeScript errors: run `npm run type-check` and report
+   - Lint warnings: run `npm run lint` and report
+   - Any TODO/FIXME comments in recently modified files
 
-## Deploy Checklist
-1. `npx tsc --noEmit` — zero errors
-2. `npx vitest run` — all tests pass
-3. `npx tsx script/build-vercel.ts` — builds client + API bundle
-4. `npx vercel deploy --prod --yes` — deploy to crm.tristarpt.com
-5. `git add . && git commit && git push`
+4. **Recommend the next task** — one specific, scoped feature or fix based on the roadmap order and current state.
 
-## Current Session
-Checking status for: $ARGUMENTS
-
-Run the status checks above and report what needs attention.
+5. **Ask:** "Ready to start [recommended task]? Or is there something else you want to work on?"

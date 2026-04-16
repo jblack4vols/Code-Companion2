@@ -1,144 +1,295 @@
-# CLAUDE.md
+# CLAUDE.md — crm.tristarpt.com
+# Tristar Physical Therapy — Internal Operations CRM
+# Owner: Jordan Black | GitHub: jblack4vols
+# Last updated: 2026-04-16
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+---
 
-## Project: Tristar 360° CRM
+## 1. Project Overview
 
-**Live URL:** https://crm.tristarpt.com
-**Repo:** https://github.com/jblack4vols/Code-Companion2
+`crm.tristarpt.com` is Tristar Physical Therapy's internal operations platform — a full-stack
+Next.js app deployed on Railway. It consolidates referral intelligence, financial analytics,
+provider management, scheduling ops, and marketing automation into a single owner-facing
+dashboard. It is NOT a patient-facing product.
 
-### Tech Stack
-- **Frontend:** React 18, Vite 7, TypeScript 5.6, Tailwind CSS 3.4, shadcn/ui (Radix), Wouter (routing), TanStack Query v5
-- **Backend:** Express 5, Drizzle ORM, PostgreSQL (Neon)
-- **Hosting:** Vercel (static CDN + serverless API function)
-- **Fonts:** DM Sans (body), Montserrat (headings), JetBrains Mono (code)
-- **Charts:** Recharts
-- **Auth:** Session-based (express-session + connect-pg-simple), bcryptjs, CSRF tokens
+**Long-term goal:** Productize this stack as a licensable SaaS layer for other PT practice owners.
+Every architectural decision should be made with multi-tenant extensibility in mind.
 
-### Brand & Design
-- **Primary (light):** Orange `hsl(30.59, 100%, 50%)` — `#FF8200`
-- **Primary (dark):** Blue `hsl(203.77, 87.6%, 52.55%)`
-- **Accent:** Light blue `#FFEAD5` tint
-- **Background light/dark:** White / Black
-- **Style:** Modern Clinical — clean, professional, subtle shadows, WCAG AA accessible
-- **Design system doc:** `./docs/design-system.md`
+---
 
-### Business Domain
-- **Company:** Tristar Physical Therapy — 8 clinic locations in East Tennessee
-- **Locations:** Bean Station, Jefferson City, Johnson City, Maryville, Morristown, New Tazewell, Newport, Rogersville
-- **Purpose:** Physician liaison CRM for tracking referring provider relationships, referrals, interactions, and revenue
-- **Key metrics:** RPV (Revenue Per Visit) target $95, referral volume, interaction frequency, payer tier mix
-- **Payer tiers:** Commercial, Medicare, Medicaid, Workers Comp, Auto/PI
-- **User roles:** OWNER, DIRECTOR, MARKETER, FRONT_DESK, ANALYST
-- **All users get all locations assigned automatically on creation/approval**
-- **HIPAA regulated:** No PHI in logs, URLs, localStorage, or error messages
+## 2. Tech Stack
 
-### Build & Dev Commands
-- `npm run dev` — start dev server (port 5000)
-- `npm run build` — production build (Vite + esbuild)
-- `npm run check` — TypeScript type check (`tsc --noEmit`)
-- `npm run db:push` — sync Drizzle schema to database
-- `npx vitest run` — run all tests (439 tests, 19 files)
-- `npx tsx script/build-vercel.ts` — Vercel-specific build (Vite + esbuild API bundle)
-- `npx vercel deploy --prod --yes` — deploy to production
+| Layer | Technology |
+|---|---|
+| Framework | Next.js (App Router) |
+| Styling | Tailwind CSS + shadcn/ui |
+| State | Zustand |
+| Icons | Lucide React |
+| Database | Supabase (PostgreSQL) |
+| Auth | Microsoft Azure AD SSO |
+| Deployment | Railway |
+| Domain | crm.tristarpt.com |
+| Source | github.com/jblack4vols (private repo) |
 
-### Database
-- **Provider:** Neon PostgreSQL (serverless)
-- **ORM:** Drizzle with schema in `shared/schema.ts`
-- **Session store:** PostgreSQL via connect-pg-simple
-- **Migrations:** `drizzle-kit push` (no migration files, schema push model)
+**Azure AD credentials (SSO):**
+- App ID: `debda2f0-a35b-44c9-8e0b-9d1d306c49a8`
+- Tenant ID: `668d2c67-481c-4c6c-8904-b08dfd68308c`
 
-### Key Directories
-- `client/src/pages/` — React page components (lazy loaded)
-- `client/src/components/` — shared UI components
-- `server/routes/` — Express API route handlers
-- `server/storage*.ts` — database access layer (split by domain)
-- `shared/schema.ts` — Drizzle schema + Zod validation
-- `api/index.mjs` — bundled Vercel serverless function (build artifact)
-- `docs/` — project documentation
-- `server/__tests__/` — Vitest test files
+---
 
-## Role & Responsibilities
+## 3. Brand & Design Tokens
 
-Your role is to analyze user requirements, delegate tasks to appropriate sub-agents, and ensure cohesive delivery of features that meet specifications and architectural standards.
+Always use these exact values. Never substitute with generic Tailwind colors.
 
-## Workflows
-
-- Primary workflow: `./.claude/rules/primary-workflow.md`
-- Development rules: `./.claude/rules/development-rules.md`
-- Orchestration protocols: `./.claude/rules/orchestration-protocol.md`
-- Documentation management: `./.claude/rules/documentation-management.md`
-- And other workflows: `./.claude/rules/*`
-
-**IMPORTANT:** Analyze the skills catalog and activate the skills that are needed for the task during the process.
-**IMPORTANT:** You must follow strictly the development rules in `./.claude/rules/development-rules.md` file.
-**IMPORTANT:** Before you plan or proceed any implementation, always read the `./README.md` file first to get context.
-**IMPORTANT:** Sacrifice grammar for the sake of concision when writing reports.
-**IMPORTANT:** In reports, list any unresolved questions at the end, if any.
-
-## Hook Response Protocol
-
-### Privacy Block Hook (`@@PRIVACY_PROMPT@@`)
-
-When a tool call is blocked by the privacy-block hook, the output contains a JSON marker between `@@PRIVACY_PROMPT_START@@` and `@@PRIVACY_PROMPT_END@@`. **You MUST use the `AskUserQuestion` tool** to get proper user approval.
-
-**Required Flow:**
-
-1. Parse the JSON from the hook output
-2. Use `AskUserQuestion` with the question data from the JSON
-3. Based on user's selection:
-   - **"Yes, approve access"** → Use `bash cat "filepath"` to read the file (bash is auto-approved)
-   - **"No, skip this file"** → Continue without accessing the file
-
-**Example AskUserQuestion call:**
-```json
-{
-  "questions": [{
-    "question": "I need to read \".env\" which may contain sensitive data. Do you approve?",
-    "header": "File Access",
-    "options": [
-      { "label": "Yes, approve access", "description": "Allow reading .env this time" },
-      { "label": "No, skip this file", "description": "Continue without accessing this file" }
-    ],
-    "multiSelect": false
-  }]
-}
+```css
+--color-primary:   #FF8200   /* Tristar orange — CTAs, active states, badges */
+--color-accent:    #FFEAD5   /* Light orange — backgrounds, hover states */
+--color-dark:      #000000   /* Primary text, nav backgrounds */
+--color-light:     #FFFFFF   /* Card backgrounds, inputs */
 ```
 
-**IMPORTANT:** Always ask the user via `AskUserQuestion` first. Never try to work around the privacy block without explicit user approval.
+**Typography:** System font stack. Headings: `font-semibold`. Body: `font-normal`.
+**Hierarchy:** Max 3 font sizes per screen. Use `text-sm` for data tables, `text-base` for body.
+**Components:** Always use shadcn/ui primitives — never roll custom modal/dropdown/toast from scratch.
+**Design principle:** Strong visual hierarchy, dense data tables, minimal decorative elements.
+The audience is a practice owner reviewing operational data, not a consumer app.
 
-## Python Scripts (Skills)
+---
 
-When running Python scripts from `.claude/skills/`, use the venv Python interpreter:
-- **Linux/macOS:** `.claude/skills/.venv/bin/python3 scripts/xxx.py`
-- **Windows:** `.claude\skills\.venv\Scripts\python.exe scripts\xxx.py`
+## 4. Supabase Projects
 
-This ensures packages installed by `install.sh` (google-genai, pypdf, etc.) are available.
+### Primary Ops Database
+- **Project ID:** `tkgygnninsbzzwlobtff`
+- **URL:** `https://tkgygnninsbzzwlobtff.supabase.co`
+- Used by: profit optimizer, BCBS remittance tracker, referral intelligence app
 
-**IMPORTANT:** When scripts of skills failed, don't stop, try to fix them directly.
+### CPT Revenue Analytics Database
+- **Project ID:** `uignhceazgskozzczfyi`
+- **URL:** `https://uignhceazgskozzczfyi.supabase.co`
+- Seeded with 59,520 real claims
+- Used by: reimbursement calculator, RPV analysis
 
-## [IMPORTANT] Consider Modularization
-- If a code file exceeds 200 lines of code, consider modularizing it
-- Check existing modules before creating new
-- Analyze logical separation boundaries (functions, classes, concerns)
-- Use kebab-case naming with long descriptive names, it's fine if the file name is long because this ensures file names are self-documenting for LLM tools (Grep, Glob, Search)
-- Write descriptive code comments
-- After modularization, continue with main task
-- When not to modularize: Markdown files, plain text files, bash scripts, configuration files, environment variables files, etc.
-
-## Documentation Management
-
-We keep all important docs in `./docs` folder and keep updating them, structure like below:
-
+**Key tables in `tkgygnninsbzzwlobtff`:**
 ```
-./docs
-├── project-overview-pdr.md
-├── code-standards.md
-├── codebase-summary.md
-├── design-guidelines.md
-├── deployment-guide.md
-├── system-architecture.md
-└── project-roadmap.md
+profit_optimizer_runs       -- one row per analysis period, all system KPIs
+profit_optimizer_locations  -- one row per location per period
+profit_optimizer_benchmarks -- live targets (updatable, not hardcoded)
+bcbs_remittance_tracker     -- BCBS offset tracking, CRT recoupments
+referral_sources            -- physician/APRN referral data with payer tier
 ```
 
-**IMPORTANT:** *MUST READ* and *MUST COMPLY* all *INSTRUCTIONS* in project `./CLAUDE.md`, especially *WORKFLOWS* section is *CRITICALLY IMPORTANT*, this rule is *MANDATORY. NON-NEGOTIABLE. NO EXCEPTIONS. MUST REMEMBER AT ALL TIMES!!!*
+**Supabase access pattern:**
+- Always read `profit_optimizer_benchmarks` for live targets — never hardcode RPV/CPV
+- Upsert, never insert blindly — use `onConflict` to avoid duplicate rows
+- Fallback to `window.localStorage` if Supabase is unavailable; show yellow warning banner
+
+---
+
+## 5. Business Context & KPI Benchmarks
+
+These are the source-of-truth targets. Always reference these when building analytics features.
+
+| Metric | Target | Current |
+|---|---|---|
+| Revenue Per Visit (RPV) | $95 | ~$92 |
+| Cost Per Visit (CPV) | $92 | ~$92 |
+| Labor Cost Ratio | 65% | ~70.6% |
+| Arrival Rate | 85% | varies |
+| Units Per Visit (UPV) | 4.0 | varies |
+| Visits Per Provider Per Day | ≥10 | varies |
+| Monthly Visit Volume | ~5,600 | system-wide |
+
+---
+
+## 6. Locations (8 Clinics)
+
+```
+Morristown     -- HQ, EIN: 84-4807683
+Maryville
+Bean Station   -- softest conversion rate, watch closely
+Newport
+Jefferson City
+Rogersville
+New Tazewell
+Johnson City   -- opened August 2025, historically low visits-per-case
+```
+
+---
+
+## 7. Payer Tier Classification
+
+Used in all referral, revenue, and analytics features.
+
+```
+Tier A  -- BCBS TN, Medicare/Palmetto GBA        (highest reimbursement)
+Tier B  -- Commercial, Workers Comp, VA           (mid-tier)
+Tier C  -- Medicaid, Self-Pay                     (lowest reimbursement)
+```
+
+**Active audits (do not expose claim counts in UI):**
+- BCBS TN strapping code post-pay audit — Letter IDs: `20260209L000073`, `20260212L000253`
+- Palmetto GBA TPE audit — CPT 97112, 18 ADR claims
+- Managed by: Nicole Atkins (billing coordinator)
+
+---
+
+## 8. Integrations & Connected Systems
+
+| System | Purpose | Notes |
+|---|---|---|
+| Prompt EMR | Visit/revenue data source | BI via Metabase at `bistaging.promptemrdev.com` |
+| GoHighLevel (GHL) | CRM / marketing automation | Drip sequences, campaign tracking |
+| QuickBooks Online | Accounting | QBO API for expense/revenue sync |
+| ADP | Payroll | Labor cost data |
+| Microsoft 365 / Outlook | Email, calendar, Teams | Azure AD SSO shared with this app |
+| GoTo Connect | Phone system | 28 seats, 8 locations |
+| WP Engine / Divi | Public website | tristarpt.com (separate from CRM) |
+| Vercel | Secondary deployments | Some tools live here |
+| Railway | Primary deployment | crm.tristarpt.com lives here |
+
+---
+
+## 9. Key Personnel
+
+| Name | Role |
+|---|---|
+| Jordan Black | Owner, remote (St. Augustine, FL) |
+| VP of Operations | Ops leadership |
+| Nicole Atkins | Billing coordinator — owns audit responses |
+| Marketer/Physician Liaison | Referral outreach |
+
+**Top referrers (do not cold-contact without checking gone-dark status):**
+- Angelo Sorce MD — NPI `1215968300` (Tier A)
+- Sonya Sartain APRN (Tier A)
+- Sadril Mohammad PA-S (Tier A)
+- David Caldwell PA — **REMOVED**, left state May 2025, never re-add
+
+---
+
+## 10. Coding Conventions
+
+### Component Structure
+```
+src/
+  app/              -- Next.js App Router pages and layouts
+  components/
+    ui/             -- shadcn/ui primitives only (never custom)
+    features/       -- domain-specific components (referral, billing, ops)
+    shared/         -- reusable layout pieces (PageHeader, DataTable, etc.)
+  lib/
+    supabase.ts     -- Supabase client singleton
+    auth.ts         -- Azure AD session helpers
+    utils.ts        -- shared formatters (currency, dates, percentages)
+  store/            -- Zustand slices, one file per domain
+  types/            -- shared TypeScript interfaces
+```
+
+### Rules
+- **Readable over clever.** Clear variable names, comments on non-obvious logic.
+  No one-liners that sacrifice clarity.
+- **TypeScript everywhere.** No `any`. Define interfaces in `src/types/`.
+- **Server Components by default.** Only add `"use client"` when genuinely needed
+  (event handlers, browser APIs, Zustand store access).
+- **Currency formatting:** Always `(value).toLocaleString('en-US', { style: 'currency', currency: 'USD' })`.
+  Never raw `.toFixed(2)` in UI.
+- **Percentages:** Always show one decimal place: `(ratio * 100).toFixed(1) + '%'`.
+- **Dates:** Use `date-fns`. Never `moment`. Format as `MMM d, yyyy` in UI.
+- **Error boundaries:** Every data-fetching page gets a Suspense boundary + error state.
+- **Loading states:** Use shadcn `Skeleton` — never a spinner alone.
+- **Empty states:** Every table/list needs an empty state message with a CTA.
+- **Alerts:** Use shadcn `Alert` with `variant="destructive"` for errors,
+  default variant for info. Never raw colored divs.
+
+### Data Tables
+- Use shadcn `Table` with `TableHeader`, `TableBody`, `TableRow`, `TableCell`.
+- Always sortable on the primary numeric column.
+- Row counts > 50: add pagination or virtualization.
+- Color-code performance vs. target: green = at/above target, amber = within 10%,
+  red = more than 10% below target. Use Tailwind classes, not inline styles.
+
+### Forms
+- Never use HTML `<form>` tags directly — use controlled inputs with `onChange` + `onClick`.
+- Validate client-side before any Supabase write.
+- Show inline field errors, not toast-only errors.
+
+---
+
+## 11. Build & Dev Commands
+
+```bash
+npm run dev        # local dev server at localhost:3000
+npm run build      # production build
+npm run lint       # ESLint
+npm run type-check # tsc --noEmit
+```
+
+**Before committing any feature:**
+1. `npm run type-check` — must pass with zero errors
+2. `npm run lint` — must pass with zero warnings on new files
+3. Manually test the happy path and one error state in the browser
+
+**Deployment:** Push to `main` → Railway auto-deploys. Check Railway dashboard for
+build logs if deploy fails. Environment variables live in Railway project settings —
+never commit `.env` files.
+
+---
+
+## 12. Environment Variables
+
+Never hardcode these. Always read from `process.env`.
+
+```
+NEXT_PUBLIC_SUPABASE_URL          -- Supabase project URL
+NEXT_PUBLIC_SUPABASE_ANON_KEY     -- Supabase anon key (public)
+SUPABASE_SERVICE_ROLE_KEY         -- Server-only, never expose to client
+AZURE_AD_CLIENT_ID                -- debda2f0-a35b-44c9-8e0b-9d1d306c49a8
+AZURE_AD_TENANT_ID                -- 668d2c67-481c-4c6c-8904-b08dfd68308c
+AZURE_AD_CLIENT_SECRET            -- Server-only
+NEXTAUTH_SECRET                   -- Session encryption key
+NEXTAUTH_URL                      -- https://crm.tristarpt.com in prod
+```
+
+---
+
+## 13. Slash Commands Available (`.claude/commands/`)
+
+These are pre-built skill prompts. Type `/command-name` in Claude Code to invoke.
+
+| Command | What It Does |
+|---|---|
+| `/tristar-brand` | Enforce brand tokens on the component you're editing |
+| `/frontend-design` | Generate a polished, production-grade UI screen |
+| `/referral-feature` | Load payer tier rules + gone-dark logic before coding referral features |
+| `/patient-lifecycle` | Load conversion/no-show/discharge business rules |
+| `/ops-kpis` | Load the 10 KPI alert rules and benchmark targets |
+| `/project-check` | Session check-in — surfaces what's next on the roadmap |
+| `/audit-ts` | Audit a TypeScript file for type safety, error handling, dead code, complexity |
+| `/review-component` | Review a component for brand compliance + accessibility |
+
+---
+
+## 14. Feature Roadmap (Current Priorities)
+
+Track these in order. Do not start a new feature until the prior one is
+committed and deployed.
+
+1. **Referral Intelligence Dashboard** — physician rankings, payer tier badges, gone-dark alerts
+2. **RPV Analytics by Location** — expected vs. actual RPV gap, color-coded by threshold
+3. **Provider Productivity View** — visits/day, UPV, revenue gap per provider
+4. **Patient Lifecycle Funnel** — conversion rate → arrival rate → completion rate
+5. **BCBS Audit Status Panel** — read-only view of `bcbs_remittance_tracker` table
+6. **Cash Flow Projection** — 341 seeded rows, rolling 13-week view
+
+---
+
+## 15. What NOT to Do
+
+- **Never expose PHI.** No patient names, DOBs, or insurance IDs in the UI or logs.
+- **Never hardcode API keys, anon keys, or secrets.** Always `process.env`.
+- **Never commit a build with TypeScript errors.** Fix them; don't cast to `any`.
+- **Never reference a specific BCBS audit claim count** in UI copy or comments.
+- **Never re-add David Caldwell PA** to any referral list or outreach feature.
+- **Never use `moment.js`.** Use `date-fns` exclusively.
+- **Never create a custom modal from scratch.** Use shadcn `Dialog`.
+- **Never deploy directly to Railway** by pushing to a branch other than `main`
+  unless explicitly testing a preview deployment.
