@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft, GitBranch } from "lucide-react";
+import { ProviderRelationshipTimeline } from "@/components/provider-relationship-timeline";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -601,6 +602,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                         <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{comments.length}</Badge>
                       )}
                     </TabsTrigger>
+                    <TabsTrigger value="timeline" data-testid="tab-timeline">
+                      <GitBranch className="w-3.5 h-3.5 mr-1.5" />Timeline
+                    </TabsTrigger>
                   </TabsList>
                   {canEdit && (
                     <Dialog open={showInteraction} onOpenChange={setShowInteraction}>
@@ -831,6 +835,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                       No notes yet. Add the first note above.
                     </div>
                   )}
+                </TabsContent>
+                <TabsContent value="timeline" className="mt-0">
+                  <ProviderRelationshipTimeline physicianId={params.id} />
                 </TabsContent>
               </CardContent>
             </Tabs>

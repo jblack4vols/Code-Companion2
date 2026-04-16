@@ -18,6 +18,7 @@ import ResetPasswordPage from "@/pages/reset-password";
 import { IdleTimeout } from "@/components/idle-timeout";
 import { ForcePasswordChange } from "@/components/force-password-change";
 import { GlobalSearch } from "@/components/global-search";
+import { MobileQuickActions } from "@/components/mobile-quick-actions";
 import { Loader2 } from "lucide-react";
 
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
@@ -215,9 +216,10 @@ function AppLayout() {
             <GlobalSearch />
             <ThemeToggle />
           </header>
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto pb-16 md:pb-0">
             <AuthenticatedRouter />
           </main>
+          <MobileQuickActions />
         </div>
       </div>
       <ForcePasswordChange open={showForcePasswordChange} onPasswordChanged={handlePasswordChanged} />

@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar, MapPin, GripVertical, RotateCcw } from "lucide-react";
+import { WelcomeDashboard } from "@/components/welcome-dashboard";
+import { TeamActivityFeed } from "@/components/team-activity-feed";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Funnel, FunnelChart, LabelList } from "recharts";
 import type { Physician, Location, Territory } from "@shared/schema";
 import { format, subMonths, differenceInDays, subDays, startOfQuarter, startOfYear } from "date-fns";
@@ -468,6 +470,8 @@ export default function DashboardPage() {
         </div>
       )}
 
+      <WelcomeDashboard />
+
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext items={order} strategy={verticalListSortingStrategy}>
           <div className="space-y-6">
@@ -711,20 +715,23 @@ export default function DashboardPage() {
                 case "recent-activity":
                   return (
                     <SortableTile key={tileId} id={tileId}>
-                      <Card>
-                        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-                          <div>
-                            <h3 className="text-sm font-semibold">Recent Activity</h3>
-                            <p className="text-xs text-muted-foreground">Latest team actions</p>
-                          </div>
-                          <Button variant="outline" size="sm" onClick={() => navigate("/activity")} data-testid="button-view-all-activity">
-                            View All
-                          </Button>
-                        </CardHeader>
-                        <CardContent className="p-4 pt-0">
-                          <ActivityFeed limit={5} />
-                        </CardContent>
-                      </Card>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                            <div>
+                              <h3 className="text-sm font-semibold">Recent Activity</h3>
+                              <p className="text-xs text-muted-foreground">Latest team actions</p>
+                            </div>
+                            <Button variant="outline" size="sm" onClick={() => navigate("/activity")} data-testid="button-view-all-activity">
+                              View All
+                            </Button>
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            <ActivityFeed limit={5} />
+                          </CardContent>
+                        </Card>
+                        <TeamActivityFeed />
+                      </div>
                     </SortableTile>
                   );
 
