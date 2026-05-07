@@ -103,7 +103,7 @@ export function PhysiciansTable({ physicians, users, favoriteIds, isLoading, isE
                       return (
                         <TableRow key={p.id} className="hover-elevate cursor-pointer" data-testid={`row-physician-${p.id}`}>
                           <TableCell className="w-8 px-1" onClick={(e) => e.stopPropagation()}>
-                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggleFavorite(p.id)} disabled={isFavoritePending} data-testid={`button-favorite-${p.id}`}>
+                            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => onToggleFavorite(p.id)} disabled={isFavoritePending} aria-label={favoriteIds.includes(p.id) ? `Remove Dr. ${p.firstName} ${p.lastName} from favorites` : `Add Dr. ${p.firstName} ${p.lastName} to favorites`} data-testid={`button-favorite-${p.id}`}>
                               <Star className={`w-4 h-4 ${favoriteIds.includes(p.id) ? "fill-chart-4 text-chart-4" : "text-muted-foreground/40"}`} />
                             </Button>
                           </TableCell>
@@ -130,7 +130,7 @@ export function PhysiciansTable({ physicians, users, favoriteIds, isLoading, isE
                           <TableCell className="text-sm text-center" data-testid={`text-referral-count-${p.id}`}>
                             {Number(p.referralCount) > 0 ? <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)}</Badge> : <span className="text-muted-foreground">0</span>}
                           </TableCell>
-                          {canCreate && <TableCell onClick={(e) => e.stopPropagation()}><Button size="icon" variant="ghost" onClick={() => onQuickInteraction(p)} data-testid={`button-quick-interaction-${p.id}`}><MessageSquare className="w-4 h-4" /></Button></TableCell>}
+                          {canCreate && <TableCell onClick={(e) => e.stopPropagation()}><Button size="icon" variant="ghost" onClick={() => onQuickInteraction(p)} aria-label={`Log interaction with Dr. ${p.firstName} ${p.lastName}`} data-testid={`button-quick-interaction-${p.id}`}><MessageSquare className="w-4 h-4" /></Button></TableCell>}
                         </TableRow>
                       );
                     })}
@@ -153,7 +153,7 @@ export function PhysiciansTable({ physicians, users, favoriteIds, isLoading, isE
                             {Number(p.referralCount) > 0 && <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)} referrals</Badge>}
                           </div>
                         </div>
-                        {canCreate && <Button size="icon" variant="ghost" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickInteraction(p); }} data-testid={`button-quick-interaction-mobile-${p.id}`}><MessageSquare className="w-4 h-4" /></Button>}
+                        {canCreate && <Button size="icon" variant="ghost" onClick={(e) => { e.preventDefault(); e.stopPropagation(); onQuickInteraction(p); }} aria-label={`Log interaction with Dr. ${p.firstName} ${p.lastName}`} data-testid={`button-quick-interaction-mobile-${p.id}`}><MessageSquare className="w-4 h-4" /></Button>}
                       </div>
                     </Link>
                   </div>

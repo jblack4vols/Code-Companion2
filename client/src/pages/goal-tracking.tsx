@@ -280,6 +280,7 @@ export default function GoalTrackingPage() {
                       variant="ghost"
                       onClick={() => deleteMutation.mutate(goal.id)}
                       disabled={deleteMutation.isPending}
+                      aria-label="Delete goal"
                       data-testid={`button-delete-goal-${goal.id}`}
                     >
                       <Trash2 className="w-4 h-4 text-muted-foreground" />

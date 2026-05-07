@@ -142,7 +142,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
       <div className="p-4 sm:p-6 max-w-6xl mx-auto">
         <div className="flex items-center gap-3 mb-4">
           <Link href={`/physicians/${params.id}`}>
-            <Button variant="ghost" size="icon" data-testid="button-back">
+            <Button variant="ghost" size="icon" aria-label="Back to provider detail" data-testid="button-back">
               <ArrowLeft className="w-4 h-4" />
             </Button>
           </Link>
@@ -181,7 +181,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
     <div className="p-4 sm:p-6 max-w-6xl mx-auto space-y-5">
       <div className="flex items-start gap-3 flex-wrap">
         <Link href={`/physicians/${params.id}`}>
-          <Button variant="ghost" size="icon" data-testid="button-back">
+          <Button variant="ghost" size="icon" aria-label="Back to provider detail" data-testid="button-back">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>

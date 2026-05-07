@@ -79,7 +79,7 @@ export function ReferralsAddForm({ open, locations, isPending, onOpenChange, onS
                     {[selectedPhysician.practiceName, selectedPhysician.npi ? `NPI: ${selectedPhysician.npi}` : null].filter(Boolean).join(" \u00b7 ") || "No practice info"}
                   </p>
                 </div>
-                <Button type="button" variant="ghost" size="icon" onClick={() => { setSelectedPhysician(null); setPhysicianSearch(""); }} data-testid="button-clear-physician">
+                <Button type="button" variant="ghost" size="icon" onClick={() => { setSelectedPhysician(null); setPhysicianSearch(""); }} aria-label="Clear selected provider" data-testid="button-clear-physician">
                   <X className="w-3 h-3" />
                 </Button>
               </div>
