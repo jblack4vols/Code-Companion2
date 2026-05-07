@@ -9,12 +9,13 @@ import { Label } from "@/components/ui/label";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Search, Building2, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Users, FileText, Phone, MapPin, X, Clock, Plus } from "lucide-react";
+import { Search, Building2, ChevronLeft, ChevronRight, ChevronDown, ChevronRight as ChevronRightIcon, Users, FileText, Phone, MapPin, X, Clock, Plus, MessageSquare } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { useDebounce } from "@/hooks/use-debounce";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Link } from "wouter";
+import { OfficeVisitInteractionDialog } from "./provider-offices-visit-dialog";
 
 const RECENT_SEARCHES_KEY = "tristar360_provider_offices_recent";
 const MAX_RECENT = 8;
@@ -64,7 +65,7 @@ interface OfficeProvider {
   referralCount: number;
 }
 
-function OfficeProviders({ officeName }: { officeName: string }) {
+function OfficeProviders({ officeName, canLogInteraction }: { officeName: string; canLogInteraction: boolean }) {
   const { data: providers, isLoading } = useQuery<OfficeProvider[]>({
     queryKey: ["/api/provider-offices", officeName, "providers"],
     queryFn: async () => {
@@ -74,6 +75,8 @@ function OfficeProviders({ officeName }: { officeName: string }) {
     },
     enabled: !!officeName,
   });
+
+  const [visitDialogOpen, setVisitDialogOpen] = useState(false);
 
   if (isLoading) {
     return (
@@ -89,6 +92,25 @@ function OfficeProviders({ officeName }: { officeName: string }) {
 
   return (
     <div className="border-t">
+      {canLogInteraction && (
+        <div className="flex items-center justify-between px-3 py-2 bg-muted/20 border-b">
+          <p className="text-xs text-muted-foreground">{providers.length} provider{providers.length === 1 ? "" : "s"} at this office</p>
+          <Button
+            size="sm"
+            onClick={() => setVisitDialogOpen(true)}
+            data-testid={`button-log-office-visit-${officeName.replace(/\s+/g, "-").substring(0, 30)}`}
+          >
+            <MessageSquare className="w-3.5 h-3.5 mr-1.5" />
+            Log office visit
+          </Button>
+        </div>
+      )}
+      <OfficeVisitInteractionDialog
+        open={visitDialogOpen}
+        onOpenChange={setVisitDialogOpen}
+        officeName={officeName}
+        providers={providers.map((p) => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, credentials: p.credentials }))}
+      />
       <Table>
         <TableHeader>
           <TableRow className="bg-muted/30">
@@ -358,7 +380,7 @@ export default function ProviderOfficesPage() {
                     </button>
                   </CollapsibleTrigger>
                   <CollapsibleContent>
-                    <OfficeProviders officeName={office.office_name} />
+                    <OfficeProviders officeName={office.office_name} canLogInteraction={!!canManage} />
                   </CollapsibleContent>
                 </Collapsible>
               </Card>
