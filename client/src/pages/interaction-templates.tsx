@@ -219,6 +219,7 @@ export default function InteractionTemplatesPage() {
                       size="icon"
                       variant="ghost"
                       onClick={() => openEdit(t)}
+                      aria-label={`Edit template ${t.name}`}
                       data-testid={`button-edit-template-${t.id}`}
                     >
                       <Edit2 className="w-4 h-4" />
@@ -228,6 +229,7 @@ export default function InteractionTemplatesPage() {
                       variant="ghost"
                       onClick={() => deleteMutation.mutate(t.id)}
                       disabled={deleteMutation.isPending}
+                      aria-label={`Delete template ${t.name}`}
                       data-testid={`button-delete-template-${t.id}`}
                     >
                       <Trash2 className="w-4 h-4" />

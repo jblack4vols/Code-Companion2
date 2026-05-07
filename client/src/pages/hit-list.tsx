@@ -157,13 +157,13 @@ export default function HitListPage() {
           <p className="text-xs sm:text-sm text-muted-foreground">Your agenda for the week — events, tasks, and follow-ups</p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w - 1)} data-testid="button-prev-week">
+          <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w - 1)} aria-label="Previous week" data-testid="button-prev-week">
             <ChevronLeft className="w-4 h-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={() => setWeekOffset(0)} data-testid="button-this-week">
             This Week
           </Button>
-          <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w + 1)} data-testid="button-next-week">
+          <Button variant="outline" size="icon" onClick={() => setWeekOffset(w => w + 1)} aria-label="Next week" data-testid="button-next-week">
             <ChevronRight className="w-4 h-4" />
           </Button>
         </div>

@@ -383,7 +383,7 @@ export default function ImportPage() {
         {step === "upload" && (
           <Card>
             <CardHeader className="flex flex-row items-center gap-2">
-              <Button variant="ghost" size="icon" onClick={() => setStep("select")} data-testid="button-back-select">
+              <Button variant="ghost" size="icon" onClick={() => setStep("select")} aria-label="Back to import type selection" data-testid="button-back-select">
                 <ArrowLeft className="w-4 h-4" />
               </Button>
               <div>
@@ -439,7 +439,7 @@ export default function ImportPage() {
             <Card>
               <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap">
                 <div className="flex items-center gap-2">
-                  <Button variant="ghost" size="icon" onClick={() => setStep("upload")} data-testid="button-back-upload">
+                  <Button variant="ghost" size="icon" onClick={() => setStep("upload")} aria-label="Back to upload step" data-testid="button-back-upload">
                     <ArrowLeft className="w-4 h-4" />
                   </Button>
                   <div>
@@ -538,6 +538,7 @@ export default function ImportPage() {
                         variant="ghost"
                         size="icon"
                         onClick={() => setCustomFieldMappings(prev => prev.filter((_, i) => i !== idx))}
+                        aria-label="Remove custom field mapping"
                         data-testid={`button-remove-custom-${idx}`}
                       >
                         <Trash2 className="w-4 h-4 text-muted-foreground" />
