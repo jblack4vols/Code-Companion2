@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { VoiceTextarea } from "@/components/voice-textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -642,7 +641,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                           </div>
                           <div className="space-y-1.5">
                             <Label>Summary</Label>
-                            <VoiceTextarea name="summary" required placeholder="What happened?" data-testid="input-interaction-summary" />
+                            <Textarea name="summary" required placeholder="What happened?" data-testid="input-interaction-summary" />
                           </div>
                           <div className="space-y-1.5">
                             <Label>Next Step</Label>
@@ -852,12 +851,14 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
 
       {/* Mobile floating action: Log Interaction is the most-used action a
           field rep performs from this page; surface it within thumb reach.
-          Hidden on md+ where the in-tab "Log Interaction" button is visible. */}
+          Hidden on md+ where the in-tab "Log Interaction" button is visible.
+          Bottom offset clears the global MobileQuickActions bar (~5rem tall)
+          plus the iOS notch via env(safe-area-inset-bottom). */}
       {physician && (
         <Button
           size="lg"
           onClick={() => setShowInteraction(true)}
-          className="md:hidden fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full shadow-lg p-0"
+          className="md:hidden fixed right-4 z-40 h-14 w-14 rounded-full shadow-lg p-0 bottom-[calc(5rem+env(safe-area-inset-bottom))]"
           aria-label="Log interaction"
           data-testid="fab-log-interaction"
         >
