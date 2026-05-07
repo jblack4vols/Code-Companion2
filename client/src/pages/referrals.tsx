@@ -36,6 +36,8 @@ export default function ReferralsPage() {
   const [statusFilter, setStatusFilter] = useState(urlParams.get("status") || "all");
   const [locationFilter, setLocationFilter] = useState(urlParams.get("locationId") || "all");
   const [disciplineFilter, setDisciplineFilter] = useState("all");
+  const [physicianFilterId, setPhysicianFilterId] = useState<string>(urlParams.get("physicianId") || "");
+  const [physicianFilterLabel, setPhysicianFilterLabel] = useState<string>("");
   const [dateFrom, setDateFrom] = useState(parseMonth("start"));
   const [dateTo, setDateTo] = useState(parseMonth("end"));
   const [showAdd, setShowAdd] = useState(false);
@@ -77,7 +79,7 @@ export default function ReferralsPage() {
     casesYtd: s.casesYtd,
   }));
 
-  const buildQueryParams = useCallback(() => { const p = new URLSearchParams(); p.set("page", String(page)); p.set("pageSize", String(pageSize)); if (debouncedSearch) p.set("search", debouncedSearch); if (statusFilter !== "all") p.set("status", statusFilter); if (locationFilter !== "all") p.set("locationId", locationFilter); if (disciplineFilter !== "all") p.set("discipline", disciplineFilter); if (dateFrom) p.set("dateFrom", dateFrom); if (dateTo) p.set("dateTo", dateTo); if (sortBy) { p.set("sortBy", sortBy); p.set("sortDir", sortDir); } return p.toString(); }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, dateFrom, dateTo, sortBy, sortDir]);
+  const buildQueryParams = useCallback(() => { const p = new URLSearchParams(); p.set("page", String(page)); p.set("pageSize", String(pageSize)); if (debouncedSearch) p.set("search", debouncedSearch); if (statusFilter !== "all") p.set("status", statusFilter); if (locationFilter !== "all") p.set("locationId", locationFilter); if (disciplineFilter !== "all") p.set("discipline", disciplineFilter); if (physicianFilterId) p.set("physicianId", physicianFilterId); if (dateFrom) p.set("dateFrom", dateFrom); if (dateTo) p.set("dateTo", dateTo); if (sortBy) { p.set("sortBy", sortBy); p.set("sortDir", sortDir); } return p.toString(); }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, physicianFilterId, dateFrom, dateTo, sortBy, sortDir]);
 
   const queryParams = buildQueryParams();
   const { data: result, isLoading, isError, refetch } = useQuery<{ data: ReferralRow[]; total: number; totalPages: number; activeCount?: number; dischargedCount?: number }>({
@@ -100,8 +102,8 @@ export default function ReferralsPage() {
 
   const startEditing = (r: ReferralRow) => { setEditPhysicianSearch(""); setEditPhysicianResults([]); setShowEditPhysicianDropdown(false); setEditData({ patientFullName: r.patientFullName || "", patientPhone: r.patientPhone || "", patientDob: r.patientDob || "", patientAccountNumber: r.patientAccountNumber || "", referralDate: r.referralDate || "", status: r.status || "RECEIVED", diagnosisCategory: r.diagnosisCategory || "", referralSource: r.referralSource || "", discipline: r.discipline || "", caseTitle: r.caseTitle || "", caseTherapist: r.caseTherapist || "", primaryInsurance: r.primaryInsurance || "", primaryPayerType: r.primaryPayerType || "", locationId: r.locationId || "", referringProviderName: r.referringProviderName || (r.physicianFirstName ? `${r.physicianFirstName} ${r.physicianLastName}` : ""), referringProviderNpi: r.referringProviderNpi || "", physicianId: r.physicianId || "", dateOfInitialEval: r.dateOfInitialEval || "", dischargeDate: r.dischargeDate || "", dischargeReason: r.dischargeReason || "", scheduledVisits: r.scheduledVisits || 0, arrivedVisits: r.arrivedVisits || 0 }); setIsEditing(true); };
 
-  const hasActiveFilters = statusFilter !== "all" || locationFilter !== "all" || disciplineFilter !== "all" || dateFrom !== "" || dateTo !== "" || search !== "";
-  const clearFilters = () => { setStatusFilter("all"); setLocationFilter("all"); setDisciplineFilter("all"); setDateFrom(""); setDateTo(""); setSearch(""); setPage(1); };
+  const hasActiveFilters = statusFilter !== "all" || locationFilter !== "all" || disciplineFilter !== "all" || physicianFilterId !== "" || dateFrom !== "" || dateTo !== "" || search !== "";
+  const clearFilters = () => { setStatusFilter("all"); setLocationFilter("all"); setDisciplineFilter("all"); setPhysicianFilterId(""); setPhysicianFilterLabel(""); setDateFrom(""); setDateTo(""); setSearch(""); setPage(1); };
   const referrals = result?.data || [];
   const total = result?.total || 0;
   const totalPages = result?.totalPages || 1;
@@ -164,6 +166,7 @@ export default function ReferralsPage() {
       <ReferralsFilters
         search={search} statusFilter={statusFilter} locationFilter={locationFilter}
         disciplineFilter={disciplineFilter} dateFrom={dateFrom} dateTo={dateTo}
+        physicianFilterId={physicianFilterId} physicianFilterLabel={physicianFilterLabel}
         locations={locations} hasActiveFilters={hasActiveFilters}
         onSearchChange={(v) => { setSearch(v); setPage(1); }}
         onStatusChange={(v) => { setStatusFilter(v); setPage(1); }}
@@ -171,6 +174,7 @@ export default function ReferralsPage() {
         onDisciplineChange={(v) => { setDisciplineFilter(v); setPage(1); }}
         onDateFromChange={(v) => { setDateFrom(v); setPage(1); }}
         onDateToChange={(v) => { setDateTo(v); setPage(1); }}
+        onPhysicianFilterChange={(id, label) => { setPhysicianFilterId(id); setPhysicianFilterLabel(label); setPage(1); }}
         onClearFilters={clearFilters}
       />
 
