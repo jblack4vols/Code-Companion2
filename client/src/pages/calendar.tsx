@@ -686,7 +686,10 @@ export default function CalendarPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Office/Practice Name</Label>
+              <Label>Office/Practice Name <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+              <p className="text-xs text-muted-foreground">
+                Leave blank for community events, school visits, lunches, or other non-office activities.
+              </p>
               {showNewOfficeForm ? (
                 <div className="rounded-md border bg-muted/30 p-3 space-y-3">
                   <div className="flex items-center justify-between">
@@ -780,6 +783,22 @@ export default function CalendarPage() {
                         const exactMatch = filtered.some((n) => n.toLowerCase() === trimmed.toLowerCase());
                         return (
                           <>
+                            {selectedPracticeName && (
+                              <button
+                                key="__clear__"
+                                type="button"
+                                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground border-b text-muted-foreground"
+                                onClick={() => {
+                                  setSelectedPracticeName("");
+                                  setPracticeComboOpen(false);
+                                  setPracticeSearchInput("");
+                                }}
+                                data-testid="button-clear-practice-option"
+                              >
+                                <X className="w-4 h-4 shrink-0" />
+                                Clear — community event, no office
+                              </button>
+                            )}
                             {trimmed && !exactMatch && (
                               <button
                                 key="__add_new__"
