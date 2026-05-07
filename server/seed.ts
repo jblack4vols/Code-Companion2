@@ -1,8 +1,9 @@
 import { db } from "./db";
-import { users, locations, physicians, interactions, referrals, tasks, calendarEvents, userLocationAccess, auditLogs } from "@shared/schema";
+import { users, locations, physicians, interactions, referrals, tasks, calendarEvents, userLocationAccess, auditLogs, appSettings, type InsertPhysician } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
+import { bulkUpsertPhysicians } from "./storage-physicians";
 
 async function loadJsonData(filename: string): Promise<any[]> {
   const filePath = path.join(process.cwd(), "data", filename);
@@ -294,4 +295,121 @@ export async function seed() {
   ]);
 
   console.log("Default seed complete: 5 users, 8 locations");
+}
+
+/**
+ * One-shot import of the canonical Tristar referring-provider roster from
+ * `scripts/data/tristar-referring-providers-import.csv`. Runs on startup,
+ * exits early via an `app_settings` sentinel so it only fires the first
+ * time after this code lands. Re-running requires deleting the sentinel.
+ *
+ * Calls `bulkUpsertPhysicians` which dedups by NPI: existing physicians
+ * UPDATE rather than duplicate. Custom fields (cf_*) are merged with any
+ * existing customFields on the physician, never overwriting individual keys.
+ *
+ * Skips NPPES enrichment that the user-driven /import flow does — the CSV
+ * already has clean addresses, and adding 3865 NPPES round trips to startup
+ * would push cold-start over Railway's healthcheck timeout. Run
+ * /api/import/enrich-npis from the UI afterward if any rows need NPPES fill.
+ */
+export async function seedReferringProvidersRoster(): Promise<void> {
+  const SENTINEL_KEY = "providers_roster_seeded_v1";
+  const CSV_RELATIVE = "scripts/data/tristar-referring-providers-import.csv";
+
+  const existing = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, SENTINEL_KEY));
+  if (existing.length > 0) {
+    console.log("[seed] Provider roster already imported, skipping");
+    return;
+  }
+
+  const csvPath = path.join(process.cwd(), CSV_RELATIVE);
+  if (!fs.existsSync(csvPath)) {
+    console.warn(`[seed] Provider roster CSV not found at ${csvPath} — skipping`);
+    return;
+  }
+
+  // Parse CSV using ExcelJS (already a dep — keeps tooling consistent with /import flow).
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.csv.readFile(csvPath);
+  const ws = workbook.worksheets[0];
+  if (!ws) {
+    console.warn("[seed] Provider roster CSV had no worksheets — skipping");
+    return;
+  }
+
+  const headers: string[] = [];
+  ws.getRow(1).eachCell((cell, colNumber) => {
+    headers[colNumber] = String(cell.value ?? "").trim();
+  });
+
+  const rows: InsertPhysician[] = [];
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const get = (h: string): string | undefined => {
+      const idx = headers.indexOf(h);
+      if (idx < 0) return undefined;
+      const v = row.getCell(idx).value;
+      if (v == null || v === "") return undefined;
+      return String(v).trim() || undefined;
+    };
+
+    const customFields: Record<string, string> = {};
+    for (const h of headers) {
+      if (h.startsWith("cf_")) {
+        const v = get(h);
+        if (v) customFields[h] = v;
+      }
+    }
+
+    const firstName = get("firstName");
+    const lastName = get("lastName");
+    if (!firstName || !lastName) continue;
+
+    rows.push({
+      firstName,
+      lastName,
+      credentials: get("credentials"),
+      specialty: get("specialty"),
+      npi: get("npi"),
+      practiceName: get("practiceName"),
+      primaryOfficeAddress: get("address1"),
+      city: get("city"),
+      state: get("state"),
+      zip: get("zip"),
+      phone: get("phone"),
+      fax: get("fax"),
+      customFields: Object.keys(customFields).length > 0 ? customFields : undefined,
+      status: "PROSPECT",
+      relationshipStage: "NEW",
+      priority: "MEDIUM",
+    });
+  }
+
+  if (rows.length === 0) {
+    console.warn("[seed] Provider roster CSV had zero parseable rows — skipping");
+    return;
+  }
+
+  console.log(`[seed] Importing ${rows.length} providers from canonical roster…`);
+  const result = await bulkUpsertPhysicians(rows);
+  console.log(
+    `[seed] Provider roster imported: ${result.inserted} inserted, ${result.updated} updated, ${result.errors.length} errors`,
+  );
+
+  await db
+    .insert(appSettings)
+    .values({
+      key: SENTINEL_KEY,
+      value: JSON.stringify({
+        importedAt: new Date().toISOString(),
+        inserted: result.inserted,
+        updated: result.updated,
+        totalParsed: rows.length,
+      }),
+    })
+    .onConflictDoNothing();
 }

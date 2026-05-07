@@ -33,8 +33,11 @@ httpServer.listen(
         const { ensureSearchIndexes } = await import("./db");
         await ensureSearchIndexes().catch(err => console.error("Index error:", err));
 
-        const { seed } = await import("./seed");
+        const { seed, seedReferringProvidersRoster } = await import("./seed");
         await seed().catch(err => console.error("Seed error:", err));
+        await seedReferringProvidersRoster().catch(err =>
+          console.error("Provider roster seed error:", err),
+        );
 
         const { importRealFinancials } = await import("./import-real-financials");
         await importRealFinancials().catch(err => console.error("Financial import error:", err));
