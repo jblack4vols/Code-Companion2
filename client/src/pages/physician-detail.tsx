@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { VoiceTextarea } from "@/components/voice-textarea";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -641,7 +642,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                           </div>
                           <div className="space-y-1.5">
                             <Label>Summary</Label>
-                            <Textarea name="summary" required placeholder="What happened?" data-testid="input-interaction-summary" />
+                            <VoiceTextarea name="summary" required placeholder="What happened?" data-testid="input-interaction-summary" />
                           </div>
                           <div className="space-y-1.5">
                             <Label>Next Step</Label>
@@ -847,6 +848,21 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
             </Tabs>
           </Card>
         </div>
+      )}
+
+      {/* Mobile floating action: Log Interaction is the most-used action a
+          field rep performs from this page; surface it within thumb reach.
+          Hidden on md+ where the in-tab "Log Interaction" button is visible. */}
+      {physician && (
+        <Button
+          size="lg"
+          onClick={() => setShowInteraction(true)}
+          className="md:hidden fixed bottom-4 right-4 z-40 h-14 w-14 rounded-full shadow-lg p-0"
+          aria-label="Log interaction"
+          data-testid="fab-log-interaction"
+        >
+          <Plus className="w-6 h-6" />
+        </Button>
       )}
     </div>
   );
