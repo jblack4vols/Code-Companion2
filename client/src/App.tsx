@@ -36,6 +36,7 @@ const AuditLogPage = lazy(() => import("@/pages/audit-log"));
 const PhysicianTieringPage = lazy(() => import("@/pages/physician-tiering"));
 const DecliningReferralsPage = lazy(() => import("@/pages/declining-referrals"));
 const ReferralTrendsPage = lazy(() => import("@/pages/referral-trends"));
+const ProvidersGoneDarkPage = lazy(() => import("@/pages/providers-gone-dark"));
 const TerritoriesPage = lazy(() => import("@/pages/territories"));
 const ImportPage = lazy(() => import("@/pages/import"));
 const SharePointSyncPage = lazy(() => import("@/pages/sharepoint-sync"));
@@ -122,6 +123,7 @@ function AuthenticatedRouter() {
         <Route path="/tiering" component={PhysicianTieringPage} />
         <Route path="/declining" component={DecliningReferralsPage} />
         <Route path="/referral-trends" component={ReferralTrendsPage} />
+        <Route path="/providers-gone-dark" component={ProvidersGoneDarkPage} />
         <Route path="/practices" component={PracticeIntelligencePage} />
         <Route path="/practices/:name" component={PracticeIntelligencePage} />
         <Route path="/map" component={MapViewPage} />
