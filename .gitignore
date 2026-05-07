@@ -17,6 +17,9 @@ npm-debug.log*
 yarn-debug.log*
 pnpm-debug.log*
 
+# claude code session runtime (local hook logs)
+.claude/hooks/.logs/
+
 # OS
 .DS_Store
 Thumbs.db
