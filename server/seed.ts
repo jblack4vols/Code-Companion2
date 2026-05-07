@@ -1,9 +1,10 @@
 import { db } from "./db";
-import { users, locations, physicians, interactions, referrals, tasks, calendarEvents, userLocationAccess, auditLogs, appSettings, type InsertPhysician } from "@shared/schema";
-import { sql, eq } from "drizzle-orm";
+import { users, locations, physicians, interactions, referrals, tasks, calendarEvents, userLocationAccess, auditLogs, appSettings, type InsertPhysician, type InsertReferral } from "@shared/schema";
+import { sql, eq, isNull } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
 import { bulkUpsertPhysicians } from "./storage-physicians";
+import { bulkUpsertReferrals } from "./storage-referrals";
 
 async function loadJsonData(filename: string): Promise<any[]> {
   const filePath = path.join(process.cwd(), "data", filename);
@@ -408,6 +409,175 @@ export async function seedReferringProvidersRoster(): Promise<void> {
         importedAt: new Date().toISOString(),
         inserted: result.inserted,
         updated: result.updated,
+        totalParsed: rows.length,
+      }),
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * One-shot import of the YTD created-cases (referrals) roster from
+ * `scripts/data/tristar-created-cases-ytd-import.csv`. Idempotent via the
+ * app_settings sentinel, runs once on the first deploy after this code lands.
+ *
+ * Strategy:
+ *   - Pre-load all physicians (NPI + name) and locations (name) into memory
+ *     once. 2k+ rows × per-row DB lookups would be too slow at startup.
+ *   - Resolve referringProviderNpi → physicianId via the in-memory map.
+ *     Rows whose NPI matches a known physician get linked. Unmatched rows
+ *     still insert with referringProviderName + referringProviderNpi
+ *     populated; physicianId stays null. The CRM has separate flows
+ *     (provider-office-linker, /api/import/enrich-npis) to retroactively
+ *     link these.
+ *   - Resolve facilityName → locationId via name (case-insensitive substring).
+ *     Rows without a matching location are skipped (location_id is notNull
+ *     in the schema). Logs the unmatched count.
+ *   - Single bulkUpsertReferrals call. Dedupes by patientAccountNumber +
+ *     caseTitle.
+ */
+export async function seedReferralsRoster(): Promise<void> {
+  const SENTINEL_KEY = "referrals_ytd_seeded_v1";
+  const CSV_RELATIVE = "scripts/data/tristar-created-cases-ytd-import.csv";
+
+  const existing = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, SENTINEL_KEY));
+  if (existing.length > 0) {
+    console.log("[seed] Referrals roster already imported, skipping");
+    return;
+  }
+
+  const csvPath = path.join(process.cwd(), CSV_RELATIVE);
+  if (!fs.existsSync(csvPath)) {
+    console.warn(`[seed] Referrals CSV not found at ${csvPath} — skipping`);
+    return;
+  }
+
+  const ExcelJS = (await import("exceljs")).default;
+  const workbook = new ExcelJS.Workbook();
+  await workbook.csv.readFile(csvPath);
+  const ws = workbook.worksheets[0];
+  if (!ws) {
+    console.warn("[seed] Referrals CSV had no worksheets — skipping");
+    return;
+  }
+
+  const headers: string[] = [];
+  ws.getRow(1).eachCell((cell, colNumber) => {
+    headers[colNumber] = String(cell.value ?? "").trim();
+  });
+
+  // Pre-load physicians and locations once.
+  const allPhysicians = await db.select().from(physicians).where(isNull(physicians.deletedAt));
+  const physByNpi = new Map<string, string>();
+  for (const p of allPhysicians) {
+    if (p.npi) physByNpi.set(p.npi.trim(), p.id);
+  }
+
+  const allLocations = await db.select().from(locations);
+  const locByName = new Map<string, string>();
+  for (const l of allLocations) {
+    locByName.set(l.name.trim().toLowerCase(), l.id);
+  }
+  const resolveLocation = (name: string): string | undefined => {
+    const key = name.trim().toLowerCase();
+    if (locByName.has(key)) return locByName.get(key);
+    // Substring match — Excel "Tristar PT - Morristown" against DB "Morristown"
+    const entries = Array.from(locByName.entries());
+    for (const [n, id] of entries) {
+      if (key.includes(n) || n.includes(key)) return id;
+    }
+    return undefined;
+  };
+
+  const rows: InsertReferral[] = [];
+  let unmatchedLocations = 0;
+  let unmatchedPhysicians = 0;
+  for (let r = 2; r <= ws.rowCount; r++) {
+    const row = ws.getRow(r);
+    const get = (h: string): string | undefined => {
+      const idx = headers.indexOf(h);
+      if (idx < 0) return undefined;
+      const v = row.getCell(idx).value;
+      if (v == null || v === "") return undefined;
+      return String(v).trim() || undefined;
+    };
+    const getInt = (h: string): number | undefined => {
+      const v = get(h);
+      if (!v) return undefined;
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    const facilityName = get("facilityName");
+    const locationId = facilityName ? resolveLocation(facilityName) : undefined;
+    if (!locationId) {
+      unmatchedLocations++;
+      continue;
+    }
+
+    const referralDate = get("referralDate");
+    if (!referralDate) continue;
+
+    const npi = get("referringProviderNpi");
+    const physicianId = npi ? physByNpi.get(npi) : undefined;
+    if (npi && !physicianId) unmatchedPhysicians++;
+
+    const status = (get("status") ?? "RECEIVED") as InsertReferral["status"];
+
+    rows.push({
+      patientAccountNumber: get("patientAccountNumber"),
+      patientFullName: get("patientFullName"),
+      caseTitle: get("caseTitle"),
+      caseTherapist: get("caseTherapist"),
+      locationId,
+      physicianId: physicianId ?? null,
+      referringProviderName: get("referringProviderName"),
+      referringProviderNpi: npi,
+      referralSource: get("referralSource"),
+      referralDate,
+      dateOfInitialEval: get("dateOfInitialEval") ?? null,
+      dischargeDate: get("dischargeDate") ?? null,
+      dischargeReason: get("dischargeReason"),
+      scheduledVisits: getInt("scheduledVisits") ?? 0,
+      arrivedVisits: getInt("arrivedVisits") ?? 0,
+      dateOfFirstScheduledVisit: get("dateOfFirstScheduledVisit") ?? null,
+      dateOfFirstArrivedVisit: get("dateOfFirstArrivedVisit") ?? null,
+      createdToArrived: getInt("createdToArrived"),
+      primaryInsurance: get("primaryInsurance"),
+      primaryPayerType: get("primaryPayerType"),
+      discipline: get("discipline"),
+      diagnosisCategory: get("diagnosisCategory"),
+      status,
+    });
+  }
+
+  if (rows.length === 0) {
+    console.warn("[seed] Referrals CSV had zero importable rows — skipping");
+    return;
+  }
+
+  console.log(
+    `[seed] Importing ${rows.length} referrals from YTD roster ` +
+      `(${unmatchedLocations} skipped — no location match; ` +
+      `${unmatchedPhysicians} inserted without physician link — no NPI match)…`,
+  );
+  const result = await bulkUpsertReferrals(rows);
+  console.log(
+    `[seed] Referrals roster imported: ${result.inserted} inserted, ${result.updated} updated, ${result.errors.length} errors`,
+  );
+
+  await db
+    .insert(appSettings)
+    .values({
+      key: SENTINEL_KEY,
+      value: JSON.stringify({
+        importedAt: new Date().toISOString(),
+        inserted: result.inserted,
+        updated: result.updated,
+        unmatchedLocations,
+        unmatchedPhysicians,
         totalParsed: rows.length,
       }),
     })
