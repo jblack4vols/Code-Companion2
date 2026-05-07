@@ -91,5 +91,21 @@ export async function ensureSearchIndexes() {
   }
 }
 
+/**
+ * Idempotent column-addition migrations that run on every startup. Postgres'
+ * `ADD COLUMN IF NOT EXISTS` makes these no-ops once the column is present,
+ * so they're safe to leave in place permanently. Use this for small additive
+ * changes when running `drizzle-kit push` against prod is impractical.
+ */
+export async function ensureRuntimeColumns() {
+  try {
+    await db.execute(sql`ALTER TABLE locations ADD COLUMN IF NOT EXISTS zip text`);
+    await db.execute(sql`ALTER TABLE locations ADD COLUMN IF NOT EXISTS fax text`);
+    console.log("[DB] Runtime columns ensured");
+  } catch (err) {
+    console.warn("[DB] Could not ensure runtime columns:", err);
+  }
+}
+
 // Revenue recovery and front desk tables are now defined in shared/schema.ts
 // Use `drizzle-kit push` to sync schema to database

@@ -32,7 +32,7 @@ export default function AdminLocationsPage() {
   const canDelete = user?.role === "OWNER";
 
   const saveMutation = useMutation({
-    mutationFn: async (data: { name: FormDataEntryValue | null; address: FormDataEntryValue | null; city: FormDataEntryValue | null; state: FormDataEntryValue | null; phone?: FormDataEntryValue | null; isActive: boolean }) => {
+    mutationFn: async (data: { name: FormDataEntryValue | null; address: FormDataEntryValue | null; city: FormDataEntryValue | null; state: FormDataEntryValue | null; zip?: FormDataEntryValue | null; phone?: FormDataEntryValue | null; fax?: FormDataEntryValue | null; isActive: boolean }) => {
       if (editingLocation) {
         const res = await apiRequest("PATCH", `/api/locations/${editingLocation.id}`, data);
         return res.json();
@@ -80,7 +80,9 @@ export default function AdminLocationsPage() {
       address: fd.get("address"),
       city: fd.get("city"),
       state: fd.get("state"),
+      zip: fd.get("zip") || undefined,
       phone: fd.get("phone") || undefined,
+      fax: fd.get("fax") || undefined,
       isActive: editingLocation ? editingLocation.isActive : true,
     });
   };
@@ -137,8 +139,8 @@ export default function AdminLocationsPage() {
                     data-testid="input-location-address"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
+                <div className="grid grid-cols-3 gap-3">
+                  <div className="space-y-1.5 col-span-2">
                     <Label htmlFor="city">City *</Label>
                     <Input
                       id="city"
@@ -154,18 +156,44 @@ export default function AdminLocationsPage() {
                       id="state"
                       name="state"
                       required
+                      maxLength={2}
+                      placeholder="TN"
                       defaultValue={editingLocation?.state || ""}
                       data-testid="input-location-state"
                     />
                   </div>
                 </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="zip">ZIP</Label>
+                    <Input
+                      id="zip"
+                      name="zip"
+                      placeholder="37813"
+                      maxLength={10}
+                      defaultValue={editingLocation?.zip || ""}
+                      data-testid="input-location-zip"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="phone">Phone</Label>
+                    <Input
+                      id="phone"
+                      name="phone"
+                      type="tel"
+                      defaultValue={editingLocation?.phone || ""}
+                      data-testid="input-location-phone"
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="phone">Phone</Label>
+                  <Label htmlFor="fax">Fax</Label>
                   <Input
-                    id="phone"
-                    name="phone"
-                    defaultValue={editingLocation?.phone || ""}
-                    data-testid="input-location-phone"
+                    id="fax"
+                    name="fax"
+                    type="tel"
+                    defaultValue={editingLocation?.fax || ""}
+                    data-testid="input-location-fax"
                   />
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
