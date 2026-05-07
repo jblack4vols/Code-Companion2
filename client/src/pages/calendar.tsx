@@ -412,6 +412,7 @@ export default function CalendarPage() {
             <Button
               size="icon"
               variant="outline"
+              aria-label="Previous period"
               onClick={() => {
                 if (viewMode === "day") setCurrentDate(subDays(currentDate, 1));
                 else if (viewMode === "week") setCurrentDate(subWeeks(currentDate, 1));
@@ -429,6 +430,7 @@ export default function CalendarPage() {
             <Button
               size="icon"
               variant="outline"
+              aria-label="Next period"
               onClick={() => {
                 if (viewMode === "day") setCurrentDate(addDays(currentDate, 1));
                 else if (viewMode === "week") setCurrentDate(addWeeks(currentDate, 1));
@@ -718,6 +720,7 @@ export default function CalendarPage() {
                             size="icon"
                             variant="ghost"
                             onClick={(e) => { e.stopPropagation(); openEditDialog(evt); }}
+                            aria-label="Edit event"
                             data-testid={`day-event-edit-${evt.id}`}
                             title="Edit event"
                           >
@@ -873,6 +876,7 @@ export default function CalendarPage() {
                         size="icon"
                         variant="ghost"
                         onClick={(e) => { e.stopPropagation(); openEditDialog(evt); }}
+                        aria-label="Edit event"
                         data-testid={`button-edit-event-${evt.id}`}
                         title="Edit event"
                       >
@@ -881,6 +885,7 @@ export default function CalendarPage() {
                       <Button
                         size="icon"
                         variant="ghost"
+                        aria-label="Sync to Outlook"
                         onClick={(e) => {
                           e.stopPropagation();
                           syncOutlookMutation.mutate(evt.id);

@@ -301,6 +301,7 @@ export default function ScheduledReportsPage() {
                           variant="ghost"
                           onClick={() => handleRunNow(report)}
                           disabled={runningId === report.id}
+                          aria-label={`Run ${report.name} now`}
                           data-testid={`button-run-${report.id}`}
                         >
                           {runningId === report.id ? (
@@ -313,6 +314,7 @@ export default function ScheduledReportsPage() {
                           size="icon"
                           variant="ghost"
                           onClick={() => setDeleteReport(report)}
+                          aria-label={`Delete ${report.name}`}
                           data-testid={`button-delete-${report.id}`}
                         >
                           <Trash2 className="w-4 h-4" />

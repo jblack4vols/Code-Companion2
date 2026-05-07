@@ -635,13 +635,14 @@ export default function IntegrationsPage() {
                     <div className="space-y-3">
                       <div className="flex items-center gap-2">
                         <Input value={showKey ? generatedKey : "••••••••••••••••••••"} readOnly data-testid="input-generated-key" />
-                        <Button size="icon" variant="outline" onClick={() => setShowKey(!showKey)} data-testid="button-toggle-key">
+                        <Button size="icon" variant="outline" onClick={() => setShowKey(!showKey)} aria-label={showKey ? "Hide API key" : "Show API key"} data-testid="button-toggle-key">
                           {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                         </Button>
                         <Button
                           size="icon"
                           variant="outline"
                           onClick={() => { navigator.clipboard.writeText(generatedKey); toast({ title: "Copied to clipboard" }); }}
+                          aria-label="Copy API key to clipboard"
                           data-testid="button-copy-key"
                         >
                           <Copy className="w-4 h-4" />
@@ -737,6 +738,7 @@ export default function IntegrationsPage() {
                           size="icon"
                           variant="ghost"
                           onClick={() => deactivateApiKey.mutate(key.id)}
+                          aria-label={`Revoke ${key.name}`}
                           data-testid={`button-revoke-key-${key.id}`}
                         >
                           <Trash2 className="w-4 h-4 text-destructive" />

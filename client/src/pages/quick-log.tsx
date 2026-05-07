@@ -211,6 +211,7 @@ export default function QuickLogPage() {
                   size="icon"
                   variant="ghost"
                   onClick={() => { setSelectedPhysician(null); setPhysicianSearch(""); }}
+                  aria-label="Clear selected provider"
                   data-testid="button-clear-physician"
                 >
                   <X className="w-4 h-4" />

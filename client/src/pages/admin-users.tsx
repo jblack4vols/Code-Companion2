@@ -314,6 +314,7 @@ export default function AdminUsersPage() {
                         size="icon"
                         variant="ghost"
                         onClick={() => setEditUser(u)}
+                        aria-label={`Edit ${u.name}`}
                         data-testid={`button-edit-user-${u.id}`}
                       >
                         <Pencil className="w-4 h-4" />
@@ -323,6 +324,7 @@ export default function AdminUsersPage() {
                           size="icon"
                           variant="ghost"
                           onClick={() => setDeleteUser(u)}
+                          aria-label={`Delete ${u.name}`}
                           data-testid={`button-delete-user-${u.id}`}
                         >
                           <Trash2 className="w-4 h-4" />

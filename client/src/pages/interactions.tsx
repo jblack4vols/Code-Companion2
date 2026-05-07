@@ -464,6 +464,7 @@ export default function InteractionsPage() {
                             size="icon"
                             variant="ghost"
                             onClick={() => setEditingInteraction(i)}
+                            aria-label="Edit interaction"
                             data-testid={`button-edit-interaction-${i.id}`}
                             title="Edit interaction"
                           >
@@ -476,6 +477,7 @@ export default function InteractionsPage() {
                             variant="ghost"
                             onClick={() => restoreMutation.mutate(i.id)}
                             disabled={restoreMutation.isPending}
+                            aria-label="Restore interaction"
                             data-testid={`button-restore-interaction-${i.id}`}
                             title="Restore interaction"
                           >
@@ -487,6 +489,7 @@ export default function InteractionsPage() {
                             variant="ghost"
                             onClick={() => deleteMutation.mutate(i.id)}
                             disabled={deleteMutation.isPending}
+                            aria-label="Delete interaction"
                             data-testid={`button-delete-interaction-${i.id}`}
                             title="Delete interaction"
                           >

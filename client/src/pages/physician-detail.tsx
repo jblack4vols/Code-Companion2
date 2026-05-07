@@ -276,7 +276,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     <div className="p-4 sm:p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3">
         <Link href="/physicians">
-          <Button variant="ghost" size="icon" data-testid="button-back">
+          <Button variant="ghost" size="icon" aria-label="Back to referring providers" data-testid="button-back">
             <ArrowLeft className="w-4 h-4" />
           </Button>
         </Link>
@@ -753,6 +753,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                       size="icon"
                       onClick={handleAddComment}
                       disabled={!newComment.trim() || addCommentMutation.isPending}
+                      aria-label="Post comment"
                       data-testid="button-add-comment"
                     >
                       <Send className="w-4 h-4" />
@@ -781,6 +782,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                                 variant="ghost"
                                 size="icon"
                                 onClick={() => { setEditingCommentId(c.id); setEditingCommentContent(c.content); }}
+                                aria-label="Edit comment"
                                 data-testid={`button-edit-comment-${c.id}`}
                               >
                                 <Pencil className="w-3 h-3" />
@@ -793,6 +795,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                                 className="text-destructive"
                                 onClick={() => deleteCommentMutation.mutate(c.id)}
                                 disabled={deleteCommentMutation.isPending}
+                                aria-label="Delete comment"
                                 data-testid={`button-delete-comment-${c.id}`}
                               >
                                 <Trash2 className="w-3 h-3" />
@@ -815,11 +818,12 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                                 variant="ghost"
                                 onClick={() => { updateCommentMutation.mutate({ commentId: c.id, content: editingCommentContent }); }}
                                 disabled={!editingCommentContent.trim() || updateCommentMutation.isPending}
+                                aria-label="Save comment"
                                 data-testid={`button-save-comment-${c.id}`}
                               >
                                 <Save className="w-3 h-3" />
                               </Button>
-                              <Button size="icon" variant="ghost" onClick={() => { setEditingCommentId(null); setEditingCommentContent(""); }} data-testid={`button-cancel-edit-${c.id}`}>
+                              <Button size="icon" variant="ghost" onClick={() => { setEditingCommentId(null); setEditingCommentContent(""); }} aria-label="Cancel comment edit" data-testid={`button-cancel-edit-${c.id}`}>
                                 <X className="w-3 h-3" />
                               </Button>
                             </div>
