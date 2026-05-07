@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search, Lightbulb,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, TrendingUp, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search, Lightbulb,
 } from "lucide-react";
 import tristarLogo from "@assets/tristar-logo-transparent.png";
 import {
@@ -39,6 +39,7 @@ const analyticsItems = [
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Referral Trends", url: "/referral-trends", icon: TrendingUp, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Provider Productivity", url: "/provider-productivity-v2", icon: Activity, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Patient Lifecycle", url: "/lifecycle", icon: ListChecks, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
