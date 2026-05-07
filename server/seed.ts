@@ -583,3 +583,108 @@ export async function seedReferralsRoster(): Promise<void> {
     })
     .onConflictDoNothing();
 }
+
+/**
+ * Seed Brandon's hand-curated decline alerts (Apr 2026 review of Oct 2025
+ * → Apr 2026 referral trends). Adds three custom fields per matched
+ * physician — alert level, free-text note, and a back-reference to the
+ * source review — merging with any existing customFields so the prior
+ * roster import (PR #22) and ongoing user edits aren't blown away.
+ *
+ * Sentinel-gated; bump SENTINEL_KEY to re-run with updated data.
+ */
+export async function seedProviderDeclineAlerts(): Promise<void> {
+  const SENTINEL_KEY = "provider_decline_alerts_v1";
+  const REVIEW_LABEL = "Brandon — Oct 2025 to Apr 2026 review";
+
+  const existing = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, SENTINEL_KEY));
+  if (existing.length > 0) {
+    console.log("[seed] Provider decline alerts already imported, skipping");
+    return;
+  }
+
+  // 28 rows from the "Declines over six months" sheet of the
+  // March-vs-April spreadsheet. Alert levels stripped of source
+  // emoji prefixes (🔴 CRITICAL → CRITICAL, etc.).
+  const DECLINE_ALERTS: { npi: string; alertLevel: "CRITICAL" | "WATCH" | "MONITOR"; note?: string }[] = [
+    { npi: "1811125057", alertLevel: "CRITICAL", note: "ETSU Pediatrics" },
+    { npi: "1932633484", alertLevel: "CRITICAL" },
+    { npi: "1649326596", alertLevel: "WATCH", note: "No longer at Newport" },
+    { npi: "1518052687", alertLevel: "WATCH", note: "Pediatric at Fort Sanders" },
+    { npi: "1760686711", alertLevel: "WATCH", note: "Newport" },
+    { npi: "1831959022", alertLevel: "WATCH", note: "KOC" },
+    { npi: "1942251806", alertLevel: "WATCH" },
+    { npi: "1992152144", alertLevel: "WATCH" },
+    { npi: "1295936391", alertLevel: "WATCH" },
+    { npi: "1457320012", alertLevel: "WATCH" },
+    { npi: "1760916985", alertLevel: "WATCH" },
+    { npi: "1467403386", alertLevel: "WATCH" },
+    { npi: "1184123382", alertLevel: "WATCH" },
+    { npi: "1477100113", alertLevel: "WATCH" },
+    { npi: "1730137423", alertLevel: "WATCH" },
+    { npi: "1558872531", alertLevel: "WATCH" },
+    { npi: "1710913900", alertLevel: "WATCH" },
+    { npi: "1174913180", alertLevel: "WATCH", note: "Maternity Leave" },
+    { npi: "1841295011", alertLevel: "WATCH" },
+    { npi: "1639129323", alertLevel: "WATCH" },
+    { npi: "1134704133", alertLevel: "WATCH" },
+    { npi: "1093159436", alertLevel: "WATCH" },
+    { npi: "1093071268", alertLevel: "WATCH" },
+    { npi: "1457767345", alertLevel: "WATCH" },
+    { npi: "1801819198", alertLevel: "WATCH" },
+    { npi: "1063452365", alertLevel: "WATCH" },
+    { npi: "1023094349", alertLevel: "MONITOR" },
+    { npi: "1801892054", alertLevel: "MONITOR" },
+  ];
+
+  const allPhysicians = await db
+    .select()
+    .from(physicians)
+    .where(isNull(physicians.deletedAt));
+  const byNpi = new Map<string, (typeof allPhysicians)[number]>();
+  for (const p of allPhysicians) {
+    if (p.npi) byNpi.set(p.npi.trim(), p);
+  }
+
+  let updated = 0;
+  let unmatched = 0;
+  for (const alert of DECLINE_ALERTS) {
+    const phys = byNpi.get(alert.npi);
+    if (!phys) {
+      unmatched++;
+      continue;
+    }
+    const existingCf = (phys.customFields ?? {}) as Record<string, string>;
+    const merged: Record<string, string> = {
+      ...existingCf,
+      cf_decline_alert_level: alert.alertLevel,
+      cf_decline_alert_source: REVIEW_LABEL,
+    };
+    if (alert.note) merged.cf_decline_note = alert.note;
+    await db
+      .update(physicians)
+      .set({ customFields: merged, updatedAt: new Date() })
+      .where(eq(physicians.id, phys.id));
+    updated++;
+  }
+
+  console.log(
+    `[seed] Provider decline alerts imported: ${updated} updated, ${unmatched} unmatched (NPI not in physicians table)`,
+  );
+
+  await db
+    .insert(appSettings)
+    .values({
+      key: SENTINEL_KEY,
+      value: JSON.stringify({
+        importedAt: new Date().toISOString(),
+        updated,
+        unmatched,
+        source: REVIEW_LABEL,
+      }),
+    })
+    .onConflictDoNothing();
+}
