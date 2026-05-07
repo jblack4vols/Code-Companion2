@@ -3,7 +3,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { VoiceTextarea } from "@/components/voice-textarea";
 import type { Physician, Location } from "@shared/schema";
 
 type PhysicianWithCount = Physician & { referralCount?: number };
@@ -66,7 +65,7 @@ export function PhysiciansQuickInteractionDialog({ physician, locations, isPendi
           </div>
           <div className="space-y-1.5">
             <Label>Summary</Label>
-            <VoiceTextarea name="summary" placeholder="Brief description of the interaction..." rows={2} data-testid="input-quick-summary" />
+            <Textarea name="summary" placeholder="Brief description of the interaction..." rows={2} data-testid="input-quick-summary" />
           </div>
           <div className="space-y-1.5">
             <Label>Next Step</Label>

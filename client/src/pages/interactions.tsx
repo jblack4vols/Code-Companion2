@@ -9,7 +9,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { VoiceTextarea } from "@/components/voice-textarea";
 import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download, FileStack, Trash2, RotateCcw, Archive, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
@@ -314,7 +313,7 @@ export default function InteractionsPage() {
                 </div>
                 <div className="space-y-1.5">
                   <Label>Summary *</Label>
-                  <VoiceTextarea name="summary" required placeholder="What happened?" data-testid="input-new-interaction-summary" />
+                  <Textarea name="summary" required placeholder="What happened?" data-testid="input-new-interaction-summary" />
                 </div>
                 <div className="space-y-1.5">
                   <Label>Next Step</Label>
@@ -572,7 +571,7 @@ export default function InteractionsPage() {
               </div>
               <div className="space-y-1.5">
                 <Label>Summary *</Label>
-                <VoiceTextarea name="summary" required defaultValue={editingInteraction.summary} data-testid="input-edit-interaction-summary" />
+                <Textarea name="summary" required defaultValue={editingInteraction.summary} data-testid="input-edit-interaction-summary" />
               </div>
               <div className="space-y-1.5">
                 <Label>Next Step</Label>
