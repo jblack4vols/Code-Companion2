@@ -20,6 +20,10 @@ pnpm-debug.log*
 # claude code session runtime (local hook logs)
 .claude/hooks/.logs/
 
+# python bytecode caches from skill scripts
+**/__pycache__/
+*.pyc
+
 # OS
 .DS_Store
 Thumbs.db
