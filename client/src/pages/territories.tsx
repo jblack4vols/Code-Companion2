@@ -83,6 +83,9 @@ export default function TerritoriesPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/territories"] });
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
     },
+    onError: (err: unknown) => {
+      toast({ title: "Assign failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
+    },
   });
 
   const terrData = territories?.territories || [];
