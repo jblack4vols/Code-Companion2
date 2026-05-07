@@ -52,6 +52,7 @@ async function buildAll() {
     },
     define: {
       "process.env.NODE_ENV": '"production"',
+      "process.env.VERCEL": '"1"',
     },
     minify: true,
     external: externals,

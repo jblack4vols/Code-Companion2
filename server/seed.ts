@@ -23,7 +23,7 @@ async function syncOwnerCredentials() {
 
   if (existingOwner.length > 0) {
     const owner = existingOwner[0];
-    const passwordMatch = await bcrypt.compare(seedOwnerPw, owner.password);
+    const passwordMatch = owner.password ? await bcrypt.compare(seedOwnerPw, owner.password) : false;
     if (!passwordMatch) {
       const newHash = await bcrypt.hash(seedOwnerPw, 10);
       await db.update(users).set({ password: newHash }).where(eq(users.id, owner.id));
@@ -51,7 +51,7 @@ async function syncUserCredentials() {
     const existing = await db.select().from(users).where(eq(users.email, email));
     if (existing.length === 0) continue;
     const user = existing[0];
-    const match = await bcrypt.compare(password, user.password);
+    const match = user.password ? await bcrypt.compare(password, user.password) : false;
     if (!match) {
       const hash = await bcrypt.hash(password, 10);
       await db.update(users).set({ password: hash, forcePasswordChange: false }).where(eq(users.id, user.id));

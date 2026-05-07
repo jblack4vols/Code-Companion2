@@ -9,6 +9,7 @@ import { apiLimiter, publicApiLimiter } from "./middleware/rateLimiter";
 import { csrfProtection, csrfTokenEndpoint } from "./middleware/csrf";
 import { SESSION_TIMEOUT_MS } from "./routes/shared";
 import { registerAuthRoutes } from "./routes/auth";
+import { registerMicrosoftSsoRoutes } from "./routes/auth-microsoft-sso";
 import { registerUserRoutes } from "./routes/users";
 import { registerLocationRoutes } from "./routes/locations";
 import { registerPhysicianRoutes } from "./routes/physicians";
@@ -33,6 +34,12 @@ import { registerRevenueRecoveryRoutes } from "./routes/revenue-recovery";
 import { registerBillingLagRoutes } from "./routes/billing-lag";
 import { registerRevenueRecoveryAppealsRoutes } from "./routes/revenue-recovery-appeals";
 import { registerFrontDeskRoutes } from "./routes/frontdesk";
+import { registerRpvAnalyticsRoutes } from "./routes/rpv-analytics";
+import { registerReferralIntelligenceRoutes } from "./routes/referral-intelligence";
+import { registerProviderProductivityV2Routes } from "./routes/provider-productivity-v2";
+import { registerOutlookOAuthRoutes } from "./routes/outlook-oauth";
+import { registerLifecycleRoutes } from "./routes/lifecycle";
+import { registerCashFlowRoutes } from "./routes/cash-flow";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -40,17 +47,17 @@ export async function registerRoutes(
 ): Promise<Server> {
   const PgStore = connectPgSimple(session);
 
-  await db.execute(sql`
+  // Create session table lazily — don't block cold start
+  db.execute(sql`
     CREATE TABLE IF NOT EXISTS "session" (
       "sid" varchar NOT NULL COLLATE "default",
       "sess" json NOT NULL,
       "expire" timestamp(6) NOT NULL,
       CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
     ) WITH (OIDS=FALSE)
-  `);
-  await db.execute(sql`
+  `).then(() => db.execute(sql`
     CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
-  `);
+  `)).catch(() => {});
 
   app.use(cookieParser());
 
@@ -70,9 +77,9 @@ export async function registerRoutes(
   app.use(
     session({
       store: new PgStore({
-        conString: process.env.DATABASE_URL,
-        createTableIfMissing: false,
-        pruneSessionInterval: 60 * 15,
+        conString: process.env.DATABASE_URL + (process.env.DATABASE_URL?.includes("sslmode") ? "" : "?sslmode=require"),
+        createTableIfMissing: true,
+        pruneSessionInterval: false,
         tableName: "session",
       }),
       secret: process.env.SESSION_SECRET ?? (() => { throw new Error("SESSION_SECRET environment variable is required"); })(),
@@ -95,6 +102,7 @@ export async function registerRoutes(
   app.get("/api/csrf-token", csrfTokenEndpoint);
 
   registerAuthRoutes(app);
+  registerMicrosoftSsoRoutes(app);
   registerUserRoutes(app);
   registerLocationRoutes(app);
   registerPhysicianRoutes(app);
@@ -119,6 +127,12 @@ export async function registerRoutes(
   await registerRevenueRecoveryAppealsRoutes(app);
   registerFrontDeskRoutes(app);
   registerFeedbackRoutes(app);
+  registerRpvAnalyticsRoutes(app);
+  registerReferralIntelligenceRoutes(app);
+  registerProviderProductivityV2Routes(app);
+  registerOutlookOAuthRoutes(app);
+  registerLifecycleRoutes(app);
+  registerCashFlowRoutes(app);
 
   return httpServer;
 }

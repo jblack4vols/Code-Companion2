@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search, Lightbulb,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, TrendingUp, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search, Lightbulb,
 } from "lucide-react";
 import tristarLogo from "@assets/tristar-logo-transparent.png";
 import {
@@ -33,11 +33,17 @@ const analyticsItems = [
   { title: "Executive", url: "/dashboards/executive", icon: PieChart, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Territory", url: "/dashboards/territory", icon: Compass, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Location", url: "/dashboards/location", icon: Building2, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "RPV Analytics", url: "/rpv-analytics", icon: BarChart3, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Referral Intelligence", url: "/referral-intelligence", icon: Search, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "ROI Calculator", url: "/roi-calculator", icon: DollarSign, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Leaderboard", url: "/leaderboard", icon: Trophy, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Tiering", url: "/tiering", icon: Award, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Declining", url: "/declining", icon: TrendingDown, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Referral Trends", url: "/referral-trends", icon: TrendingUp, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Practice Intelligence", url: "/practices", icon: Building2, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
+  { title: "Provider Productivity", url: "/provider-productivity-v2", icon: Activity, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Patient Lifecycle", url: "/lifecycle", icon: ListChecks, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
+  { title: "Cash Flow", url: "/cash-flow", icon: DollarSign, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
 ];
 
 const opsItems = [
@@ -94,7 +100,7 @@ const roleBadgeVariant: Record<string, string> = {
 };
 
 const outreachUrls = ["/quick-log", "/interactions", "/tasks", "/activity"];
-const analyticsUrls = ["/dashboards/", "/roi-calculator", "/leaderboard", "/tiering", "/declining", "/practices"];
+const analyticsUrls = ["/dashboards/", "/rpv-analytics", "/referral-intelligence", "/roi-calculator", "/leaderboard", "/tiering", "/declining", "/practices", "/provider-productivity-v2", "/lifecycle", "/cash-flow"];
 const opsUrls = ["/frontdesk", "/goals", "/map", "/territories", "/referral-explorer", "/provider-offices", "/provider-office-linker"];
 const financeUrls = ["/unit-economics", "/revenue"];
 const adminUrls = ["/admin/", "/import"];

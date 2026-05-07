@@ -11,15 +11,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User, X, CheckCircle2, Circle } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User, X, CheckCircle2, Circle, Pencil } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { CalendarEvent, Physician, Location } from "@shared/schema";
+import { CalendarOutlookConnect } from "./calendar-outlook-connect";
+import { CalendarUserFilter, buildUserColorMap, getUserColor } from "./calendar-user-filter";
 import {
   format,
   addMonths,
   subMonths,
+  addWeeks,
+  subWeeks,
+  addDays,
+  subDays,
   startOfMonth,
   endOfMonth,
   eachDayOfInterval,
@@ -57,13 +63,15 @@ const EVENT_TYPE_LABELS: Record<string, string> = {
   OTHER: "Other",
 };
 
-type ViewMode = "calendar" | "list";
+type ViewMode = "month" | "week" | "day" | "list";
 
 export default function CalendarPage() {
   const { user } = useAuth();
   const { toast } = useToast();
-  const [currentMonth, setCurrentMonth] = useState(new Date());
-  const [viewMode, setViewMode] = useState<ViewMode>("calendar");
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [viewMode, setViewMode] = useState<ViewMode>("month");
+  const [listStartDate, setListStartDate] = useState<string>(format(startOfMonth(new Date()), "yyyy-MM-dd"));
+  const [listEndDate, setListEndDate] = useState<string>(format(endOfMonth(new Date()), "yyyy-MM-dd"));
   const [locationFilter, setLocationFilter] = useState<string>("all");
   const [practiceFilter, setPracticeFilter] = useState<string>("all");
   const [practiceFilterOpen, setPracticeFilterOpen] = useState(false);
@@ -71,6 +79,9 @@ export default function CalendarPage() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingEvent, setEditingEvent] = useState<CalendarEvent | null>(null);
   const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+
+  // selectedUserIds: empty Set = "all users" (default), non-empty = filtered subset
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(new Set());
 
   const [selectedPracticeName, setSelectedPracticeName] = useState<string>("");
   const [practiceComboOpen, setPracticeComboOpen] = useState(false);
@@ -119,17 +130,33 @@ export default function CalendarPage() {
 
   const [practiceDetailName, setPracticeDetailName] = useState<string | null>(null);
 
-  const monthStart = startOfMonth(currentMonth);
-  const monthEnd = endOfMonth(currentMonth);
-  const startDate = format(monthStart, "yyyy-MM-dd");
-  const endDate = format(monthEnd, "yyyy-MM-dd");
+  // Date range driven by view mode. Month view also feeds the calendar grid.
+  const monthStart = startOfMonth(currentDate);
+  const monthEnd = endOfMonth(currentDate);
+  const weekStart = startOfWeek(currentDate);
+  const weekEnd = endOfWeek(currentDate);
+
+  const { rangeStart, rangeEnd } = useMemo(() => {
+    if (viewMode === "day") return { rangeStart: currentDate, rangeEnd: currentDate };
+    if (viewMode === "week") return { rangeStart: weekStart, rangeEnd: weekEnd };
+    if (viewMode === "list") {
+      return { rangeStart: new Date(`${listStartDate}T00:00:00`), rangeEnd: new Date(`${listEndDate}T23:59:59`) };
+    }
+    return { rangeStart: monthStart, rangeEnd: monthEnd };
+  }, [viewMode, currentDate, weekStart, weekEnd, monthStart, monthEnd, listStartDate, listEndDate]);
+
+  const startDate = format(rangeStart, "yyyy-MM-dd");
+  const endDate = format(rangeEnd, "yyyy-MM-dd");
+
+  const userIdsParam = selectedUserIds.size > 0 ? Array.from(selectedUserIds).join(",") : undefined;
 
   const queryParams = new URLSearchParams({ startDate, endDate });
   if (locationFilter !== "all") queryParams.set("locationId", locationFilter);
   if (practiceFilter !== "all") queryParams.set("practiceName", practiceFilter);
+  if (userIdsParam) queryParams.set("userIds", userIdsParam);
 
   const { data: events, isLoading, isError, refetch } = useQuery<CalendarEvent[]>({
-    queryKey: ["/api/calendar-events", startDate, endDate, locationFilter, practiceFilter],
+    queryKey: ["/api/calendar-events", startDate, endDate, locationFilter, practiceFilter, userIdsParam ?? "all"],
     queryFn: async () => {
       const res = await fetch(`/api/calendar-events?${queryParams.toString()}`, { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch events");
@@ -139,6 +166,18 @@ export default function CalendarPage() {
 
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
   const { data: practiceNames } = useQuery<string[]>({ queryKey: ["/api/physicians/practice-names"] });
+  const { data: allUsers } = useQuery<{ id: string; name: string }[]>({
+    queryKey: ["/api/users"],
+    queryFn: async () => {
+      const res = await fetch("/api/users", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch users");
+      return res.json();
+    },
+    staleTime: 5 * 60_000,
+  });
+
+  // Stable map of userId → color index for consistent event coloring
+  const userColorMap = useMemo(() => buildUserColorMap(allUsers ?? []), [allUsers]);
 
   const { data: practicePhysicians } = useQuery<Physician[]>({
     queryKey: ["/api/physicians/by-practice", selectedPracticeName],
@@ -263,6 +302,23 @@ export default function CalendarPage() {
     setDialogOpen(true);
   };
 
+  // Primary click on an event in any calendar view: open the office (practice
+  // detail) so the rep walking in can see all referring providers, prior
+  // notes, and contact info. Falls back to edit dialog if the event has no
+  // practice attached. Editing is still available via the pencil button.
+  const handleEventPrimaryClick = (event: CalendarEvent) => {
+    if (event.practiceName) {
+      setPracticeDetailName(event.practiceName);
+    } else {
+      openEditDialog(event);
+    }
+  };
+
+  const navigateToDay = (day: Date) => {
+    setCurrentDate(day);
+    setViewMode("day");
+  };
+
   const openEditDialog = (event: CalendarEvent) => {
     setEditingEvent(event);
     setSelectedPracticeName(event.practiceName || "");
@@ -307,24 +363,43 @@ export default function CalendarPage() {
           <p className="text-xs sm:text-sm text-muted-foreground">Manage events and office visits</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            variant={viewMode === "calendar" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("calendar")}
-            data-testid="button-view-calendar"
-          >
-            <CalendarIcon className="w-4 h-4 mr-1" />
-            Calendar
-          </Button>
-          <Button
-            variant={viewMode === "list" ? "default" : "outline"}
-            size="sm"
-            onClick={() => setViewMode("list")}
-            data-testid="button-view-list"
-          >
-            <List className="w-4 h-4 mr-1" />
-            List
-          </Button>
+          <CalendarOutlookConnect />
+          <div className="inline-flex rounded-md border bg-muted/30 p-0.5">
+            <Button
+              variant={viewMode === "day" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("day")}
+              data-testid="button-view-day"
+            >
+              Day
+            </Button>
+            <Button
+              variant={viewMode === "week" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("week")}
+              data-testid="button-view-week"
+            >
+              Week
+            </Button>
+            <Button
+              variant={viewMode === "month" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("month")}
+              data-testid="button-view-month"
+            >
+              <CalendarIcon className="w-4 h-4 mr-1" />
+              Month
+            </Button>
+            <Button
+              variant={viewMode === "list" ? "default" : "ghost"}
+              size="sm"
+              onClick={() => setViewMode("list")}
+              data-testid="button-view-list"
+            >
+              <List className="w-4 h-4 mr-1" />
+              List
+            </Button>
+          </div>
           <Button onClick={() => openCreateDialog()} data-testid="button-add-event">
             <Plus className="w-4 h-4 mr-2" />Add Event
           </Button>
@@ -332,27 +407,48 @@ export default function CalendarPage() {
       </div>
 
       <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-1">
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => setCurrentMonth(subMonths(currentMonth, 1))}
-            data-testid="button-prev-month"
-          >
-            <ChevronLeft className="w-4 h-4" />
-          </Button>
-          <span className="text-sm font-medium min-w-[140px] text-center" data-testid="text-current-month">
-            {format(currentMonth, "MMMM yyyy")}
-          </span>
-          <Button
-            size="icon"
-            variant="outline"
-            onClick={() => setCurrentMonth(addMonths(currentMonth, 1))}
-            data-testid="button-next-month"
-          >
-            <ChevronRight className="w-4 h-4" />
-          </Button>
-        </div>
+        {viewMode !== "list" && (
+          <div className="flex items-center gap-1">
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                if (viewMode === "day") setCurrentDate(subDays(currentDate, 1));
+                else if (viewMode === "week") setCurrentDate(subWeeks(currentDate, 1));
+                else setCurrentDate(subMonths(currentDate, 1));
+              }}
+              data-testid="button-prev-period"
+            >
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-medium min-w-[180px] text-center" data-testid="text-current-period">
+              {viewMode === "day" && format(currentDate, "EEE, MMM d, yyyy")}
+              {viewMode === "week" && `${format(weekStart, "MMM d")} – ${format(weekEnd, "MMM d, yyyy")}`}
+              {viewMode === "month" && format(currentDate, "MMMM yyyy")}
+            </span>
+            <Button
+              size="icon"
+              variant="outline"
+              onClick={() => {
+                if (viewMode === "day") setCurrentDate(addDays(currentDate, 1));
+                else if (viewMode === "week") setCurrentDate(addWeeks(currentDate, 1));
+                else setCurrentDate(addMonths(currentDate, 1));
+              }}
+              data-testid="button-next-period"
+            >
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              className="ml-1"
+              onClick={() => setCurrentDate(new Date())}
+              data-testid="button-today"
+            >
+              Today
+            </Button>
+          </div>
+        )}
         <Select value={locationFilter} onValueChange={setLocationFilter}>
           <SelectTrigger className="w-[160px]" data-testid="select-filter-location">
             <SelectValue placeholder="Location" />
@@ -419,6 +515,8 @@ export default function CalendarPage() {
         </Select>
       </div>
 
+      <CalendarUserFilter selectedUserIds={selectedUserIds} onChange={setSelectedUserIds} />
+
       {isLoading ? (
         <div className="space-y-3">
           {[1, 2, 3].map((i) => (
@@ -435,7 +533,7 @@ export default function CalendarPage() {
             </Button>
           </CardContent>
         </Card>
-      ) : viewMode === "calendar" ? (
+      ) : viewMode === "month" ? (
         <Card>
           <CardContent className="p-4">
             <div className="grid grid-cols-7 gap-px">
@@ -446,7 +544,7 @@ export default function CalendarPage() {
               ))}
               {calendarDays.map((day) => {
                 const dayEvents = getEventsForDay(day);
-                const inMonth = isSameMonth(day, currentMonth);
+                const inMonth = isSameMonth(day, currentDate);
                 const today = isToday(day);
                 return (
                   <div
@@ -454,7 +552,7 @@ export default function CalendarPage() {
                     className={`min-h-[100px] border rounded-md p-1 cursor-pointer hover-elevate ${
                       !inMonth ? "opacity-40" : ""
                     } ${today ? "border-primary" : "border-border"}`}
-                    onClick={() => openCreateDialog(day)}
+                    onClick={() => navigateToDay(day)}
                     data-testid={`cell-day-${format(day, "yyyy-MM-dd")}`}
                   >
                     <div className={`text-xs font-medium mb-1 ${today ? "text-primary" : "text-muted-foreground"}`}>
@@ -464,20 +562,29 @@ export default function CalendarPage() {
                       {dayEvents.slice(0, 3).map((evt) => (
                         <div
                           key={evt.id}
-                          className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer ${evt.completed ? "bg-green-600" : EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
+                          className={`text-[10px] px-1 py-0.5 rounded truncate cursor-pointer flex items-center gap-1 ${evt.completed ? "bg-green-600" : EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            openEditDialog(evt);
+                            handleEventPrimaryClick(evt);
                           }}
                           data-testid={`event-bar-${evt.id}`}
                         >
-                          {evt.title}
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70" />
+                          <span className="truncate">{evt.title}</span>
                         </div>
                       ))}
                       {dayEvents.length > 3 && (
-                        <div className="text-[10px] text-muted-foreground pl-1">
+                        <button
+                          type="button"
+                          className="text-[10px] text-primary hover:underline pl-1 text-left w-full"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigateToDay(day);
+                          }}
+                          data-testid={`button-more-${format(day, "yyyy-MM-dd")}`}
+                        >
                           +{dayEvents.length - 3} more
-                        </div>
+                        </button>
                       )}
                     </div>
                   </div>
@@ -486,24 +593,233 @@ export default function CalendarPage() {
             </div>
           </CardContent>
         </Card>
+      ) : viewMode === "week" ? (
+        <Card>
+          <CardContent className="p-2 sm:p-4">
+            <div className="grid grid-cols-1 sm:grid-cols-7 gap-2">
+              {eachDayOfInterval({ start: weekStart, end: weekEnd }).map((day) => {
+                const dayEvents = getEventsForDay(day);
+                const today = isToday(day);
+                return (
+                  <div
+                    key={day.toISOString()}
+                    className={`border rounded-md p-2 ${today ? "border-primary" : "border-border"}`}
+                    data-testid={`week-cell-${format(day, "yyyy-MM-dd")}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={() => navigateToDay(day)}
+                      className="text-xs font-medium mb-2 w-full text-left hover:text-primary"
+                    >
+                      <div className={today ? "text-primary" : "text-muted-foreground"}>
+                        {format(day, "EEE")}
+                      </div>
+                      <div className={`text-base ${today ? "text-primary" : ""}`}>
+                        {format(day, "MMM d")}
+                      </div>
+                    </button>
+                    <div className="space-y-1 min-h-[60px]">
+                      {dayEvents.length === 0 && (
+                        <p className="text-[10px] text-muted-foreground italic">No events</p>
+                      )}
+                      {dayEvents.map((evt) => (
+                        <div
+                          key={evt.id}
+                          className={`text-[11px] px-1.5 py-1 rounded cursor-pointer flex items-start gap-1 ${evt.completed ? "bg-green-600" : EVENT_TYPE_BAR_COLORS[evt.eventType]} text-white`}
+                          onClick={() => handleEventPrimaryClick(evt)}
+                          data-testid={`week-event-${evt.id}`}
+                        >
+                          <span className="w-1.5 h-1.5 rounded-full shrink-0 bg-white/70 mt-1" />
+                          <div className="min-w-0 flex-1">
+                            <div className="truncate font-medium">{evt.title}</div>
+                            <div className="text-[10px] opacity-90">{format(new Date(evt.startAt), "h:mm a")}</div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); openEditDialog(evt); }}
+                            className="opacity-70 hover:opacity-100 shrink-0"
+                            data-testid={`week-event-edit-${evt.id}`}
+                            title="Edit event"
+                          >
+                            <Pencil className="w-3 h-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </CardContent>
+        </Card>
+      ) : viewMode === "day" ? (
+        <Card>
+          <CardContent className="p-4 space-y-2">
+            <div className="flex items-center justify-between mb-2">
+              <h2 className="text-base font-semibold" data-testid="text-day-heading">
+                {format(currentDate, "EEEE, MMMM d, yyyy")}
+              </h2>
+              <Button size="sm" variant="outline" onClick={() => openCreateDialog(currentDate)} data-testid="button-add-event-day">
+                <Plus className="w-3.5 h-3.5 mr-1" />Add
+              </Button>
+            </div>
+            {(() => {
+              const dayEvents = getEventsForDay(currentDate);
+              if (dayEvents.length === 0) {
+                return (
+                  <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
+                    <CalendarIcon className="w-10 h-10 mb-3 opacity-30" />
+                    <p className="text-sm">No events scheduled.</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-2">
+                  {dayEvents.map((evt) => {
+                    const loc = locations?.find((l) => l.id === evt.locationId);
+                    const colorIdx = userColorMap.get(evt.organizerUserId);
+                    const organizerColor = colorIdx !== undefined ? getUserColor(colorIdx) : null;
+                    const organizerUser = allUsers?.find((u) => u.id === evt.organizerUserId);
+                    return (
+                      <Card
+                        key={evt.id}
+                        className={`cursor-pointer hover-elevate ${evt.completed ? "border-green-500/40" : ""}`}
+                        onClick={() => handleEventPrimaryClick(evt)}
+                        data-testid={`day-event-${evt.id}`}
+                      >
+                        <CardContent className="p-3 flex items-start gap-3">
+                          <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${evt.completed ? "bg-green-600/15 text-green-600" : EVENT_TYPE_COLORS[evt.eventType]}`}>
+                            {evt.completed ? <CheckCircle2 className="w-4 h-4" /> : <CalendarIcon className="w-4 h-4" />}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className={`text-sm font-medium truncate ${evt.completed ? "line-through text-muted-foreground" : ""}`}>{evt.title}</span>
+                              <Badge variant="outline" className={`text-[10px] ${EVENT_TYPE_COLORS[evt.eventType]}`}>
+                                {EVENT_TYPE_LABELS[evt.eventType]}
+                              </Badge>
+                              {organizerUser && organizerColor && (
+                                <span className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${organizerColor.outline}`}>
+                                  <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${organizerColor.dot}`} />
+                                  {organizerUser.name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()}
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              {format(new Date(evt.startAt), "h:mm a")} – {format(new Date(evt.endAt), "h:mm a")}
+                            </p>
+                            {evt.practiceName && (
+                              <p className="text-xs text-primary mt-0.5 flex items-center gap-1">
+                                <Building2 className="w-3 h-3" />{evt.practiceName}
+                              </p>
+                            )}
+                            {loc && <p className="text-xs text-muted-foreground mt-0.5">{loc.name}</p>}
+                          </div>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={(e) => { e.stopPropagation(); openEditDialog(evt); }}
+                            data-testid={`day-event-edit-${evt.id}`}
+                            title="Edit event"
+                          >
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </CardContent>
+        </Card>
       ) : (
         <div className="space-y-2">
+          <Card>
+            <CardContent className="p-3 flex flex-wrap items-end gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="list-start-date" className="text-xs">From</Label>
+                <Input
+                  id="list-start-date"
+                  type="date"
+                  value={listStartDate}
+                  onChange={(e) => setListStartDate(e.target.value)}
+                  className="w-[160px]"
+                  data-testid="input-list-start-date"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label htmlFor="list-end-date" className="text-xs">To</Label>
+                <Input
+                  id="list-end-date"
+                  type="date"
+                  value={listEndDate}
+                  onChange={(e) => setListEndDate(e.target.value)}
+                  className="w-[160px]"
+                  data-testid="input-list-end-date"
+                />
+              </div>
+              <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const today = new Date();
+                    setListStartDate(format(today, "yyyy-MM-dd"));
+                    setListEndDate(format(today, "yyyy-MM-dd"));
+                  }}
+                  data-testid="button-list-range-today"
+                >
+                  Today
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const today = new Date();
+                    setListStartDate(format(startOfWeek(today), "yyyy-MM-dd"));
+                    setListEndDate(format(endOfWeek(today), "yyyy-MM-dd"));
+                  }}
+                  data-testid="button-list-range-week"
+                >
+                  This Week
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const today = new Date();
+                    setListStartDate(format(startOfMonth(today), "yyyy-MM-dd"));
+                    setListEndDate(format(endOfMonth(today), "yyyy-MM-dd"));
+                  }}
+                  data-testid="button-list-range-month"
+                >
+                  This Month
+                </Button>
+              </div>
+              <span className="text-xs text-muted-foreground ml-auto" data-testid="text-list-summary">
+                {sortedEvents.length} event{sortedEvents.length === 1 ? "" : "s"}
+              </span>
+            </CardContent>
+          </Card>
           {sortedEvents.length === 0 ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-16">
                 <CalendarIcon className="w-12 h-12 text-muted-foreground/30 mb-4" />
-                <p className="text-sm text-muted-foreground">No events this month</p>
+                <p className="text-sm text-muted-foreground">No events in this date range</p>
               </CardContent>
             </Card>
           ) : (
             sortedEvents.map((evt) => {
               const loc = locations?.find((l) => l.id === evt.locationId);
               const evtPractice = evt.practiceName;
+              const colorIdx = userColorMap.get(evt.organizerUserId);
+              const organizerColor = colorIdx !== undefined ? getUserColor(colorIdx) : null;
+              const organizerUser = allUsers?.find((u) => u.id === evt.organizerUserId);
               return (
                 <Card
                   key={evt.id}
                   className={`cursor-pointer hover-elevate ${evt.completed ? "border-green-500/40" : ""}`}
-                  onClick={() => openEditDialog(evt)}
+                  onClick={() => handleEventPrimaryClick(evt)}
                   data-testid={`card-event-${evt.id}`}
                 >
                   <CardContent className="p-4 flex gap-3">
@@ -521,6 +837,15 @@ export default function CalendarPage() {
                         <Badge variant="outline" className={`text-[10px] ${EVENT_TYPE_COLORS[evt.eventType]}`}>
                           {EVENT_TYPE_LABELS[evt.eventType]}
                         </Badge>
+                        {organizerUser && organizerColor && (
+                          <span
+                            className={`inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded-full border ${organizerColor.outline}`}
+                            data-testid={`organizer-chip-${evt.id}`}
+                          >
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${organizerColor.dot}`} />
+                            {organizerUser.name.split(" ").map((n) => n[0]).join("").substring(0, 2).toUpperCase()}
+                          </span>
+                        )}
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {format(new Date(evt.startAt), "MMM d, yyyy h:mm a")} - {format(new Date(evt.endAt), "h:mm a")}
@@ -547,11 +872,21 @@ export default function CalendarPage() {
                       <Button
                         size="icon"
                         variant="ghost"
+                        onClick={(e) => { e.stopPropagation(); openEditDialog(evt); }}
+                        data-testid={`button-edit-event-${evt.id}`}
+                        title="Edit event"
+                      >
+                        <Pencil className="w-4 h-4" />
+                      </Button>
+                      <Button
+                        size="icon"
+                        variant="ghost"
                         onClick={(e) => {
                           e.stopPropagation();
                           syncOutlookMutation.mutate(evt.id);
                         }}
                         data-testid={`button-sync-outlook-${evt.id}`}
+                        title="Sync to Outlook"
                       >
                         <ExternalLink className="w-4 h-4" />
                       </Button>
@@ -648,7 +983,10 @@ export default function CalendarPage() {
               </select>
             </div>
             <div className="space-y-1.5">
-              <Label>Office/Practice Name</Label>
+              <Label>Office/Practice Name <span className="text-xs font-normal text-muted-foreground">(optional)</span></Label>
+              <p className="text-xs text-muted-foreground">
+                Leave blank for community events, school visits, lunches, or other non-office activities.
+              </p>
               {showNewOfficeForm ? (
                 <div className="rounded-md border bg-muted/30 p-3 space-y-3">
                   <div className="flex items-center justify-between">
@@ -742,6 +1080,22 @@ export default function CalendarPage() {
                         const exactMatch = filtered.some((n) => n.toLowerCase() === trimmed.toLowerCase());
                         return (
                           <>
+                            {selectedPracticeName && (
+                              <button
+                                key="__clear__"
+                                type="button"
+                                className="flex items-center gap-2 w-full px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground border-b text-muted-foreground"
+                                onClick={() => {
+                                  setSelectedPracticeName("");
+                                  setPracticeComboOpen(false);
+                                  setPracticeSearchInput("");
+                                }}
+                                data-testid="button-clear-practice-option"
+                              >
+                                <X className="w-4 h-4 shrink-0" />
+                                Clear — community event, no office
+                              </button>
+                            )}
                             {trimmed && !exactMatch && (
                               <button
                                 key="__add_new__"

@@ -558,7 +558,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                 {physician.referralSourceAttribution && (
                   <div className="flex justify-between text-xs">
                     <span className="text-muted-foreground">Referral Source</span>
-                    <Badge variant="outline" className="text-[10px]" data-testid="badge-referral-source">{physician.referralSourceAttribution.replace(/_/g, " ")}</Badge>
+                    <Badge variant="outline" className="text-[10px]" data-testid="badge-referral-source">{physician.referralSourceAttribution?.replace(/_/g, " ") ?? "—"}</Badge>
                   </div>
                 )}
               </div>

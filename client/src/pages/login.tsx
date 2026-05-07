@@ -110,40 +110,20 @@ export default function LoginPage() {
 
                 <div className="space-y-2">
                   <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Enter your email"
-                    required
-                    autoComplete="email"
-                    data-testid="input-email"
-                  />
+                  <Input id="email" type="email" value={email} onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Enter your email" required autoComplete="email" data-testid="input-email" />
                 </div>
 
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
                     <Label htmlFor="password">Password</Label>
-                    <button
-                      type="button"
-                      onClick={() => switchView("forgot")}
-                      className="text-xs text-primary hover:underline"
-                      data-testid="link-forgot-password"
-                    >
+                    <button type="button" onClick={() => switchView("forgot")}
+                      className="text-xs text-primary hover:underline" data-testid="link-forgot-password">
                       Forgot password?
                     </button>
                   </div>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter password"
-                    required
-                    autoComplete="current-password"
-                    data-testid="input-password"
-                  />
+                  <Input id="password" type="password" value={password} onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter password" required autoComplete="current-password" data-testid="input-password" />
                 </div>
 
                 <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
@@ -153,12 +133,8 @@ export default function LoginPage() {
                 <div className="text-center pt-2">
                   <p className="text-sm text-muted-foreground">
                     Don't have an account?{" "}
-                    <button
-                      type="button"
-                      onClick={() => switchView("register")}
-                      className="text-primary font-medium hover:underline"
-                      data-testid="link-register"
-                    >
+                    <button type="button" onClick={() => switchView("register")}
+                      className="text-primary font-medium hover:underline" data-testid="link-register">
                       Sign up
                     </button>
                   </p>

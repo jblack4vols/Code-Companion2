@@ -35,6 +35,7 @@ const AdminLocationsPage = lazy(() => import("@/pages/admin-locations"));
 const AuditLogPage = lazy(() => import("@/pages/audit-log"));
 const PhysicianTieringPage = lazy(() => import("@/pages/physician-tiering"));
 const DecliningReferralsPage = lazy(() => import("@/pages/declining-referrals"));
+const ReferralTrendsPage = lazy(() => import("@/pages/referral-trends"));
 const TerritoriesPage = lazy(() => import("@/pages/territories"));
 const ImportPage = lazy(() => import("@/pages/import"));
 const SharePointSyncPage = lazy(() => import("@/pages/sharepoint-sync"));
@@ -65,6 +66,8 @@ const UnitEconomicsProviderProductivityPage = lazy(() => import("@/pages/unit-ec
 const UnitEconomicsAlertsPage = lazy(() => import("@/pages/unit-economics-alerts"));
 const UnitEconomicsTargetsPage = lazy(() => import("@/pages/unit-economics-targets"));
 const UnitEconomicsDataImportPage = lazy(() => import("@/pages/unit-economics-data-import"));
+const RpvAnalyticsPage = lazy(() => import("@/pages/rpv-analytics"));
+const ReferralIntelligencePage = lazy(() => import("@/pages/referral-intelligence"));
 const RevenueDashboardPage = lazy(() => import("@/pages/revenue-dashboard"));
 const RevenueClaimsPage = lazy(() => import("@/pages/revenue-claims"));
 const RevenueDenialsPage = lazy(() => import("@/pages/revenue-denials"));
@@ -73,6 +76,9 @@ const RevenueAppealsPage = lazy(() => import("@/pages/revenue-appeals"));
 const RevenueImportPage = lazy(() => import("@/pages/revenue-import"));
 const FrontDeskPage = lazy(() => import("@/pages/frontdesk"));
 const FeedbackPage = lazy(() => import("@/pages/feedback"));
+const ProviderProductivityV2Page = lazy(() => import("@/pages/provider-productivity-v2"));
+const LifecyclePage = lazy(() => import("@/pages/lifecycle"));
+const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
 
 function LazyFallback() {
   return (
@@ -115,6 +121,7 @@ function AuthenticatedRouter() {
         <Route path="/activity" component={RecentActivityPage} />
         <Route path="/tiering" component={PhysicianTieringPage} />
         <Route path="/declining" component={DecliningReferralsPage} />
+        <Route path="/referral-trends" component={ReferralTrendsPage} />
         <Route path="/practices" component={PracticeIntelligencePage} />
         <Route path="/practices/:name" component={PracticeIntelligencePage} />
         <Route path="/map" component={MapViewPage} />
@@ -133,6 +140,13 @@ function AuthenticatedRouter() {
         <Route path="/dashboards/location" component={guard(ANALYTICS, LocationDashboardPage)} />
         <Route path="/roi-calculator" component={guard(ANALYTICS, ROICalculatorPage)} />
         <Route path="/leaderboard" component={guard(ANALYTICS, TeamLeaderboardPage)} />
+
+        {/* Analytics: RPV + Referral Intelligence */}
+        <Route path="/rpv-analytics" component={guard(ANALYTICS, RpvAnalyticsPage)} />
+        <Route path="/referral-intelligence" component={guard(ANALYTICS, ReferralIntelligencePage)} />
+        <Route path="/provider-productivity-v2" component={guard(ANALYTICS, ProviderProductivityV2Page)} />
+        <Route path="/lifecycle" component={guard(ANALYTICS, LifecyclePage)} />
+        <Route path="/cash-flow" component={guard(ANALYTICS, CashFlowPage)} />
 
         {/* Finance: OWNER, DIRECTOR, ANALYST */}
         <Route path="/unit-economics" component={guard(ANALYTICS, UnitEconomicsDashboardPage)} />

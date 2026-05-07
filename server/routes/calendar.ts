@@ -5,12 +5,19 @@ import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
 
 export function registerCalendarRoutes(app: Express) {
   app.get("/api/calendar-events", requireAuth, async (req, res) => {
+    // Support ?userIds=id1,id2,id3 or ?userId=id for organizer filtering
+    const rawUserIds = qstr(req.query.userIds) ?? qstr(req.query.userId);
+    const userIds = rawUserIds
+      ? rawUserIds.split(",").map(s => s.trim()).filter(Boolean)
+      : undefined;
+
     const filters = {
       startDate: qstr(req.query.startDate),
       endDate: qstr(req.query.endDate),
       locationId: qstr(req.query.locationId),
       physicianId: qstr(req.query.physicianId),
       practiceName: qstr(req.query.practiceName),
+      userIds,
     };
     res.json(await storage.getCalendarEvents(filters));
   });

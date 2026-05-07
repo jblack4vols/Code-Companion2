@@ -74,6 +74,10 @@ export function registerAuthRoutes(app: Express) {
         await storage.createAuditLog({ userId: user.id, action: "LOGIN_LOCKED", entity: "Auth", entityId: user.id, detailJson: { email }, ipAddress: ip, userAgent: ua });
         return res.status(423).json({ message: `Account is locked. Try again in ${remainingMin} minute${remainingMin !== 1 ? "s" : ""}.`, locked: true, remainingMs });
       }
+      if (!user.password) {
+        await storage.createAuditLog({ userId: user.id, action: "LOGIN_FAILED", entity: "Auth", entityId: user.id, detailJson: { email, reason: "sso_user_password_login" }, ipAddress: ip, userAgent: ua });
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
       const valid = await bcrypt.compare(password, user.password);
       if (!valid) {
         const attempts = (user.failedLoginAttempts || 0) + 1;
@@ -106,6 +110,9 @@ export function registerAuthRoutes(app: Express) {
       if (!email) return res.status(400).json({ message: "Email is required" });
       const user = await storage.getUserByEmail(email);
       if (!user) {
+        return res.json({ success: true, message: "If an account exists with that email, a password reset link has been sent." });
+      }
+      if (user.authProvider === "microsoft" && !user.password) {
         return res.json({ success: true, message: "If an account exists with that email, a password reset link has been sent." });
       }
       const token = crypto.randomBytes(32).toString("hex");
@@ -159,6 +166,9 @@ export function registerAuthRoutes(app: Express) {
       const { currentPassword, newPassword } = req.body;
       const user = await storage.getUser(req.session.userId!);
       if (!user) return res.status(401).json({ message: "Unauthorized" });
+      if (!user.password) {
+        return res.status(400).json({ message: "This account uses Microsoft SSO and does not have a local password." });
+      }
       const valid = await bcrypt.compare(currentPassword, user.password);
       if (!valid) return res.status(400).json({ message: "Current password is incorrect" });
       const pwResult = passwordSchema.safeParse(newPassword);

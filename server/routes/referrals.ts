@@ -337,6 +337,99 @@ export function registerReferralRoutes(app: Express) {
     }
   });
 
+  // Calendar-month-pinned per-provider comparison (e.g. "March vs April").
+  // Defaults: currentMonth = current calendar month, priorMonth = previous month.
+  // Use ?currentMonth=YYYY-MM&priorMonth=YYYY-MM to override.
+  app.get("/api/referrals/provider-trends", requireAuth, async (req, res) => {
+    try {
+      const monthRe = /^\d{4}-(0[1-9]|1[0-2])$/;
+      const now = new Date();
+      const defaultCurrent = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+      const prev = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1));
+      const defaultPrior = `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}`;
+
+      const currentMonth = qstr(req.query.currentMonth) ?? defaultCurrent;
+      const priorMonth = qstr(req.query.priorMonth) ?? defaultPrior;
+      if (!monthRe.test(currentMonth) || !monthRe.test(priorMonth)) {
+        return res.status(400).json({ message: "Invalid month format. Use YYYY-MM." });
+      }
+
+      const currentStart = `${currentMonth}-01`;
+      const priorStart = `${priorMonth}-01`;
+
+      const locationScope = await getUserLocationScope(req);
+      const locFilter = locationScope !== null && locationScope.length > 0
+        ? sql`AND r.location_id = ANY(${locationScope})`
+        : locationScope !== null && locationScope.length === 0
+        ? sql`AND 1=0`
+        : sql``;
+
+      const result = await db.execute(sql`
+        WITH provider_counts AS (
+          SELECT
+            p.id as physician_id,
+            p.first_name,
+            p.last_name,
+            p.credentials,
+            p.specialty,
+            p.practice_name,
+            p.relationship_stage,
+            COUNT(*) FILTER (
+              WHERE r.referral_date >= ${currentStart}::date
+                AND r.referral_date < (${currentStart}::date + INTERVAL '1 month')
+            ) as current_count,
+            COUNT(*) FILTER (
+              WHERE r.referral_date >= ${priorStart}::date
+                AND r.referral_date < (${priorStart}::date + INTERVAL '1 month')
+            ) as prior_count
+          FROM physicians p
+          LEFT JOIN referrals r ON r.physician_id = p.id AND r.deleted_at IS NULL ${locFilter}
+          WHERE p.deleted_at IS NULL
+          GROUP BY p.id, p.first_name, p.last_name, p.credentials, p.specialty,
+                   p.practice_name, p.relationship_stage
+          HAVING COUNT(*) FILTER (
+                   WHERE r.referral_date >= ${priorStart}::date
+                     AND r.referral_date < (${currentStart}::date + INTERVAL '1 month')
+                 ) > 0
+        )
+        SELECT *,
+          (current_count - prior_count) as change_absolute,
+          CASE
+            WHEN prior_count > 0
+              THEN ROUND((current_count - prior_count)::numeric / prior_count * 100, 1)
+            WHEN current_count > 0 THEN NULL
+            ELSE 0
+          END as change_percent,
+          CASE
+            WHEN current_count > prior_count THEN 'up'
+            WHEN current_count < prior_count THEN 'down'
+            ELSE 'flat'
+          END as trend
+        FROM provider_counts
+        ORDER BY change_absolute DESC, current_count DESC
+      `);
+
+      const rows = result.rows;
+      const totalCurrent = rows.reduce((sum: number, r: any) => sum + Number(r.current_count || 0), 0);
+      const totalPrior = rows.reduce((sum: number, r: any) => sum + Number(r.prior_count || 0), 0);
+
+      res.json({
+        currentMonth,
+        priorMonth,
+        totals: {
+          current: totalCurrent,
+          prior: totalPrior,
+          changeAbsolute: totalCurrent - totalPrior,
+          changePercent: totalPrior > 0 ? Math.round(((totalCurrent - totalPrior) / totalPrior) * 1000) / 10 : null,
+        },
+        rows,
+      });
+    } catch (err) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   app.get("/api/referrals/by-location", requireAuth, async (req, res) => {
     try {
       const result = await db.execute(sql`

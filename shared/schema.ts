@@ -64,9 +64,11 @@ export const users = pgTable("users", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
   email: text("email").notNull().unique(),
-  password: text("password").notNull(),
+  password: text("password"),
   role: userRoleEnum("role").notNull().default("MARKETER"),
   approvalStatus: approvalStatusEnum("approval_status").notNull().default("APPROVED"),
+  microsoftId: text("microsoft_id").unique(),
+  authProvider: text("auth_provider").default("local"),
   failedLoginAttempts: integer("failed_login_attempts").default(0).notNull(),
   lockedUntil: timestamp("locked_until"),
   lastLoginAt: timestamp("last_login_at"),
@@ -369,15 +371,35 @@ export const clinicFinancials = pgTable("clinic_financials", {
   index("clinic_fin_location_idx").on(table.locationId),
 ]);
 
+export const cashFlowScenarios = pgTable("cash_flow_scenarios", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  name: text("name").notNull(),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  weeklyVisits: integer("weekly_visits").notNull(),
+  rpv: numeric("rpv", { precision: 8, scale: 2 }).notNull(),
+  laborPct: real("labor_pct").notNull(),
+  weeklyRent: numeric("weekly_rent", { precision: 10, scale: 2 }).notNull(),
+  weeklySupplies: numeric("weekly_supplies", { precision: 10, scale: 2 }).notNull(),
+  weeklyOther: numeric("weekly_other", { precision: 10, scale: 2 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const providerTypeEnum = pgEnum("provider_type", [
+  "PT", "PTA", "OT", "OTA",
+]);
+
 export const providerProductivity = pgTable("provider_productivity", {
   id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
   userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   locationId: varchar("location_id", { length: 36 }).notNull().references(() => locations.id),
+  providerType: providerTypeEnum("provider_type"),
   weekStartDate: date("week_start_date").notNull(),
   totalVisits: integer("total_visits").notNull().default(0),
   totalUnits: integer("total_units").notNull().default(0),
   unitsPerHour: real("units_per_hour").default(0),
   hoursWorked: real("hours_worked").default(0),
+  daysWorked: integer("days_worked").default(5),
   revenueGenerated: numeric("revenue_generated", { precision: 12, scale: 2 }).notNull().default("0"),
   revenueTarget: numeric("revenue_target", { precision: 12, scale: 2 }).default("0"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -698,6 +720,12 @@ export type InsertFinancialAlert = z.infer<typeof insertFinancialAlertSchema>;
 export type FinancialTarget = typeof financialTargets.$inferSelect;
 export type InsertFinancialTarget = z.infer<typeof insertFinancialTargetSchema>;
 
+export const insertCashFlowScenarioSchema = createInsertSchema(cashFlowScenarios).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type CashFlowScenario = typeof cashFlowScenarios.$inferSelect;
+export type InsertCashFlowScenario = z.infer<typeof insertCashFlowScenarioSchema>;
+
 export const loginSchema = z.object({
   email: z.string().email(),
   password: z.string().min(1),
@@ -882,6 +910,31 @@ export type InsertAppealTemplate = z.infer<typeof insertAppealTemplateSchema>;
 export type AppealTemplate = typeof appealTemplates.$inferSelect;
 export type InsertAppeal = z.infer<typeof insertAppealSchema>;
 export type Appeal = typeof appeals.$inferSelect;
+
+// ── Feedback & Ideas ────────────────────────────────────────────────────
+
+// ── Outlook OAuth Tokens ────────────────────────────────────────────────
+// Stores per-user Microsoft OAuth tokens for calendar integration.
+// NOTE: Tokens are stored in plaintext — consider adding at-rest encryption
+// (e.g. pgcrypto or application-level AES) for production hardening.
+
+export const userOauthTokens = pgTable("user_oauth_tokens", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id).unique(),
+  provider: text("provider").notNull().default("microsoft"),
+  accessToken: text("access_token").notNull(),
+  refreshToken: text("refresh_token"),
+  expiresAt: timestamp("expires_at"),
+  email: text("email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertUserOauthTokenSchema = createInsertSchema(userOauthTokens).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type UserOauthToken = typeof userOauthTokens.$inferSelect;
+export type InsertUserOauthToken = z.infer<typeof insertUserOauthTokenSchema>;
 
 // ── Feedback & Ideas ────────────────────────────────────────────────────
 

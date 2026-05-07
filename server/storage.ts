@@ -194,6 +194,7 @@ export interface IStorage {
   // Users
   getUser(id: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  getUserByMicrosoftId(microsoftId: string): Promise<User | undefined>;
   getUserByResetToken(token: string): Promise<User | undefined>;
   getUsersByApprovalStatus(status: string): Promise<User[]>;
   getUsers(): Promise<User[]>;
@@ -239,7 +240,7 @@ export interface IStorage {
   updateTask(id: string, data: Partial<InsertTask & { status: string }>): Promise<Task | undefined>;
 
   // Calendar
-  getCalendarEvents(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string; practiceName?: string }): Promise<CalendarEvent[]>;
+  getCalendarEvents(filters?: { startDate?: string; endDate?: string; locationId?: string; physicianId?: string; practiceName?: string; userIds?: string[] }): Promise<CalendarEvent[]>;
   getCalendarEvent(id: string): Promise<CalendarEvent | undefined>;
   createCalendarEvent(event: InsertCalendarEvent): Promise<CalendarEvent>;
   updateCalendarEvent(id: string, data: Partial<InsertCalendarEvent>): Promise<CalendarEvent | undefined>;
@@ -417,6 +418,7 @@ export class DatabaseStorage implements IStorage {
   // Users
   getUser = usersStorage.getUser;
   getUserByEmail = usersStorage.getUserByEmail;
+  getUserByMicrosoftId = usersStorage.getUserByMicrosoftId;
   getUserByResetToken = usersStorage.getUserByResetToken;
   getUsersByApprovalStatus = usersStorage.getUsersByApprovalStatus;
   getUsers = usersStorage.getUsers;

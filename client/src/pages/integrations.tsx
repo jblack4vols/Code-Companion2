@@ -111,6 +111,7 @@ export default function IntegrationsPage() {
         variant: data.success ? "default" : "destructive",
       });
     },
+    onError: (err: Error) => toast({ title: "Connection test failed", description: err.message, variant: "destructive" }),
   });
 
   const syncIntegration = useMutation({
@@ -136,6 +137,7 @@ export default function IntegrationsPage() {
         }
       }
     },
+    onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
   });
 
   const createApiKey = useMutation({
@@ -158,6 +160,7 @@ export default function IntegrationsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
       toast({ title: "API Key Deactivated" });
     },
+    onError: (err: Error) => toast({ title: "Could not deactivate key", description: err.message, variant: "destructive" }),
   });
 
   const ghlSettings = ghlConfig?.settings as Record<string, unknown> | null | undefined;

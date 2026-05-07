@@ -3,7 +3,7 @@
  * Extracted from storage.ts to keep files under 200 lines.
  */
 import { db } from "./db";
-import { eq, asc, and, gte, lte } from "drizzle-orm";
+import { eq, asc, and, gte, lte, inArray } from "drizzle-orm";
 import {
   calendarEvents,
   type CalendarEvent, type InsertCalendarEvent,
@@ -15,6 +15,8 @@ export async function getCalendarEvents(filters?: {
   locationId?: string;
   physicianId?: string;
   practiceName?: string;
+  /** Filter by one or more organizer user IDs */
+  userIds?: string[];
 }): Promise<CalendarEvent[]> {
   const conditions = [];
   if (filters?.startDate) conditions.push(gte(calendarEvents.startAt, new Date(filters.startDate)));
@@ -22,6 +24,7 @@ export async function getCalendarEvents(filters?: {
   if (filters?.locationId) conditions.push(eq(calendarEvents.locationId, filters.locationId));
   if (filters?.physicianId) conditions.push(eq(calendarEvents.physicianId, filters.physicianId));
   if (filters?.practiceName) conditions.push(eq(calendarEvents.practiceName, filters.practiceName));
+  if (filters?.userIds?.length) conditions.push(inArray(calendarEvents.organizerUserId, filters.userIds));
 
   if (conditions.length > 0) {
     return db.select().from(calendarEvents).where(and(...conditions)).orderBy(asc(calendarEvents.startAt));
