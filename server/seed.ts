@@ -585,6 +585,38 @@ export async function seedReferralsRoster(): Promise<void> {
 }
 
 /**
+ * Backfill any physicians whose `relationship_stage` is NULL to "NEW".
+ * The schema has `.notNull().default("NEW")` but legacy rows from before
+ * that constraint was added can still hold NULL, which crashes the
+ * physician detail page (PR #25 patched the React side defensively;
+ * this fixes the underlying data).
+ *
+ * One-shot, sentinel-gated. Logs the count of affected rows.
+ */
+export async function backfillNullRelationshipStages(): Promise<void> {
+  const SENTINEL_KEY = "relationship_stage_backfill_v1";
+  const existing = await db
+    .select()
+    .from(appSettings)
+    .where(eq(appSettings.key, SENTINEL_KEY));
+  if (existing.length > 0) return;
+
+  const result = await db.execute(
+    sql`UPDATE physicians SET relationship_stage = 'NEW', updated_at = NOW() WHERE relationship_stage IS NULL`,
+  );
+  const updated = (result as { rowCount?: number }).rowCount ?? 0;
+  console.log(`[seed] Backfilled ${updated} physicians with NULL relationship_stage → 'NEW'`);
+
+  await db
+    .insert(appSettings)
+    .values({
+      key: SENTINEL_KEY,
+      value: JSON.stringify({ runAt: new Date().toISOString(), updated }),
+    })
+    .onConflictDoNothing();
+}
+
+/**
  * Seed Brandon's hand-curated decline alerts (Apr 2026 review of Oct 2025
  * → Apr 2026 referral trends). Adds three custom fields per matched
  * physician — alert level, free-text note, and a back-reference to the

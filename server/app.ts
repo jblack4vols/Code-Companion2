@@ -5,8 +5,10 @@ import { serveStatic } from "./static";
 import { createServer } from "http";
 import { validateEnv } from "./middleware/envValidation";
 import { globalErrorHandler } from "./middleware/errorHandler";
+import { initSentry, Sentry } from "./sentry";
 
 validateEnv();
+const sentryEnabled = initSentry();
 
 const app = express();
 app.set("trust proxy", 1);
@@ -63,6 +65,9 @@ export async function initializeApp() {
   initialized = true;
 
   await registerRoutes(httpServer, app);
+  if (sentryEnabled) {
+    Sentry.setupExpressErrorHandler(app);
+  }
   app.use(globalErrorHandler as any);
 
   if (process.env.NODE_ENV === "production" && !process.env.VERCEL) {
