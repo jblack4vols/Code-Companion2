@@ -131,14 +131,14 @@ export async function getUnderpaidClaims(filters: {
   dateTo?: string;
   minVariance?: number;
 }): Promise<UnderpaidClaim[]> {
-  const conditions = [`c.is_underpaid = true`];
-  if (filters.locationId) conditions.push(`c.location_id = '${filters.locationId}'`);
-  if (filters.payer) conditions.push(`c.payer = '${filters.payer.replace(/'/g, "''")}'`);
-  if (filters.dateFrom) conditions.push(`c.dos >= '${filters.dateFrom}'`);
-  if (filters.dateTo) conditions.push(`c.dos <= '${filters.dateTo}'`);
+  const conditions: ReturnType<typeof sql>[] = [sql`c.is_underpaid = true`];
+  if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
+  if (filters.payer) conditions.push(sql`c.payer = ${filters.payer}`);
+  if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
   const minVar = filters.minVariance ?? 0;
 
-  const result = await db.execute(sql.raw(`
+  const result = await db.execute(sql`
     SELECT
       c.id, c.claim_number, c.payer, c.dos::text, c.status,
       c.cpt_codes,
@@ -150,10 +150,10 @@ export async function getUnderpaidClaims(filters: {
         THEN ROUND((COALESCE(c.underpaid_amount, 0) / c.expected_amount) * 100, 1)
         ELSE 0 END::float AS variance_pct
     FROM claims c
-    WHERE ${conditions.join(" AND ")}
+    WHERE ${sql.join(conditions, sql` AND `)}
       AND COALESCE(c.underpaid_amount, 0) >= ${minVar}
     ORDER BY c.underpaid_amount DESC
-  `));
+  `);
 
   return result.rows.map((r: any) => ({
     id: r.id,
@@ -175,12 +175,12 @@ export async function getReimbursementSummary(filters: {
   dateFrom?: string;
   dateTo?: string;
 }): Promise<ReimbursementSummary[]> {
-  const conditions = [`c.status IN ('PAID', 'PARTIAL')`];
-  if (filters.locationId) conditions.push(`c.location_id = '${filters.locationId}'`);
-  if (filters.dateFrom) conditions.push(`c.dos >= '${filters.dateFrom}'`);
-  if (filters.dateTo) conditions.push(`c.dos <= '${filters.dateTo}'`);
+  const conditions: ReturnType<typeof sql>[] = [sql`c.status IN ('PAID', 'PARTIAL')`];
+  if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
+  if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
 
-  const result = await db.execute(sql.raw(`
+  const result = await db.execute(sql`
     SELECT
       COALESCE(c.payer, 'Unknown') AS payer,
       COUNT(*)::int AS claim_count,
@@ -195,10 +195,10 @@ export async function getReimbursementSummary(filters: {
           ELSE NULL END
       ), 1)::float AS avg_realization_pct
     FROM claims c
-    WHERE ${conditions.join(" AND ")}
+    WHERE ${sql.join(conditions, sql` AND `)}
     GROUP BY COALESCE(c.payer, 'Unknown')
     ORDER BY total_underpaid DESC
-  `));
+  `);
 
   return result.rows.map((r: any) => ({
     payer: r.payer,
@@ -253,9 +253,10 @@ export async function bulkUpsertPayerRates(rows: InsertPayerRate[]): Promise<{ i
 }
 
 export async function buildRatesFromHistory(payer?: string): Promise<number> {
-  // Calculate average paid-per-unit rates from historical paid claims and store in rate schedule
-  const payerFilter = payer ? `AND c.payer = '${payer.replace(/'/g, "''")}'` : "";
-  const result = await db.execute(sql.raw(`
+  const payerFilter = payer
+    ? sql`AND c.payer = ${payer}`
+    : sql``;
+  const result = await db.execute(sql`
     SELECT
       c.payer,
       c.payer_type,
@@ -268,7 +269,7 @@ export async function buildRatesFromHistory(payer?: string): Promise<number> {
       ${payerFilter}
     GROUP BY c.payer, c.payer_type, unnest(string_to_array(c.cpt_codes, ','))
     HAVING AVG(CASE WHEN COALESCE(c.units, 0) > 0 THEN c.paid_amount / c.units ELSE c.paid_amount END) > 0
-  `));
+  `);
 
   let count = 0;
   for (const r of result.rows as any[]) {
@@ -309,15 +310,16 @@ export async function calculateExpectedAmount(claimId: string): Promise<number> 
 }
 
 export async function flagUnderpaidClaims(filters?: { locationId?: string }): Promise<number> {
-  // Get all paid/partial claims without expected amount, or where expected > paid
-  const locationFilter = filters?.locationId ? `AND c.location_id = '${filters.locationId}'` : "";
-  const result = await db.execute(sql.raw(`
+  const locationFilter = filters?.locationId
+    ? sql`AND c.location_id = ${filters.locationId}`
+    : sql``;
+  const result = await db.execute(sql`
     SELECT c.id FROM claims c
     WHERE c.status IN ('PAID', 'PARTIAL')
       AND c.cpt_codes IS NOT NULL
       AND c.payer IS NOT NULL
       ${locationFilter}
-  `));
+  `);
 
   let flagged = 0;
   for (const r of result.rows as any[]) {

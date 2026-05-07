@@ -109,7 +109,7 @@ export default function GoalTrackingPage() {
       toast({ title: "Missing fields", description: "Please select a scope and set target referrals.", variant: "destructive" });
       return;
     }
-    const payload: any = {
+    const payload: { month: string; scopeType: string; scopeId: string; targetReferrals: number; targetRevenue?: number } = {
       month: monthParam,
       scopeType,
       scopeId,
@@ -302,7 +302,7 @@ export default function GoalTrackingPage() {
                   </span>
                   {goal.targetRevenue && (
                     <span data-testid={`text-revenue-${goal.id}`}>
-                      Revenue: <span className="font-medium text-foreground">${goal.actualRevenue.toLocaleString()}</span> / ${parseFloat(goal.targetRevenue).toLocaleString()}
+                      Revenue: <span className="font-medium text-foreground">${(goal.actualRevenue || 0).toLocaleString()}</span> / ${(parseFloat(goal.targetRevenue) || 0).toLocaleString()}
                     </span>
                   )}
                 </div>

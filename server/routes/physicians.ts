@@ -3,31 +3,47 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql, type SQL } from "drizzle-orm";
 import { insertPhysicianSchema } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, qstrReq, getUserLocationScope } from "./shared";
 
 export function registerPhysicianRoutes(app: Express) {
   app.get("/api/physicians/paginated", requireAuth, async (req, res) => {
+    const locationScope = await getUserLocationScope(req);
+    if (locationScope !== null && locationScope.length === 0) {
+      return res.json({ data: [], total: 0, page: 1, pageSize: 50, totalPages: 0 });
+    }
     res.json(await storage.getPhysiciansPaginated({
       search: qstr(req.query.search as any),
       status: qstr(req.query.status as any),
       stage: qstr(req.query.stage as any),
       priority: qstr(req.query.priority as any),
       practiceName: qstr(req.query.practiceName as any),
+      locationIds: locationScope ?? undefined,
       sortBy: qstr(req.query.sortBy as any),
       sortOrder: qstr(req.query.sortOrder as any),
-      page: req.query.page ? parseInt(req.query.page as string) : 1,
-      pageSize: req.query.pageSize ? parseInt(req.query.pageSize as string) : 50,
+      page: req.query.page ? parseInt(qstrReq(req.query.page)) : 1,
+      pageSize: req.query.pageSize ? parseInt(qstrReq(req.query.pageSize)) : 50,
     }));
   });
 
   app.get("/api/physicians/search", requireAuth, async (req, res) => {
-    const query = (req.query.q as string || "").trim();
+    const query = (qstrReq(req.query.q) || "").trim();
     if (query.length < 2) return res.json([]);
-    res.json(await storage.searchPhysiciansTypeahead(query));
+    const locationScope = await getUserLocationScope(req);
+    const results = await storage.searchPhysiciansTypeahead(query);
+    if (locationScope === null) return res.json(results);
+    if (locationScope.length === 0) return res.json([]);
+    const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+    res.json(results.filter((p: any) => scopedIds.has(p.id)));
   });
 
   app.get("/api/physicians/practice-names", requireAuth, async (req, res) => {
-    const allPhysicians = await storage.getPhysicians();
+    const locationScope = await getUserLocationScope(req);
+    let allPhysicians = await storage.getPhysicians();
+    if (locationScope !== null) {
+      if (locationScope.length === 0) return res.json([]);
+      const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+      allPhysicians = allPhysicians.filter(p => scopedIds.has(p.id));
+    }
     const practiceSet = new Set<string>();
     for (const p of allPhysicians) {
       if (p.practiceName && p.practiceName.trim()) {
@@ -45,9 +61,15 @@ export function registerPhysicianRoutes(app: Express) {
   });
 
   app.get("/api/physicians/by-practice", requireAuth, async (req, res) => {
-    const name = (req.query.name as string || "").trim();
+    const name = (qstrReq(req.query.name) || "").trim();
     if (!name) return res.json([]);
-    const allPhysicians = await storage.getPhysicians();
+    const locationScope = await getUserLocationScope(req);
+    let allPhysicians = await storage.getPhysicians();
+    if (locationScope !== null) {
+      if (locationScope.length === 0) return res.json([]);
+      const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+      allPhysicians = allPhysicians.filter(p => scopedIds.has(p.id));
+    }
     const matched = allPhysicians.filter(
       (p) => p.practiceName && p.practiceName.trim().toLowerCase() === name.toLowerCase()
     );
@@ -56,11 +78,11 @@ export function registerPhysicianRoutes(app: Express) {
 
   app.get("/api/provider-offices", requireAuth, async (req, res) => {
     try {
-      const search = (req.query.search as string || "").trim();
-      const page = req.query.page ? parseInt(req.query.page as string) : 1;
-      const pageSize = req.query.pageSize ? parseInt(req.query.pageSize as string) : 50;
-      const sortBy = (req.query.sortBy as string || "providerCount").trim();
-      const sortOrder = (req.query.sortOrder as string || "desc").trim();
+      const search = (qstrReq(req.query.search) || "").trim();
+      const page = req.query.page ? parseInt(qstrReq(req.query.page)) : 1;
+      const pageSize = req.query.pageSize ? parseInt(qstrReq(req.query.pageSize)) : 50;
+      const sortBy = (qstrReq(req.query.sortBy) || "providerCount").trim();
+      const sortOrder = (qstrReq(req.query.sortOrder) || "desc").trim();
       const offset = (page - 1) * pageSize;
 
       const orderMap: Record<string, string> = {
@@ -124,13 +146,14 @@ export function registerPhysicianRoutes(app: Express) {
         totalPages: Math.ceil(total / pageSize),
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/provider-offices/:name/providers", requireAuth, async (req, res) => {
     try {
-      const name = decodeURIComponent(req.params.name).trim();
+      const name = decodeURIComponent(String(req.params.name)).trim();
       if (!name) return res.json([]);
       const allPhysicians = await storage.getPhysicians();
       const matched = allPhysicians.filter(
@@ -153,7 +176,8 @@ export function registerPhysicianRoutes(app: Express) {
       enriched.sort((a, b) => b.referralCount - a.referralCount);
       res.json(enriched);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -164,16 +188,16 @@ export function registerPhysicianRoutes(app: Express) {
   app.get("/api/physicians/tiering", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
     const filters = {
       period: qstr(req.query.period as any) || "year",
-      year: req.query.year ? parseInt(req.query.year as string) : undefined,
-      month: req.query.month ? parseInt(req.query.month as string) : undefined,
+      year: req.query.year ? parseInt(qstrReq(req.query.year)) : undefined,
+      month: req.query.month ? parseInt(qstrReq(req.query.month)) : undefined,
     };
     res.json(await storage.getPhysicianTiering(filters));
   });
 
   app.get("/api/physicians/declining", requireRole("OWNER", "DIRECTOR", "MARKETER", "ANALYST"), async (req, res) => {
     const filters = {
-      months: req.query.months ? parseInt(req.query.months as string) : 3,
-      minDrop: req.query.minDrop ? parseInt(req.query.minDrop as string) : 1,
+      months: req.query.months ? parseInt(qstrReq(req.query.months)) : 3,
+      minDrop: req.query.minDrop ? parseInt(qstrReq(req.query.minDrop)) : 1,
     };
     res.json(await storage.getDecliningReferrals(filters));
   });
@@ -239,7 +263,8 @@ export function registerPhysicianRoutes(app: Express) {
       `);
       res.json(results.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -268,7 +293,8 @@ export function registerPhysicianRoutes(app: Express) {
       `);
       res.json(dupes.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -292,12 +318,13 @@ export function registerPhysicianRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "MERGE_PHYSICIAN", entity: "Physician", entityId: keepId, detailJson: { removedId: removeId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/physicians/:id", requireAuth, async (req, res) => {
-    const phys = await storage.getPhysician(req.params.id);
+    const phys = await storage.getPhysician(String(req.params.id));
     if (!phys) return res.status(404).json({ message: "Not found" });
     res.json(phys);
   });
@@ -318,7 +345,7 @@ export function registerPhysicianRoutes(app: Express) {
       // Ownership check: MARKETERs may only edit physicians assigned to them
       const sessionUser = await storage.getUser(req.session.userId!);
       if (sessionUser?.role === "MARKETER") {
-        const existing = await storage.getPhysician(req.params.id as string);
+        const existing = await storage.getPhysician(String(req.params.id));
         if (!existing) return res.status(404).json({ message: "Not found" });
         if (existing.assignedOwnerId !== req.session.userId) {
           return res.status(403).json({ message: "Forbidden: physician not assigned to you" });
@@ -326,7 +353,7 @@ export function registerPhysicianRoutes(app: Express) {
       }
 
       const validated = insertPhysicianSchema.partial().parse(req.body);
-      const phys = await storage.updatePhysician(req.params.id, validated);
+      const phys = await storage.updatePhysician(String(req.params.id), validated);
       if (!phys) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Physician", entityId: phys.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(phys);
@@ -335,32 +362,65 @@ export function registerPhysicianRoutes(app: Express) {
     }
   });
 
+  app.patch("/api/physicians/:id/link-office", requireAuth, async (req, res) => {
+    try {
+      const { practiceName } = req.body;
+      if (typeof practiceName !== "string") {
+        return res.status(400).json({ message: "practiceName is required" });
+      }
+      const existing = await storage.getPhysician(String(req.params.id));
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      const locationScope = await getUserLocationScope(req);
+      if (locationScope !== null) {
+        if (locationScope.length === 0) return res.status(403).json({ message: "No location access" });
+        const scopedIds = await storage.getPhysicianIdsByLocations(locationScope);
+        if (!scopedIds.has(existing.id)) return res.status(403).json({ message: "Physician not in your location scope" });
+      }
+      const phys = await storage.updatePhysician(String(req.params.id), { practiceName: practiceName.trim() || null } as any);
+      if (!phys) return res.status(404).json({ message: "Not found" });
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "UPDATE",
+        entity: "Physician",
+        entityId: phys.id,
+        detailJson: { action: "link-office", practiceName: practiceName.trim() },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
+      });
+      res.json(phys);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message });
+    }
+  });
+
   app.delete("/api/physicians/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const deleted = await storage.softDeletePhysician(req.params.id);
+      const deleted = await storage.softDeletePhysician(String(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Physician", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.post("/api/physicians/:id/restore", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const restored = await storage.restorePhysician(req.params.id);
+      const restored = await storage.restorePhysician(String(req.params.id));
       if (!restored) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Physician", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Physician", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.patch("/api/physicians/:id/assign", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const { marketerId } = req.body;
-      const phys = await storage.assignPhysicianToMarketer(req.params.id, marketerId || null);
+      const phys = await storage.assignPhysicianToMarketer(String(req.params.id), marketerId || null);
       if (!phys) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "ASSIGN", entity: "Physician", entityId: phys.id, detailJson: { marketerId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(phys);
@@ -371,10 +431,11 @@ export function registerPhysicianRoutes(app: Express) {
 
   app.get("/api/physicians/:id/comments", requireAuth, async (req, res) => {
     try {
-      const comments = await storage.getPhysicianComments(req.params.id);
+      const comments = await storage.getPhysicianComments(String(req.params.id));
       res.json(comments);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -385,7 +446,7 @@ export function registerPhysicianRoutes(app: Express) {
         return res.status(400).json({ message: "Content is required" });
       }
       const comment = await storage.createPhysicianComment({
-        physicianId: req.params.id,
+        physicianId: String(req.params.id),
         userId: req.session.userId!,
         content: content.trim(),
       });
@@ -401,13 +462,13 @@ export function registerPhysicianRoutes(app: Express) {
       if (!content || typeof content !== "string" || !content.trim()) {
         return res.status(400).json({ message: "Content is required" });
       }
-      const existing = await storage.getPhysicianComments(req.params.id);
-      const target = existing.find(c => c.id === req.params.commentId);
+      const existing = await storage.getPhysicianComments(String(req.params.id));
+      const target = existing.find(c => c.id === String(req.params.commentId));
       if (!target) return res.status(404).json({ message: "Comment not found" });
       if (target.userId !== req.session.userId) {
         return res.status(403).json({ message: "You can only edit your own comments" });
       }
-      const comment = await storage.updatePhysicianComment(req.params.commentId, content.trim());
+      const comment = await storage.updatePhysicianComment(String(req.params.commentId), content.trim());
       if (!comment) return res.status(404).json({ message: "Comment not found" });
       res.json(comment);
     } catch (err: any) {
@@ -417,7 +478,7 @@ export function registerPhysicianRoutes(app: Express) {
 
   app.delete("/api/physicians/:id/comments/:commentId", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const deleted = await storage.deletePhysicianComment(req.params.commentId);
+      const deleted = await storage.deletePhysicianComment(String(req.params.commentId));
       if (!deleted) return res.status(404).json({ message: "Comment not found" });
       res.json({ ok: true });
     } catch (err: any) {

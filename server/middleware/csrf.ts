@@ -23,18 +23,21 @@ export function csrfProtection(req: Request, res: Response, next: NextFunction) 
     return next();
   }
 
-  if (req.headers["x-api-key"] || req.headers["x-tristar-api-key"]) {
-    return next();
-  }
-
-  if (req.path.startsWith("/api/public/")) {
+  if (req.path.startsWith("/api/public/") && (req.headers["x-api-key"] || req.headers["x-tristar-api-key"])) {
     return next();
   }
 
   const cookieToken = req.cookies?.[CSRF_COOKIE];
   const headerToken = req.headers[CSRF_HEADER] as string;
 
-  if (!cookieToken || !headerToken || cookieToken !== headerToken) {
+  if (!cookieToken || !headerToken) {
+    return res.status(403).json({ message: "Invalid or missing CSRF token" });
+  }
+
+  const cookieBuf = Buffer.from(cookieToken, "utf8");
+  const headerBuf = Buffer.from(headerToken, "utf8");
+
+  if (cookieBuf.length !== headerBuf.length || !crypto.timingSafeEqual(cookieBuf, headerBuf)) {
     return res.status(403).json({ message: "Invalid or missing CSRF token" });
   }
 

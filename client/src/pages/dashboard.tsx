@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback, type ElementType } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,14 +7,113 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar } from "lucide-react";
+import { Stethoscope, MessageSquare, FileText, AlertTriangle, TrendingUp, Users, Activity, Filter, X, ClipboardList, ChevronRight, ArrowUpRight, ArrowDownRight, Minus, GitCompare, Percent, Clock, BarChart3, RefreshCw, Calendar, MapPin, GripVertical, RotateCcw } from "lucide-react";
+import { WelcomeDashboard } from "@/components/welcome-dashboard";
+import { TeamActivityFeed } from "@/components/team-activity-feed";
 import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, LineChart, Line, CartesianGrid, PieChart, Pie, Cell, Funnel, FunnelChart, LabelList } from "recharts";
 import type { Physician, Location, Territory } from "@shared/schema";
 import { format, subMonths, differenceInDays, subDays, startOfQuarter, startOfYear } from "date-fns";
 import { getQueryFn } from "@/lib/queryClient";
 import { useLocation } from "wouter";
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  type DragEndEvent,
+} from "@dnd-kit/core";
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  useSortable,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { CSS } from "@dnd-kit/utilities";
 
-function StatCard({ icon: Icon, label, value, sub, color, onClick, prevValue }: { icon: any; label: string; value: string | number; sub?: string; color: string; onClick?: () => void; prevValue?: number | null }) {
+const TILE_STORAGE_KEY = "dashboard-tile-order";
+const DEFAULT_TILE_ORDER = [
+  "stat-cards",
+  "conversion-funnel",
+  "charts-row",
+  "stages-atrisk-row",
+  "location-conversion",
+  "recent-activity",
+];
+
+function useTileOrder() {
+  const [order, setOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(TILE_STORAGE_KEY);
+      if (saved) {
+        const parsed = JSON.parse(saved) as string[];
+        const allPresent = DEFAULT_TILE_ORDER.every(id => parsed.includes(id));
+        const noExtras = parsed.every(id => DEFAULT_TILE_ORDER.includes(id));
+        if (allPresent && noExtras) return parsed;
+      }
+    } catch {}
+    return DEFAULT_TILE_ORDER;
+  });
+
+  const handleDragEnd = useCallback((event: DragEndEvent) => {
+    const { active, over } = event;
+    if (!over || active.id === over.id) return;
+    setOrder(prev => {
+      const oldIndex = prev.indexOf(String(active.id));
+      const newIndex = prev.indexOf(String(over.id));
+      if (oldIndex < 0 || newIndex < 0) return prev;
+      const next = arrayMove(prev, oldIndex, newIndex);
+      try { localStorage.setItem(TILE_STORAGE_KEY, JSON.stringify(next)); } catch {}
+      return next;
+    });
+  }, []);
+
+  const resetOrder = useCallback(() => {
+    setOrder(DEFAULT_TILE_ORDER);
+    try { localStorage.removeItem(TILE_STORAGE_KEY); } catch {}
+  }, []);
+
+  const isCustomOrder = JSON.stringify(order) !== JSON.stringify(DEFAULT_TILE_ORDER);
+
+  return { order, handleDragEnd, resetOrder, isCustomOrder };
+}
+
+function SortableTile({ id, children }: { id: string; children: React.ReactNode }) {
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    opacity: isDragging ? 0.5 : 1,
+    position: "relative" as const,
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} data-testid={`tile-${id}`}>
+      <div
+        className="absolute top-2 left-2 z-10 opacity-0 hover:opacity-100 focus:opacity-100 transition-opacity cursor-grab active:cursor-grabbing p-1 rounded bg-background/80 backdrop-blur-sm border shadow-sm"
+        {...attributes}
+        {...listeners}
+        data-testid={`drag-handle-${id}`}
+        title="Drag to reorder"
+      >
+        <GripVertical className="w-4 h-4 text-muted-foreground" />
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function StatCard({ icon: Icon, label, value, sub, color, onClick, prevValue }: { icon: ElementType; label: string; value: string | number; sub?: string; color: string; onClick?: () => void; prevValue?: number | null }) {
   const numVal = typeof value === "number" ? value : parseInt(String(value), 10);
   const showChange = prevValue != null && !isNaN(numVal);
   let changePercent = 0;
@@ -86,6 +185,11 @@ export default function DashboardPage() {
   const [physicianId, setPhysicianId] = useState(defaults.physicianId);
   const [showFilters, setShowFilters] = useState(false);
   const [comparePeriod, setComparePeriod] = useState(false);
+  const { order, handleDragEnd, resetOrder, isCustomOrder } = useTileOrder();
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   useMemo(() => {
     const p = new URLSearchParams();
@@ -110,7 +214,13 @@ export default function DashboardPage() {
   const queryString = params.toString();
 
   const statsUrl = queryString ? `/api/dashboard/stats?${queryString}` : "/api/dashboard/stats";
-  const { data: stats, isLoading: loadingStats, isError: statsError, refetch: refetchStats, dataUpdatedAt } = useQuery<any>({
+  const { data: stats, isLoading: loadingStats, isError: statsError, refetch: refetchStats, dataUpdatedAt } = useQuery<{
+    totalReferrals?: number; newReferrals?: number; scheduledReferrals?: number; conversionRate?: number;
+    activePhysicians?: number; totalInteractions?: number; openTasks?: number; avgResponseDays?: number;
+    atRiskPhysicians?: number; avgTimeToFirstVisit?: number | null; momGrowth?: number;
+    topReferrers?: { physicianId: string; count: string | number }[];
+    referralsByMonth?: { month: string; count: string | number }[];
+  }>({
     queryKey: [statsUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -125,14 +235,18 @@ export default function DashboardPage() {
   if (territoryId) prevParams.set("territoryId", territoryId);
   if (physicianId) prevParams.set("physicianId", physicianId);
 
-  const { data: prevStats } = useQuery<any>({
+  const { data: prevStats } = useQuery<{
+    totalReferrals?: number; newReferrals?: number; scheduledReferrals?: number; conversionRate?: number;
+    activePhysicians?: number; totalInteractions?: number; openTasks?: number; avgResponseDays?: number;
+    atRiskPhysicians?: number; avgTimeToFirstVisit?: number | null;
+  }>({
     queryKey: [`/api/dashboard/stats?${prevParams.toString()}`],
     queryFn: getQueryFn({ on401: "throw" }),
     enabled: comparePeriod,
   });
 
   const funnelUrl = queryString ? `/api/dashboard/funnel?${queryString}` : "/api/dashboard/funnel";
-  const { data: funnelData } = useQuery<any[]>({
+  const { data: funnelData } = useQuery<{ stage: string; count: number }[]>({
     queryKey: [funnelUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -156,14 +270,14 @@ export default function DashboardPage() {
   }, [physicians, physicianId]);
 
   const topReferrers = useMemo(() => {
-    return stats?.topReferrers?.map((r: any) => {
+    return stats?.topReferrers?.map((r) => {
       const phys = physicians?.find(p => p.id === r.physicianId);
       return { name: phys ? `Dr. ${phys.lastName}` : "Unknown", count: Number(r.count) };
     }) || [];
   }, [stats?.topReferrers, physicians]);
 
   const referralTrendData = useMemo(() => {
-    return stats?.referralsByMonth?.map((r: any) => ({
+    return stats?.referralsByMonth?.map((r) => ({
       month: r.month,
       count: r.count,
     })) || [];
@@ -347,230 +461,395 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
-        <StatCard
-          icon={Stethoscope}
-          label="Active Providers (90d)"
-          value={stats?.activePhysicians || 0}
-          sub={`${physicians?.length || 0} total in system`}
-          color="bg-chart-1/15 text-chart-1"
-          onClick={() => navigate("/physicians")}
-          prevValue={comparePeriod && prevStats ? prevStats.activePhysicians : null}
-        />
-        <StatCard
-          icon={FileText}
-          label="Total Referrals"
-          value={stats?.totalReferrals || 0}
-          color="bg-chart-2/15 text-chart-2"
-          onClick={() => navigate("/referrals")}
-          prevValue={comparePeriod && prevStats ? prevStats.totalReferrals : null}
-        />
-        <StatCard
-          icon={MessageSquare}
-          label="Interactions"
-          value={stats?.totalInteractions || 0}
-          color="bg-chart-3/15 text-chart-3"
-          onClick={() => navigate("/interactions")}
-          prevValue={comparePeriod && prevStats ? prevStats.totalInteractions : null}
-        />
-        <StatCard
-          icon={AlertTriangle}
-          label="At Risk"
-          value={stats?.atRiskPhysicians || 0}
-          color="bg-chart-5/15 text-chart-5"
-          onClick={() => navigate("/physicians?stage=AT_RISK")}
-          prevValue={comparePeriod && prevStats ? prevStats.atRiskPhysicians : null}
-        />
-        <StatCard
-          icon={Percent}
-          label="Conversion Rate"
-          value={`${stats?.conversionRate || 0}%`}
-          sub="Referrals with arrived visits"
-          color="bg-green-500/15 text-green-600 dark:text-green-400"
-          prevValue={comparePeriod && prevStats ? prevStats.conversionRate : null}
-        />
-        <StatCard
-          icon={Clock}
-          label="Avg Days to Visit"
-          value={stats?.avgTimeToFirstVisit != null ? stats.avgTimeToFirstVisit : "—"}
-          sub="Referral to first arrived visit"
-          color="bg-blue-500/15 text-blue-600 dark:text-blue-400"
-          prevValue={comparePeriod && prevStats ? prevStats.avgTimeToFirstVisit : null}
-        />
-        <StatCard
-          icon={BarChart3}
-          label="MoM Growth"
-          value={`${stats?.momGrowth > 0 ? '+' : ''}${stats?.momGrowth || 0}%`}
-          sub="Referrals vs prior month"
-          color={`${(stats?.momGrowth || 0) >= 0 ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}
-        />
-        <StatCard
-          icon={ClipboardList}
-          label="Open Tasks"
-          value={stats?.openTasks || 0}
-          color="bg-chart-4/15 text-chart-4"
-          onClick={() => navigate("/tasks?status=OPEN")}
-          prevValue={comparePeriod && prevStats ? prevStats.openTasks : null}
-        />
-      </div>
-
-      {funnelData && funnelData.some((d: any) => d.count > 0) && (
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <div>
-              <h3 className="text-sm font-semibold" data-testid="text-funnel-title">Conversion Funnel</h3>
-              <p className="text-xs text-muted-foreground">Referral pipeline progression</p>
-            </div>
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            <div className="grid grid-cols-4 gap-2 sm:gap-4">
-              {funnelData.map((stage: any, i: number) => {
-                const prevCount = i > 0 ? funnelData[i - 1].count : stage.count;
-                const dropRate = prevCount > 0 && i > 0 ? Math.round(((prevCount - stage.count) / prevCount) * 100) : 0;
-                const colors = ["bg-chart-1/15 text-chart-1", "bg-chart-2/15 text-chart-2", "bg-chart-4/15 text-chart-4", "bg-green-500/15 text-green-600 dark:text-green-400"];
-                return (
-                  <div key={stage.stage} className="text-center" data-testid={`funnel-stage-${stage.stage.toLowerCase()}`}>
-                    <div className={`rounded-lg p-3 sm:p-4 ${colors[i] || colors[0]}`}>
-                      <p className="text-xl sm:text-2xl font-bold">{stage.count}</p>
-                      <p className="text-[11px] sm:text-xs font-medium mt-1">{stage.stage}</p>
-                    </div>
-                    {i > 0 && dropRate > 0 && (
-                      <p className="text-[10px] text-muted-foreground mt-1">-{dropRate}% drop</p>
-                    )}
-                    {i === 0 && <p className="text-[10px] text-muted-foreground mt-1">Starting</p>}
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+      {isCustomOrder && (
+        <div className="flex justify-end">
+          <Button variant="ghost" size="sm" onClick={resetOrder} className="text-xs h-7 text-muted-foreground" data-testid="button-reset-layout">
+            <RotateCcw className="w-3 h-3 mr-1" />
+            Reset layout
+          </Button>
+        </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <div>
-              <h3 className="text-sm font-semibold">Referral Trends</h3>
-              <p className="text-xs text-muted-foreground">Monthly referral volume</p>
-            </div>
-            <TrendingUp className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {referralTrendData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={referralTrendData} onClick={(data) => {
-                  if (data?.activePayload?.[0]?.payload?.month) {
-                    const m = data.activePayload[0].payload.month;
-                    navigate(`/referrals?month=${m}`);
-                  }
-                }} style={{ cursor: "pointer" }}>
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
-                  <YAxis tick={{ fontSize: 11 }} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
-                No referral data for this period
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      <WelcomeDashboard />
 
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <div>
-              <h3 className="text-sm font-semibold">Top Referring Providers</h3>
-              <p className="text-xs text-muted-foreground">By referral count</p>
-            </div>
-            <Users className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {topReferrers.length > 0 && topReferrers.some((r: any) => r.count > 0) ? (
-              <ResponsiveContainer width="100%" height={240}>
-                <BarChart data={topReferrers} layout="vertical">
-                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
-                  <XAxis type="number" tick={{ fontSize: 11 }} />
-                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
-                No referral data for this period
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
+      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+        <SortableContext items={order} strategy={verticalListSortingStrategy}>
+          <div className="space-y-6">
+            {order.map(tileId => {
+              switch (tileId) {
+                case "stat-cards":
+                  return (
+                    <SortableTile key={tileId} id={tileId}>
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
+                        <StatCard
+                          icon={Stethoscope}
+                          label="Active Providers (90d)"
+                          value={stats?.activePhysicians || 0}
+                          sub={`${physicians?.length || 0} total in system`}
+                          color="bg-chart-1/15 text-chart-1"
+                          onClick={() => navigate("/physicians")}
+                          prevValue={comparePeriod && prevStats ? prevStats.activePhysicians : null}
+                        />
+                        <StatCard
+                          icon={FileText}
+                          label="Total Referrals"
+                          value={stats?.totalReferrals || 0}
+                          color="bg-chart-2/15 text-chart-2"
+                          onClick={() => navigate("/referrals")}
+                          prevValue={comparePeriod && prevStats ? prevStats.totalReferrals : null}
+                        />
+                        <StatCard
+                          icon={MessageSquare}
+                          label="Interactions"
+                          value={stats?.totalInteractions || 0}
+                          color="bg-chart-3/15 text-chart-3"
+                          onClick={() => navigate("/interactions")}
+                          prevValue={comparePeriod && prevStats ? prevStats.totalInteractions : null}
+                        />
+                        <StatCard
+                          icon={AlertTriangle}
+                          label="At Risk"
+                          value={stats?.atRiskPhysicians || 0}
+                          color="bg-chart-5/15 text-chart-5"
+                          onClick={() => navigate("/physicians?stage=AT_RISK")}
+                          prevValue={comparePeriod && prevStats ? prevStats.atRiskPhysicians : null}
+                        />
+                        <StatCard
+                          icon={Percent}
+                          label="Conversion Rate"
+                          value={`${stats?.conversionRate || 0}%`}
+                          sub="Referrals with arrived visits"
+                          color="bg-green-500/15 text-green-600 dark:text-green-400"
+                          prevValue={comparePeriod && prevStats ? prevStats.conversionRate : null}
+                        />
+                        <StatCard
+                          icon={Clock}
+                          label="Avg Days to Visit"
+                          value={stats?.avgTimeToFirstVisit != null ? stats.avgTimeToFirstVisit : "—"}
+                          sub="Referral to first arrived visit"
+                          color="bg-blue-500/15 text-blue-600 dark:text-blue-400"
+                          prevValue={comparePeriod && prevStats ? prevStats.avgTimeToFirstVisit : null}
+                        />
+                        <StatCard
+                          icon={BarChart3}
+                          label="MoM Growth"
+                          value={`${(stats?.momGrowth ?? 0) > 0 ? '+' : ''}${stats?.momGrowth || 0}%`}
+                          sub="Referrals vs prior month"
+                          color={`${(stats?.momGrowth || 0) >= 0 ? 'bg-green-500/15 text-green-600 dark:text-green-400' : 'bg-red-500/15 text-red-600 dark:text-red-400'}`}
+                        />
+                        <StatCard
+                          icon={ClipboardList}
+                          label="Open Tasks"
+                          value={stats?.openTasks || 0}
+                          color="bg-chart-4/15 text-chart-4"
+                          onClick={() => navigate("/tasks?status=OPEN")}
+                          prevValue={comparePeriod && prevStats ? prevStats.openTasks : null}
+                        />
+                      </div>
+                    </SortableTile>
+                  );
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-            <div>
-              <h3 className="text-sm font-semibold">Relationship Stages</h3>
-              <p className="text-xs text-muted-foreground">Provider distribution</p>
-            </div>
-            <Activity className="w-4 h-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent className="p-4 pt-0">
-            {stageData.length > 0 ? (
-              <div className="flex items-center gap-4">
-                <ResponsiveContainer width="50%" height={160}>
-                  <PieChart>
-                    <Pie data={stageData} dataKey="value" cx="50%" cy="50%" innerRadius={30} outerRadius={60}
-                      onClick={(_, index) => {
-                        const stage = stageData[index]?.name?.replace(/ /g, "_");
-                        if (stage) navigate(`/physicians?stage=${stage}`);
-                      }}
-                      style={{ cursor: "pointer" }}
-                    >
-                      {stageData.map((entry, i) => (
-                        <Cell key={i} fill={entry.fill} />
-                      ))}
-                    </Pie>
-                    <Tooltip />
-                  </PieChart>
-                </ResponsiveContainer>
-                <div className="space-y-2 flex-1">
-                  {stageData.map(s => (
-                    <div key={s.name} className="flex items-center gap-2 text-xs">
-                      <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.fill }} />
-                      <span className="flex-1">{s.name}</span>
-                      <span className="font-medium">{s.value}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ) : (
-              <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
-                No data
-              </div>
-            )}
-          </CardContent>
-        </Card>
+                case "conversion-funnel":
+                  if (!funnelData || !funnelData.some((d) => d.count > 0)) return null;
+                  return (
+                    <SortableTile key={tileId} id={tileId}>
+                      <Card>
+                        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                          <div>
+                            <h3 className="text-sm font-semibold" data-testid="text-funnel-title">Conversion Funnel</h3>
+                            <p className="text-xs text-muted-foreground">Referral pipeline progression</p>
+                          </div>
+                        </CardHeader>
+                        <CardContent className="p-4 pt-0">
+                          <div className="grid grid-cols-4 gap-2 sm:gap-4">
+                            {funnelData.map((stage, i: number) => {
+                              const prevCount = i > 0 ? funnelData[i - 1].count : stage.count;
+                              const dropRate = prevCount > 0 && i > 0 ? Math.round(((prevCount - stage.count) / prevCount) * 100) : 0;
+                              const colors = ["bg-chart-1/15 text-chart-1", "bg-chart-2/15 text-chart-2", "bg-chart-4/15 text-chart-4", "bg-green-500/15 text-green-600 dark:text-green-400"];
+                              return (
+                                <div key={stage.stage} className="text-center" data-testid={`funnel-stage-${stage.stage.toLowerCase()}`}>
+                                  <div className={`rounded-lg p-3 sm:p-4 ${colors[i] || colors[0]}`}>
+                                    <p className="text-xl sm:text-2xl font-bold">{stage.count}</p>
+                                    <p className="text-[11px] sm:text-xs font-medium mt-1">{stage.stage}</p>
+                                  </div>
+                                  {i > 0 && dropRate > 0 && (
+                                    <p className="text-[10px] text-muted-foreground mt-1">-{dropRate}% drop</p>
+                                  )}
+                                  {i === 0 && <p className="text-[10px] text-muted-foreground mt-1">Starting</p>}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    </SortableTile>
+                  );
 
-        <AtRiskReferralSourcesCard locationId={locationId} territoryId={territoryId} navigate={navigate} />
-      </div>
+                case "charts-row":
+                  return (
+                    <SortableTile key={tileId} id={tileId}>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                            <div>
+                              <h3 className="text-sm font-semibold">Referral Trends</h3>
+                              <p className="text-xs text-muted-foreground">Monthly referral volume</p>
+                            </div>
+                            <TrendingUp className="w-4 h-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            {referralTrendData.length > 0 ? (
+                              <ResponsiveContainer width="100%" height={240}>
+                                <BarChart data={referralTrendData} onClick={(data) => {
+                                  if (data?.activePayload?.[0]?.payload?.month) {
+                                    const m = data.activePayload[0].payload.month;
+                                    navigate(`/referrals?month=${m}`);
+                                  }
+                                }} style={{ cursor: "pointer" }}>
+                                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                                  <XAxis dataKey="month" tick={{ fontSize: 11 }} />
+                                  <YAxis tick={{ fontSize: 11 }} />
+                                  <Tooltip />
+                                  <Bar dataKey="count" fill="hsl(var(--chart-1))" radius={[4, 4, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            ) : (
+                              <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
+                                No referral data for this period
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
 
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
-          <div>
-            <h3 className="text-sm font-semibold">Recent Activity</h3>
-            <p className="text-xs text-muted-foreground">Latest team actions</p>
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                            <div>
+                              <h3 className="text-sm font-semibold">Top Referring Providers</h3>
+                              <p className="text-xs text-muted-foreground">By referral count</p>
+                            </div>
+                            <Users className="w-4 h-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            {topReferrers.length > 0 && topReferrers.some((r) => r.count > 0) ? (
+                              <ResponsiveContainer width="100%" height={240}>
+                                <BarChart data={topReferrers} layout="vertical">
+                                  <CartesianGrid strokeDasharray="3 3" className="opacity-30" />
+                                  <XAxis type="number" tick={{ fontSize: 11 }} />
+                                  <YAxis dataKey="name" type="category" tick={{ fontSize: 11 }} width={100} />
+                                  <Tooltip />
+                                  <Bar dataKey="count" fill="hsl(var(--chart-2))" radius={[0, 4, 4, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            ) : (
+                              <div className="h-60 flex items-center justify-center text-sm text-muted-foreground">
+                                No referral data for this period
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      </div>
+                    </SortableTile>
+                  );
+
+                case "stages-atrisk-row":
+                  return (
+                    <SortableTile key={tileId} id={tileId}>
+                      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                            <div>
+                              <h3 className="text-sm font-semibold">Relationship Stages</h3>
+                              <p className="text-xs text-muted-foreground">Provider distribution</p>
+                            </div>
+                            <Activity className="w-4 h-4 text-muted-foreground" />
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            {stageData.length > 0 ? (
+                              <div className="flex items-center gap-4">
+                                <ResponsiveContainer width="50%" height={160}>
+                                  <PieChart>
+                                    <Pie data={stageData} dataKey="value" cx="50%" cy="50%" innerRadius={30} outerRadius={60}
+                                      onClick={(_, index) => {
+                                        const stage = stageData[index]?.name?.replace(/ /g, "_");
+                                        if (stage) navigate(`/physicians?stage=${stage}`);
+                                      }}
+                                      style={{ cursor: "pointer" }}
+                                    >
+                                      {stageData.map((entry, i) => (
+                                        <Cell key={i} fill={entry.fill} />
+                                      ))}
+                                    </Pie>
+                                    <Tooltip />
+                                  </PieChart>
+                                </ResponsiveContainer>
+                                <div className="space-y-2 flex-1">
+                                  {stageData.map(s => (
+                                    <div key={s.name} className="flex items-center gap-2 text-xs">
+                                      <div className="w-3 h-3 rounded-sm shrink-0" style={{ backgroundColor: s.fill }} />
+                                      <span className="flex-1">{s.name}</span>
+                                      <span className="font-medium">{s.value}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            ) : (
+                              <div className="h-40 flex items-center justify-center text-sm text-muted-foreground">
+                                No data
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+
+                        <AtRiskReferralSourcesCard locationId={locationId} territoryId={territoryId} navigate={navigate} />
+                      </div>
+                    </SortableTile>
+                  );
+
+                case "location-conversion":
+                  return (
+                    <SortableTile key={tileId} id={tileId}>
+                      <LocationConversionCard startDate={startDate} endDate={endDate} navigate={navigate} />
+                    </SortableTile>
+                  );
+
+                case "recent-activity":
+                  return (
+                    <SortableTile key={tileId} id={tileId}>
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        <Card>
+                          <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+                            <div>
+                              <h3 className="text-sm font-semibold">Recent Activity</h3>
+                              <p className="text-xs text-muted-foreground">Latest team actions</p>
+                            </div>
+                            <Button variant="outline" size="sm" onClick={() => navigate("/activity")} data-testid="button-view-all-activity">
+                              View All
+                            </Button>
+                          </CardHeader>
+                          <CardContent className="p-4 pt-0">
+                            <ActivityFeed limit={5} />
+                          </CardContent>
+                        </Card>
+                        <TeamActivityFeed />
+                      </div>
+                    </SortableTile>
+                  );
+
+                default:
+                  return null;
+              }
+            })}
           </div>
-          <Button variant="outline" size="sm" onClick={() => navigate("/activity")} data-testid="button-view-all-activity">
-            View All
-          </Button>
-        </CardHeader>
-        <CardContent className="p-4 pt-0">
-          <ActivityFeed limit={5} />
-        </CardContent>
-      </Card>
+        </SortableContext>
+      </DndContext>
     </div>
+  );
+}
+
+function LocationConversionCard({ startDate, endDate, navigate }: { startDate: string; endDate: string; navigate: (to: string) => void }) {
+  const params = new URLSearchParams();
+  if (startDate) params.set("startDate", startDate);
+  if (endDate) params.set("endDate", endDate);
+  const qs = params.toString();
+  const url = qs ? `/api/dashboard/location-conversion?${qs}` : "/api/dashboard/location-conversion";
+
+  const conversionData = useQuery<{ location_id: string; location_name: string; total_referrals: number; total_scheduled: number; total_arrived: number; arrival_rate: number }[]>({
+    queryKey: [url],
+    queryFn: getQueryFn({ on401: "throw" }),
+  });
+
+  const rows = conversionData.data || [];
+
+  const maxScheduled = Math.max(...rows.map((r) => Number(r.total_scheduled) || 0), 1);
+
+  return (
+    <Card>
+      <CardHeader className="flex flex-row items-center justify-between gap-2 pb-2">
+        <div>
+          <h3 className="text-sm font-semibold" data-testid="text-location-conversion-title">Location Conversion Comparison</h3>
+          <p className="text-xs text-muted-foreground">Scheduled vs arrived by location</p>
+        </div>
+        <MapPin className="w-4 h-4 text-muted-foreground" />
+      </CardHeader>
+      <CardContent className="p-4 pt-0">
+        {conversionData.isLoading ? (
+          <div className="space-y-3">
+            {[1, 2, 3].map(i => (
+              <div key={i} className="flex items-center gap-3">
+                <Skeleton className="h-4 w-24 shrink-0" />
+                <Skeleton className="h-4 flex-1" />
+                <Skeleton className="h-4 w-16" />
+              </div>
+            ))}
+          </div>
+        ) : rows.length === 0 ? (
+          <div className="h-32 flex items-center justify-center text-sm text-muted-foreground" data-testid="text-no-conversion-data">
+            No conversion data available for this period
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm" data-testid="table-location-conversion">
+              <thead>
+                <tr className="border-b text-left">
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs">Location</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Referrals</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Scheduled</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Arrived</th>
+                  <th className="pb-2 pr-4 font-medium text-muted-foreground text-xs text-right">Arrival Rate</th>
+                  <th className="pb-2 font-medium text-muted-foreground text-xs min-w-[120px]">Progress</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((row) => {
+                  const rate = Number(row.arrival_rate) || 0;
+                  const scheduled = Number(row.total_scheduled) || 0;
+                  const arrived = Number(row.total_arrived) || 0;
+                  const barWidth = maxScheduled > 0 ? (scheduled / maxScheduled) * 100 : 0;
+                  const arrivedWidth = scheduled > 0 ? (arrived / scheduled) * 100 : 0;
+
+                  return (
+                    <tr
+                      key={row.location_id}
+                      className="border-b last:border-0 hover-elevate cursor-pointer"
+                      onClick={() => navigate(`/locations/${row.location_id}`)}
+                      data-testid={`row-location-conversion-${row.location_id}`}
+                    >
+                      <td className="py-2.5 pr-4">
+                        <span className="font-medium text-xs">{row.location_name}</span>
+                      </td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-xs">{row.total_referrals}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-xs">{scheduled}</td>
+                      <td className="py-2.5 pr-4 text-right tabular-nums text-xs">{arrived}</td>
+                      <td className="py-2.5 pr-4 text-right">
+                        <Badge
+                          variant={rate >= 80 ? "default" : rate >= 60 ? "secondary" : "destructive"}
+                          className="text-[10px] tabular-nums"
+                          data-testid={`badge-arrival-rate-${row.location_id}`}
+                        >
+                          {rate}%
+                        </Badge>
+                      </td>
+                      <td className="py-2.5">
+                        <div className="relative h-4 rounded-md bg-muted/50 overflow-hidden min-w-[120px]">
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-md bg-chart-2/30"
+                            style={{ width: `${barWidth}%` }}
+                          />
+                          <div
+                            className="absolute inset-y-0 left-0 rounded-md bg-chart-4/60"
+                            style={{ width: `${barWidth * (arrivedWidth / 100)}%` }}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -581,7 +860,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
   const atRiskQs = atRiskParams.toString();
   const atRiskUrl = atRiskQs ? `/api/at-risk-sources?${atRiskQs}` : "/api/at-risk-sources";
 
-  const { data: atRiskData, isLoading: atRiskLoading, isError: atRiskError, refetch: refetchAtRisk } = useQuery<any>({
+  const { data: atRiskData, isLoading: atRiskLoading, isError: atRiskError, refetch: refetchAtRisk } = useQuery<{ data: { physician: Physician; changePercent: number; riskSignal: string; daysSinceContact?: number }[]; total: number }>({
     queryKey: [atRiskUrl],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -617,7 +896,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
           </div>
         ) : items.length > 0 ? (
           <div className="space-y-2">
-            {items.slice(0, 10).map((item: any) => {
+            {items.slice(0, 10).map((item) => {
               const phys = item.physician;
               if (!phys) return null;
               return (
@@ -670,7 +949,7 @@ function AtRiskReferralSourcesCard({ locationId, territoryId, navigate }: { loca
 
 function ActivityFeed({ limit = 15 }: { limit?: number }) {
   const [, navigate] = useLocation();
-  const { data: rawActivities, isLoading, isError, refetch } = useQuery<any[]>({
+  const { data: rawActivities, isLoading, isError, refetch } = useQuery<{ id: string; activity_type: string; user_name: string; type?: string; physician_last_name?: string; physician_name?: string; location_name?: string; summary?: string; details?: string; timestamp: string }[]>({
     queryKey: ["/api/activity-feed?limit=15"],
     queryFn: getQueryFn({ on401: "throw" }),
   });
@@ -711,7 +990,7 @@ function ActivityFeed({ limit = 15 }: { limit?: number }) {
     );
   }
 
-  const getActivityLink = (activity: any): string | null => {
+  const getActivityLink = (activity: { activity_type: string; id?: string }): string | null => {
     switch (activity.activity_type) {
       case "referral":
         return "/referrals";
@@ -727,7 +1006,7 @@ function ActivityFeed({ limit = 15 }: { limit?: number }) {
   return (
     <div className="max-h-[400px] overflow-auto space-y-2">
       {activities.map(activity => {
-        let icon: any;
+        let icon: ElementType;
         let colorClass: string;
         let description: string;
 

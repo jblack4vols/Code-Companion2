@@ -33,7 +33,7 @@ export default function AdminSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/settings/audit-retention"] });
       toast({ title: "Retention policy updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const purgeAuditLogsMutation = useMutation({
@@ -41,11 +41,11 @@ export default function AdminSettingsPage() {
       const res = await apiRequest("POST", "/api/audit-logs/purge");
       return res.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { deleted: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/audit-logs"] });
       toast({ title: `Purged ${data.deleted} audit log entries older than retention period` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const currentRetention = retentionSetting?.value || "365";
@@ -67,7 +67,7 @@ export default function AdminSettingsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/settings/etl-schedule"] });
       toast({ title: "ETL schedule updated", description: "Cron jobs have been rescheduled with new times." });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const { data: integrationStatus, isLoading: loadingStatus } = useQuery<{ outlook: boolean; sharepoint: boolean }>({

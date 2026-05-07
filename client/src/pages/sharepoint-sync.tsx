@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import type { LucideIcon } from "lucide-react";
 import { Cloud, RefreshCw, CheckCircle, XCircle, Loader2, Globe, Database, Clock, AlertTriangle, Stethoscope, FileText, MessageSquare, ClipboardList, MapPin } from "lucide-react";
 import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -27,7 +28,7 @@ interface SPSite {
   webUrl: string;
 }
 
-const ENTITY_META: Record<string, { label: string; icon: any; description: string }> = {
+const ENTITY_META: Record<string, { label: string; icon: LucideIcon; description: string }> = {
   physicians: { label: "Referring Providers", icon: Stethoscope, description: "Referring provider directory" },
   referrals: { label: "Referrals", icon: FileText, description: "Patient referral cases" },
   interactions: { label: "Interactions", icon: MessageSquare, description: "Outreach and visit logs" },
@@ -53,16 +54,18 @@ export default function SharePointSyncPage() {
   });
 
   const saveSiteMutation = useMutation({
-    mutationFn: async (siteId: string) => {
-      const res = await apiRequest("POST", "/api/sharepoint/site", { siteId });
+    mutationFn: async (input: string) => {
+      const isUrl = input.startsWith("http://") || input.startsWith("https://");
+      const body = isUrl ? { siteUrl: input } : { siteId: input };
+      const res = await apiRequest("POST", "/api/sharepoint/site", body);
       return res.json();
     },
     onSuccess: (data) => {
       toast({ title: "Site configured", description: `Connected to ${data.site?.displayName || "SharePoint site"}` });
       queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] });
     },
-    onError: (err: any) => {
-      toast({ title: "Failed to configure site", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Failed to configure site", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -75,8 +78,8 @@ export default function SharePointSyncPage() {
       toast({ title: "Sync started", description: `Syncing ${ENTITY_META[entity]?.label || entity} to SharePoint...` });
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] }), 3000);
     },
-    onError: (err: any) => {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Sync failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -89,8 +92,8 @@ export default function SharePointSyncPage() {
       toast({ title: "Full sync started", description: "Syncing all entities to SharePoint Lists..." });
       setTimeout(() => queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] }), 5000);
     },
-    onError: (err: any) => {
-      toast({ title: "Sync failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Sync failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -178,11 +181,11 @@ export default function SharePointSyncPage() {
               )}
 
               <div className="border-t pt-3">
-                <Label htmlFor="manual-site-id" className="text-xs text-muted-foreground mb-1 block">Or enter Site ID directly</Label>
+                <Label htmlFor="manual-site-id" className="text-xs text-muted-foreground mb-1 block">Or enter SharePoint URL or Site ID directly</Label>
                 <div className="flex gap-2">
                   <Input
                     id="manual-site-id"
-                    placeholder="e.g. contoso.sharepoint.com,guid,guid"
+                    placeholder="e.g. https://tenant.sharepoint.com/sites/SiteName"
                     value={selectedSiteId}
                     onChange={(e) => setSelectedSiteId(e.target.value)}
                     data-testid="input-manual-site-id"

@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { users, locations, physicians, interactions, referrals, tasks, calendarEvents, userLocationAccess, auditLogs } from "@shared/schema";
-import { sql } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
 import * as fs from "fs";
 import * as path from "path";
 
@@ -13,7 +13,80 @@ async function loadJsonData(filename: string): Promise<any[]> {
   return JSON.parse(raw);
 }
 
+async function syncOwnerCredentials() {
+  const ownerEmail = "jblack@tristarpt.com";
+  const bcrypt = await import("bcryptjs");
+  const seedOwnerPw = process.env.SEED_OWNER_PASSWORD;
+  if (!seedOwnerPw) return;
+
+  const existingOwner = await db.select().from(users).where(eq(users.email, ownerEmail));
+
+  if (existingOwner.length > 0) {
+    const owner = existingOwner[0];
+    const passwordMatch = await bcrypt.compare(seedOwnerPw, owner.password);
+    if (!passwordMatch) {
+      const newHash = await bcrypt.hash(seedOwnerPw, 10);
+      await db.update(users).set({ password: newHash }).where(eq(users.id, owner.id));
+      console.log(`[seed] Updated password for ${ownerEmail}`);
+    }
+    return;
+  }
+
+  const legacyOwner = await db.select().from(users).where(eq(users.email, "admin@tristar360.com"));
+  if (legacyOwner.length > 0) {
+    const newHash = await bcrypt.hash(seedOwnerPw, 10);
+    await db.update(users).set({ email: ownerEmail, password: newHash }).where(eq(users.id, legacyOwner[0].id));
+    console.log(`[seed] Migrated owner from admin@tristar360.com -> ${ownerEmail}`);
+  }
+}
+
+async function syncUserCredentials() {
+  const bcrypt = await import("bcryptjs");
+  const credentialUpdates: { email: string; password: string; }[] = [
+    { email: "cvaughn@tristarpt.com", password: process.env.SEED_CVAUGHN_PASSWORD || "" },
+  ];
+
+  for (const { email, password } of credentialUpdates) {
+    if (!password) continue;
+    const existing = await db.select().from(users).where(eq(users.email, email));
+    if (existing.length === 0) continue;
+    const user = existing[0];
+    const match = await bcrypt.compare(password, user.password);
+    if (!match) {
+      const hash = await bcrypt.hash(password, 10);
+      await db.update(users).set({ password: hash, forcePasswordChange: false }).where(eq(users.id, user.id));
+      console.log(`[seed] Updated password for ${email}`);
+    }
+  }
+}
+
+async function ensureUserLocationAccess() {
+  const allUsers = await db.select({ id: users.id, role: users.role }).from(users);
+  const allLocations = await db.select({ id: locations.id }).from(locations);
+  if (allLocations.length === 0) return;
+
+  for (const user of allUsers) {
+    if (user.role === "OWNER" || user.role === "DIRECTOR") continue;
+    const existing = await db.select({ locationId: userLocationAccess.locationId })
+      .from(userLocationAccess)
+      .where(eq(userLocationAccess.userId, user.id));
+    const existingSet = new Set(existing.map(e => e.locationId));
+    for (const loc of allLocations) {
+      if (!existingSet.has(loc.id)) {
+        await db.insert(userLocationAccess).values({ userId: user.id, locationId: loc.id });
+      }
+    }
+    if (existing.length < allLocations.length) {
+      console.log(`[seed] Assigned ${allLocations.length - existing.length} locations to user ${user.id}`);
+    }
+  }
+}
+
 export async function seed() {
+  await syncOwnerCredentials();
+  await syncUserCredentials();
+  await ensureUserLocationAccess();
+
   const existingUsers = await db.select().from(users);
   const existingPhysicians = await db.select({ id: physicians.id }).from(physicians).limit(20);
 
@@ -202,7 +275,7 @@ export async function seed() {
   const passHash = await bcrypt.hash(process.env.SEED_USER_PASSWORD || "change_me_user", 10);
 
   await db.insert(users).values([
-    { name: "Sarah Mitchell", email: "admin@tristar360.com", password: adminHash, role: "OWNER" },
+    { name: "Sarah Mitchell", email: "jblack@tristarpt.com", password: adminHash, role: "OWNER" },
     { name: "James Wilson", email: "james@tristar360.com", password: passHash, role: "DIRECTOR" },
     { name: "Emily Chen", email: "emily@tristar360.com", password: passHash, role: "MARKETER" },
     { name: "Maria Santos", email: "maria@tristar360.com", password: passHash, role: "FRONT_DESK" },

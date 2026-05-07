@@ -48,13 +48,15 @@ export async function getDenialSummary(filters: {
   dateFrom?: string;
   dateTo?: string;
 }): Promise<DenialSummary> {
-  const conditions: string[] = [];
-  if (filters.locationId) conditions.push(`c.location_id = '${filters.locationId}'`);
-  if (filters.dateFrom) conditions.push(`c.dos >= '${filters.dateFrom}'`);
-  if (filters.dateTo) conditions.push(`c.dos <= '${filters.dateTo}'`);
-  const whereClause = conditions.length ? `WHERE ${conditions.join(" AND ")}` : "";
+  const conditions: ReturnType<typeof sql>[] = [];
+  if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
+  if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
+  const whereClause = conditions.length
+    ? sql`WHERE ${sql.join(conditions, sql` AND `)}`
+    : sql``;
 
-  const claimsResult = await db.execute(sql.raw(`
+  const claimsResult = await db.execute(sql`
     SELECT
       COUNT(*)::int AS total_claims,
       COUNT(CASE WHEN c.status = 'DENIED' THEN 1 END)::int AS denied_claims,
@@ -65,16 +67,16 @@ export async function getDenialSummary(filters: {
       SUM(CASE WHEN c.status = 'DENIED' THEN COALESCE(c.billed_amount, 0) ELSE 0 END)::float AS total_billed_at_risk
     FROM claims c
     ${whereClause}
-  `));
+  `);
 
-  const appealResult = await db.execute(sql.raw(`
+  const appealResult = await db.execute(sql`
     SELECT
       COUNT(*)::int AS appealed_claims,
       COUNT(CASE WHEN a.status = 'WON' THEN 1 END)::int AS won_appeals
     FROM appeals a
     JOIN claims c ON c.id = a.claim_id
     ${whereClause}
-  `));
+  `);
 
   const cr = claimsResult.rows[0] as any;
   const ar = appealResult.rows[0] as any;
@@ -97,11 +99,11 @@ export async function getTopDenialCodes(filters: {
   limit?: number;
 }): Promise<DenialCodeStat[]> {
   const locationFilter = filters.locationId
-    ? `AND c.location_id = '${filters.locationId}'`
-    : "";
+    ? sql`AND c.location_id = ${filters.locationId}`
+    : sql``;
   const limit = filters.limit ?? 20;
 
-  const result = await db.execute(sql.raw(`
+  const result = await db.execute(sql`
     SELECT
       TRIM(unnest(string_to_array(c.denial_codes, ','))) AS code,
       COUNT(*)::int AS occurrences,
@@ -114,7 +116,7 @@ export async function getTopDenialCodes(filters: {
     GROUP BY TRIM(unnest(string_to_array(c.denial_codes, ',')))
     ORDER BY occurrences DESC
     LIMIT ${limit}
-  `));
+  `);
 
   return result.rows.map((r: any) => ({
     code: r.code,
@@ -128,12 +130,12 @@ export async function getProviderDenialOutliers(filters: {
   dateFrom?: string;
   dateTo?: string;
 }): Promise<ProviderDenialOutlier[]> {
-  const conditions: string[] = ["c.provider_id IS NOT NULL"];
-  if (filters.dateFrom) conditions.push(`c.dos >= '${filters.dateFrom}'`);
-  if (filters.dateTo) conditions.push(`c.dos <= '${filters.dateTo}'`);
-  const whereClause = `WHERE ${conditions.join(" AND ")}`;
+  const conditions: ReturnType<typeof sql>[] = [sql`c.provider_id IS NOT NULL`];
+  if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
+  if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
+  const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
 
-  const result = await db.execute(sql.raw(`
+  const result = await db.execute(sql`
     WITH provider_stats AS (
       SELECT
         c.provider_id,
@@ -163,7 +165,7 @@ export async function getProviderDenialOutliers(filters: {
     avg_rate ar
     WHERE ps.denial_rate > ar.avg * 2
     ORDER BY ps.denial_rate DESC
-  `));
+  `);
 
   return result.rows.map((r: any) => ({
     providerId: r.provider_id,
@@ -180,11 +182,12 @@ export async function getDenialTrends(filters: {
   months?: number;
 }): Promise<DenialTrend[]> {
   const locationFilter = filters.locationId
-    ? `AND c.location_id = '${filters.locationId}'`
-    : "";
+    ? sql`AND c.location_id = ${filters.locationId}`
+    : sql``;
   const months = filters.months ?? 12;
+  const intervalStr = `${months} months`;
 
-  const result = await db.execute(sql.raw(`
+  const result = await db.execute(sql`
     SELECT
       TO_CHAR(DATE_TRUNC('month', c.dos::date), 'YYYY-MM') AS month,
       COUNT(*)::int AS total_claims,
@@ -195,11 +198,11 @@ export async function getDenialTrends(filters: {
       )::float AS denial_rate,
       SUM(CASE WHEN c.status = 'DENIED' THEN COALESCE(c.billed_amount, 0) ELSE 0 END)::float AS total_billed_at_risk
     FROM claims c
-    WHERE c.dos >= (CURRENT_DATE - INTERVAL '${months} months')
+    WHERE c.dos >= (CURRENT_DATE - ${intervalStr}::interval)
       ${locationFilter}
     GROUP BY DATE_TRUNC('month', c.dos::date)
     ORDER BY month ASC
-  `));
+  `);
 
   return result.rows.map((r: any) => ({
     month: r.month,

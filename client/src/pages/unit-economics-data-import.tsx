@@ -84,10 +84,10 @@ export default function UnitEconomicsDataImportPage() {
   const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
   const [importType, setImportType] = useState<string>("");
   const [file, setFile] = useState<File | null>(null);
-  const [previewData, setPreviewData] = useState<any>(null);
+  const [previewData, setPreviewData] = useState<{ headers: string[]; sampleRows: Record<string, unknown>[]; totalRows: number; suggestedMapping: Record<string, string | null> } | null>(null);
   const [columnMapping, setColumnMapping] = useState<Record<string, string>>({});
   const [periodType, setPeriodType] = useState<string>("WEEKLY");
-  const [importResult, setImportResult] = useState<any>(null);
+  const [importResult, setImportResult] = useState<{ imported: number; updated: number; errors: string[]; alertsTriggered: number } | null>(null);
 
   // --- Preview mutation: upload file to get headers + sample rows ---
   const previewMutation = useMutation({
@@ -113,8 +113,8 @@ export default function UnitEconomicsDataImportPage() {
       );
       setStep(3);
     },
-    onError: (err: any) => {
-      toast({ title: "Preview failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Preview failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -141,8 +141,8 @@ export default function UnitEconomicsDataImportPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/unit-economics"] });
       toast({ title: "Import complete", description: `${data.imported} records imported` });
     },
-    onError: (err: any) => {
-      toast({ title: "Import failed", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Import failed", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -269,7 +269,7 @@ export default function UnitEconomicsDataImportPage() {
   function renderStep3() {
     const fields = FIELDS_BY_TYPE[importType] || [];
     const headers: string[] = previewData?.headers || [];
-    const sampleRows: Record<string, any>[] = previewData?.sampleRows || [];
+    const sampleRows: Record<string, unknown>[] = previewData?.sampleRows || [];
 
     return (
       <div className="space-y-4">
@@ -387,8 +387,7 @@ export default function UnitEconomicsDataImportPage() {
 
   // --- Step 4: Results summary ---
   function renderStep4() {
-    const result = importResult || {};
-    const errList: string[] = result.errors || [];
+    const errList: string[] = importResult?.errors || [];
     return (
       <Card>
         <CardHeader>
@@ -400,19 +399,19 @@ export default function UnitEconomicsDataImportPage() {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-3">
             <Badge variant="secondary" className="text-sm px-3 py-1">
-              Imported: {result.imported ?? 0}
+              Imported: {importResult?.imported ?? 0}
             </Badge>
             <Badge variant="secondary" className="text-sm px-3 py-1">
-              Updated: {result.updated ?? 0}
+              Updated: {importResult?.updated ?? 0}
             </Badge>
             {errList.length > 0 && (
               <Badge variant="destructive" className="text-sm px-3 py-1">
                 Errors: {errList.length}
               </Badge>
             )}
-            {result.alertsTriggered > 0 && (
+            {(importResult?.alertsTriggered ?? 0) > 0 && (
               <Badge className="text-sm px-3 py-1 bg-yellow-500 text-white">
-                Alerts triggered: {result.alertsTriggered}
+                Alerts triggered: {importResult?.alertsTriggered}
               </Badge>
             )}
           </div>

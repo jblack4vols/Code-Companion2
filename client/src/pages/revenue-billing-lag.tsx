@@ -32,31 +32,36 @@ export default function RevenueBillingLagPage() {
   if (dateTo) filterParams.set("dateTo", dateTo);
   const filterStr = filterParams.toString();
 
-  const { data: aging, isLoading: agingLoading } = useQuery<any>({
+  interface AgingBucket { count: number; amount: number; }
+  interface AgingData { bucket0_30: AgingBucket; bucket31_60: AgingBucket; bucket61_90: AgingBucket; bucket90plus: AgingBucket; }
+  interface BillingMetrics { avgDaysToSubmit: number; avgDaysToPay: number; avgCycleTime: number; outstandingAmount: number; }
+  const { data: aging, isLoading: agingLoading } = useQuery<AgingData>({
     queryKey: ["/api/revenue/billing-lag/aging"],
     queryFn: () =>
       fetch("/api/revenue/billing-lag/aging", { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: metrics, isLoading: metricsLoading } = useQuery<any>({
+  const { data: metrics, isLoading: metricsLoading } = useQuery<BillingMetrics>({
     queryKey: ["/api/revenue/billing-lag/metrics", filterStr],
     queryFn: () =>
       fetch(`/api/revenue/billing-lag/metrics?${filterStr}`, { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: byPayer, isLoading: payerLoading } = useQuery<any[]>({
+  interface BreakdownRow { payer?: string; locationName?: string; claimCount?: number; claims?: number; avgDaysToSubmit?: number; avgSubmission?: number; avgDaysToPay?: number; avgPayment?: number; avgCycleTime?: number; avgCycle?: number; outstandingAmount?: number; outstanding?: number; }
+  interface StaleClaimRow { id: string; claimNumber: string; dos: string; payer?: string; billedAmount?: string | number; daysSinceDos?: number; daysOpen?: number; }
+  const { data: byPayer, isLoading: payerLoading } = useQuery<BreakdownRow[]>({
     queryKey: ["/api/revenue/billing-lag/by-payer", filterStr],
     queryFn: () =>
       fetch(`/api/revenue/billing-lag/by-payer?${filterStr}`, { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: byLocation, isLoading: locationLoading } = useQuery<any[]>({
+  const { data: byLocation, isLoading: locationLoading } = useQuery<BreakdownRow[]>({
     queryKey: ["/api/revenue/billing-lag/by-location", filterStr],
     queryFn: () =>
       fetch(`/api/revenue/billing-lag/by-location?${filterStr}`, { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: staleClaims, isLoading: staleLoading } = useQuery<any[]>({
+  const { data: staleClaims, isLoading: staleLoading } = useQuery<StaleClaimRow[]>({
     queryKey: ["/api/revenue/billing-lag/stale"],
     queryFn: () =>
       fetch("/api/revenue/billing-lag/stale?thresholdDays=7", { credentials: "include" }).then(r => r.json()),
@@ -79,7 +84,7 @@ export default function RevenueBillingLagPage() {
 
   const breakdownCols = ["Payer / Location", "Claims", "Avg Submit (d)", "Avg Payment (d)", "Avg Cycle (d)", "Outstanding"];
 
-  function renderBreakdownTable(rows: any[], isLoading: boolean, nameKey: string) {
+  function renderBreakdownTable(rows: BreakdownRow[], isLoading: boolean, nameKey: keyof BreakdownRow) {
     if (isLoading) {
       return <div className="p-4 space-y-2">{[...Array(4)].map((_, i) => <Skeleton key={i} className="h-7 w-full" />)}</div>;
     }
@@ -98,7 +103,7 @@ export default function RevenueBillingLagPage() {
               <TableCell colSpan={6} className="text-center text-muted-foreground py-6 text-sm">No data available.</TableCell>
             </TableRow>
           ) : (
-            (rows || []).map((r: any, i: number) => (
+            (rows || []).map((r, i: number) => (
               <TableRow key={i}>
                 <TableCell className="font-medium text-sm">{r[nameKey] || "—"}</TableCell>
                 <TableCell className="text-right text-sm">{r.claimCount ?? r.claims ?? 0}</TableCell>
@@ -169,7 +174,7 @@ export default function RevenueBillingLagPage() {
                 <YAxis yAxisId="left" tick={{ fontSize: 11 }} tickFormatter={v => String(v)} />
                 <YAxis yAxisId="right" orientation="right" tick={{ fontSize: 11 }} tickFormatter={v => "$" + (v / 1000).toFixed(0) + "k"} />
                 <Tooltip
-                  formatter={(value: any, name: string) =>
+                  formatter={(value: number, name: string) =>
                     name === "amount" ? [fmt$(value), "Amount"] : [value, "Claims"]
                   }
                 />
@@ -223,12 +228,12 @@ export default function RevenueBillingLagPage() {
                         </TableCell>
                       </TableRow>
                     ) : (
-                      (staleClaims || []).map((c: any) => (
+                      (staleClaims || []).map((c) => (
                         <TableRow key={c.id} className="bg-yellow-50/50 dark:bg-yellow-950/20">
                           <TableCell className="font-mono text-xs">{c.claimNumber}</TableCell>
                           <TableCell className="text-sm">{c.dos}</TableCell>
                           <TableCell className="text-sm">{c.payer || "—"}</TableCell>
-                          <TableCell className="text-right text-sm">{fmt$(parseFloat(c.billedAmount ?? 0))}</TableCell>
+                          <TableCell className="text-right text-sm">{fmt$(parseFloat(String(c.billedAmount ?? 0)))}</TableCell>
                           <TableCell className="text-right text-sm font-medium text-yellow-700 dark:text-yellow-400">
                             {c.daysSinceDos ?? c.daysOpen ?? "—"} d
                           </TableCell>

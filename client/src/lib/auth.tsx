@@ -66,15 +66,6 @@ export function useAuth() {
   return ctx;
 }
 
-export function useRequireAuth() {
-  const { user, isLoading } = useAuth();
-  const [, setLocation] = useLocation();
-  if (!isLoading && !user) {
-    setLocation("/login");
-  }
-  return { user, isLoading };
-}
-
 export function hasPermission(
   role: string,
   action: "view" | "edit" | "create" | "delete" | "manage_users" | "manage_settings",

@@ -1,6 +1,9 @@
-# CLAUDE.md
+# CLAUDE.md — crm.tristarpt.com
+# Tristar Physical Therapy — Internal Operations CRM
+# Owner: Jordan Black | GitHub: jblack4vols
+# Last updated: 2026-04-16
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+---
 
 ## Project Overview
 
@@ -135,21 +138,17 @@ Client fetch → Express middleware chain:
 
 ## Role & Responsibilities
 
-Your role is to analyze user requirements, delegate tasks to appropriate sub-agents, and ensure cohesive delivery of features that meet specifications and architectural standards.
+`crm.tristarpt.com` is Tristar Physical Therapy's internal operations platform — a full-stack
+Next.js app deployed on Railway. It consolidates referral intelligence, financial analytics,
+provider management, scheduling ops, and marketing automation into a single owner-facing
+dashboard. It is NOT a patient-facing product.
 
-## Workflows
+**Long-term goal:** Productize this stack as a licensable SaaS layer for other PT practice owners.
+Every architectural decision should be made with multi-tenant extensibility in mind.
 
-- Primary workflow: `./.claude/rules/primary-workflow.md`
-- Development rules: `./.claude/rules/development-rules.md`
-- Orchestration protocols: `./.claude/rules/orchestration-protocol.md`
-- Documentation management: `./.claude/rules/documentation-management.md`
-- And other workflows: `./.claude/rules/*`
+---
 
-**IMPORTANT:** Analyze the skills catalog and activate the skills that are needed for the task during the process.
-**IMPORTANT:** You must follow strictly the development rules in `./.claude/rules/development-rules.md` file.
-**IMPORTANT:** Before you plan or proceed any implementation, always read the `./README.md` file first to get context.
-**IMPORTANT:** Sacrifice grammar for the sake of concision when writing reports.
-**IMPORTANT:** In reports, list any unresolved questions at the end, if any.
+## 2. Tech Stack
 
 ## Key Conventions
 
@@ -177,25 +176,21 @@ Your role is to analyze user requirements, delegate tasks to appropriate sub-age
 
 ## Hook Response Protocol
 
-### Privacy Block Hook (`@@PRIVACY_PROMPT@@`)
+**Azure AD credentials (SSO):**
+- App ID: `debda2f0-a35b-44c9-8e0b-9d1d306c49a8`
+- Tenant ID: `668d2c67-481c-4c6c-8904-b08dfd68308c`
 
-When a tool call is blocked by the privacy-block hook, the output contains a JSON marker between `@@PRIVACY_PROMPT_START@@` and `@@PRIVACY_PROMPT_END@@`. **You MUST use the `AskUserQuestion` tool** to get proper user approval.
+---
 
-**Required Flow:**
+## 3. Brand & Design Tokens
 
-1. Parse the JSON from the hook output
-2. Use `AskUserQuestion` with the question data from the JSON
-3. Based on user's selection:
-   - **"Yes, approve access"** → Use `bash cat "filepath"` to read the file (bash is auto-approved)
-   - **"No, skip this file"** → Continue without accessing the file
+Always use these exact values. Never substitute with generic Tailwind colors.
 
 **IMPORTANT:** Always ask the user via `AskUserQuestion` first. Never try to work around the privacy block without explicit user approval.
 
-## Python Scripts (Skills)
+---
 
-When running Python scripts from `.claude/skills/`, use the venv Python interpreter:
-- **Linux/macOS:** `.claude/skills/.venv/bin/python3 scripts/xxx.py`
-- **Windows:** `.claude\skills\.venv\Scripts\python.exe scripts\xxx.py`
+## 4. Supabase Projects
 
 **IMPORTANT:** When scripts of skills failed, don't stop, try to fix them directly.
 

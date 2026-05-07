@@ -1,14 +1,15 @@
 import type { Express } from "express";
+import { z } from "zod";
 import { db } from "../db";
 import { sql, eq, and } from "drizzle-orm";
 import { goals, territories, locations, territoryMonthlySummary, locationMonthlySummary } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
 import { storage } from "../storage";
 
 export function registerGoalRoutes(app: Express) {
   app.get("/api/goals", requireAuth, async (req, res) => {
     try {
-      const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
+      const month = qstr(req.query.month) || new Date().toISOString().slice(0, 7) + "-01";
       const scopeType = req.query.scopeType as string | undefined;
 
       let conditions = [eq(goals.month, month)];
@@ -19,16 +20,26 @@ export function registerGoalRoutes(app: Express) {
       const result = await db.select().from(goals).where(and(...conditions));
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  const goalBodySchema = z.object({
+    month: z.string().min(1),
+    scopeType: z.enum(["TERRITORY", "LOCATION"]),
+    scopeId: z.string().min(1),
+    targetReferrals: z.number().int().optional(),
+    targetRevenue: z.number().nullable().optional(),
   });
 
   app.post("/api/goals", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const { month, scopeType, scopeId, targetReferrals, targetRevenue } = req.body;
-      if (!month || !scopeType || !scopeId) {
-        return res.status(400).json({ message: "month, scopeType, and scopeId are required" });
+      const parsed = goalBodySchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
       }
+      const { month, scopeType, scopeId, targetReferrals, targetRevenue } = parsed.data;
 
       const existing = await db.select().from(goals).where(
         and(eq(goals.month, month), eq(goals.scopeType, scopeType), eq(goals.scopeId, scopeId))
@@ -37,7 +48,7 @@ export function registerGoalRoutes(app: Express) {
       if (existing.length > 0) {
         const [updated] = await db.update(goals).set({
           targetReferrals: targetReferrals || 0,
-          targetRevenue: targetRevenue || null,
+          targetRevenue: targetRevenue != null ? String(targetRevenue) : null,
           updatedAt: new Date(),
         }).where(eq(goals.id, existing[0].id)).returning();
         return res.json(updated);
@@ -48,8 +59,8 @@ export function registerGoalRoutes(app: Express) {
         scopeType,
         scopeId,
         targetReferrals: targetReferrals || 0,
-        targetRevenue: targetRevenue || null,
-        createdBy: req.session.userId,
+        targetRevenue: targetRevenue != null ? String(targetRevenue) : null,
+        createdBy: req.session.userId!,
       }).returning();
 
       await storage.createAuditLog({
@@ -57,29 +68,31 @@ export function registerGoalRoutes(app: Express) {
         action: "CREATE",
         entity: "Goal",
         entityId: created.id,
-        detailJson: req.body,
+        detailJson: parsed.data,
         ipAddress: getClientIp(req),
         userAgent: req.headers["user-agent"] || null,
       });
 
       res.status(201).json(created);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.delete("/api/goals/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      await db.delete(goals).where(eq(goals.id, req.params.id));
+      await db.delete(goals).where(eq(goals.id, String(req.params.id)));
       res.json({ message: "Goal deleted" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/goals/progress", requireAuth, async (req, res) => {
     try {
-      const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
+      const month = qstr(req.query.month) || new Date().toISOString().slice(0, 7) + "-01";
 
       const allGoals = await db.select().from(goals).where(eq(goals.month, month));
 
@@ -124,7 +137,8 @@ export function registerGoalRoutes(app: Express) {
 
       res.json(progress);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

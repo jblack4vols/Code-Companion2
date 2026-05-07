@@ -433,23 +433,18 @@ export const insertUserSchema = createInsertSchema(users).omit({
   id: true, createdAt: true, updatedAt: true, failedLoginAttempts: true, lockedUntil: true, lastLoginAt: true, passwordChangedAt: true, forcePasswordChange: true, approvalStatus: true, passwordResetToken: true, passwordResetExpires: true,
 });
 
-export const registerSchema = z.object({
-  name: z.string().min(2, "Name must be at least 2 characters"),
-  email: z.string().email("Invalid email address"),
-  password: z.string()
-    .min(8, "Password must be at least 8 characters")
-    .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
-    .regex(/[a-z]/, "Password must contain at least one lowercase letter")
-    .regex(/[0-9]/, "Password must contain at least one number")
-    .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character"),
-});
-
 export const passwordSchema = z.string()
   .min(8, "Password must be at least 8 characters")
   .regex(/[A-Z]/, "Password must contain at least one uppercase letter")
   .regex(/[a-z]/, "Password must contain at least one lowercase letter")
   .regex(/[0-9]/, "Password must contain at least one number")
   .regex(/[^A-Za-z0-9]/, "Password must contain at least one special character");
+
+export const registerSchema = z.object({
+  name: z.string().min(2, "Name must be at least 2 characters"),
+  email: z.string().email("Invalid email address"),
+  password: passwordSchema,
+});
 export const insertLocationSchema = createInsertSchema(locations).omit({
   id: true, createdAt: true, updatedAt: true,
 });
@@ -809,13 +804,135 @@ export const appeals = pgTable("appeals", {
   index("appeals_status_idx").on(table.status),
 ]);
 
-export type InsertClaim = typeof claims.$inferInsert;
+export const triageLevelEnum = pgEnum("triage_level", [
+  "RED", "ORANGE", "YELLOW", "GREEN",
+]);
+
+export const patientRequestStatusEnum = pgEnum("patient_request_status", [
+  "NEW", "TRIAGED", "SCHEDULED", "WAITLISTED", "COMPLETED", "CANCELLED",
+]);
+
+export const patientRequests = pgTable("patient_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  patientName: text("patient_name").notNull(),
+  phone: text("phone").notNull(),
+  symptoms: text("symptoms").notNull(),
+  locationPreference: varchar("location_preference", { length: 36 }).references(() => locations.id),
+  triageLevel: triageLevelEnum("triage_level"),
+  triageNotes: text("triage_notes"),
+  status: patientRequestStatusEnum("status").default("NEW").notNull(),
+  appointmentSlotId: uuid("appointment_slot_id"),
+  createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("patient_requests_status_idx").on(table.status),
+  index("patient_requests_triage_idx").on(table.triageLevel),
+]);
+
+export const appointmentSlots = pgTable("appointment_slots", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  locationId: varchar("location_id", { length: 36 }).references(() => locations.id).notNull(),
+  date: date("date").notNull(),
+  startTime: text("start_time").notNull(),
+  endTime: text("end_time").notNull(),
+  isAvailable: boolean("is_available").default(true).notNull(),
+  patientRequestId: uuid("patient_request_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("appointment_slots_location_date_idx").on(table.locationId, table.date),
+  index("appointment_slots_available_idx").on(table.isAvailable),
+]);
+
+export const insertPatientRequestSchema = createInsertSchema(patientRequests).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertAppointmentSlotSchema = createInsertSchema(appointmentSlots).omit({
+  id: true, createdAt: true,
+});
+
+export type InsertPatientRequest = z.infer<typeof insertPatientRequestSchema>;
+export type PatientRequest = typeof patientRequests.$inferSelect;
+export type InsertAppointmentSlot = z.infer<typeof insertAppointmentSlotSchema>;
+export type AppointmentSlot = typeof appointmentSlots.$inferSelect;
+
+export const insertClaimSchema = createInsertSchema(claims).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertClaimPaymentSchema = createInsertSchema(claimPayments).omit({
+  id: true, createdAt: true,
+});
+export const insertPayerRateSchema = createInsertSchema(payerRateSchedule).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertAppealTemplateSchema = createInsertSchema(appealTemplates).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertAppealSchema = createInsertSchema(appeals).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+
+export type InsertClaim = z.infer<typeof insertClaimSchema>;
 export type Claim = typeof claims.$inferSelect;
-export type InsertClaimPayment = typeof claimPayments.$inferInsert;
+export type InsertClaimPayment = z.infer<typeof insertClaimPaymentSchema>;
 export type ClaimPayment = typeof claimPayments.$inferSelect;
-export type InsertPayerRate = typeof payerRateSchedule.$inferInsert;
+export type InsertPayerRate = z.infer<typeof insertPayerRateSchema>;
 export type PayerRate = typeof payerRateSchedule.$inferSelect;
-export type InsertAppealTemplate = typeof appealTemplates.$inferInsert;
+export type InsertAppealTemplate = z.infer<typeof insertAppealTemplateSchema>;
 export type AppealTemplate = typeof appealTemplates.$inferSelect;
-export type InsertAppeal = typeof appeals.$inferInsert;
+export type InsertAppeal = z.infer<typeof insertAppealSchema>;
 export type Appeal = typeof appeals.$inferSelect;
+
+// ── Feedback & Ideas ────────────────────────────────────────────────────
+
+export const feedbackCategoryEnum = pgEnum("feedback_category", [
+  "FEATURE_IDEA", "BUG", "IMPROVEMENT", "OTHER",
+]);
+
+export const feedbackPriorityEnum = pgEnum("feedback_priority", [
+  "LOW", "MEDIUM", "HIGH", "CRITICAL",
+]);
+
+export const feedbackStatusEnum = pgEnum("feedback_status", [
+  "OPEN", "IN_REVIEW", "PLANNED", "IN_PROGRESS", "COMPLETED", "CLOSED",
+]);
+
+export const feedbackItems = pgTable("feedback_items", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull(),
+  description: text("description").notNull(),
+  category: feedbackCategoryEnum("category").notNull(),
+  priority: feedbackPriorityEnum("feedback_priority").notNull().default("MEDIUM"),
+  status: feedbackStatusEnum("feedback_status").notNull().default("OPEN"),
+  attachments: jsonb("attachments").$type<{ filename: string; originalName: string; mimeType: string; size: number }[]>().default([]),
+  submittedBy: varchar("submitted_by", { length: 36 }).notNull().references(() => users.id),
+  assignedTo: varchar("assigned_to", { length: 36 }).references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => [
+  index("feedback_category_idx").on(table.category),
+  index("feedback_status_idx").on(table.status),
+  index("feedback_submitted_by_idx").on(table.submittedBy),
+]);
+
+export const feedbackNotes = pgTable("feedback_notes", {
+  id: varchar("id", { length: 36 }).primaryKey().default(sql`gen_random_uuid()`),
+  feedbackItemId: varchar("feedback_item_id", { length: 36 }).notNull().references(() => feedbackItems.id),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (table) => [
+  index("feedback_note_item_idx").on(table.feedbackItemId),
+]);
+
+export const insertFeedbackItemSchema = createInsertSchema(feedbackItems).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export const insertFeedbackNoteSchema = createInsertSchema(feedbackNotes).omit({
+  id: true, createdAt: true,
+});
+
+export type FeedbackItem = typeof feedbackItems.$inferSelect;
+export type InsertFeedbackItem = z.infer<typeof insertFeedbackItemSchema>;
+export type FeedbackNote = typeof feedbackNotes.$inferSelect;
+export type InsertFeedbackNote = z.infer<typeof insertFeedbackNoteSchema>;

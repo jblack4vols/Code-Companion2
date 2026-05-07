@@ -126,8 +126,8 @@ export default function ScheduledReportsPage() {
 
       queryClient.invalidateQueries({ queryKey: ["/api/scheduled-reports"] });
       toast({ title: "Report downloaded" });
-    } catch (err: any) {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    } catch (err: unknown) {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     } finally {
       setRunningId(null);
     }

@@ -26,7 +26,7 @@ export function registerFeatureRoutes(app: Express) {
   });
   app.get("/api/physicians/:id/scorecard", requireAuth, async (req, res) => {
     try {
-      const physId = req.params.id;
+      const physId = String(req.params.id);
 
       const [physician] = await db.select().from(physicians).where(eq(physicians.id, physId));
       if (!physician) return res.status(404).json({ message: "Physician not found" });
@@ -137,7 +137,8 @@ export function registerFeatureRoutes(app: Express) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -190,7 +191,8 @@ export function registerFeatureRoutes(app: Express) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -280,16 +282,18 @@ export function registerFeatureRoutes(app: Express) {
         dateRange: { from: dateFrom, to: dateTo },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/physicians/:id/stage-history", requireAuth, async (req, res) => {
     try {
-      const history = await storage.getPhysicianStageHistory(req.params.id);
+      const history = await storage.getPhysicianStageHistory(String(req.params.id));
       res.json(history);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

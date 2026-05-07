@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "weibGw0NyyRi2tbHKnpv6"
+uri = "file://docs/import-formats.md"
+type = "text"
+title = "Tristar 360 — Financial Data Import Format Guide"

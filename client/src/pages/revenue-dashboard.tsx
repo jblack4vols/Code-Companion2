@@ -26,19 +26,30 @@ function realizationBadge(pct: number) {
 }
 
 export default function RevenueDashboardPage() {
-  const { data: summary, isLoading: summaryLoading } = useQuery<any[]>({
+  interface RevenueSummaryRow {
+    payer: string;
+    claimCount: number;
+    totalBilled: number;
+    totalPaid: number;
+    totalExpected: number;
+    totalUnderpaid: number;
+    underpaidCount: number;
+    avgRealizationPct: number;
+  }
+
+  const { data: summary, isLoading: summaryLoading } = useQuery<RevenueSummaryRow[]>({
     queryKey: ["/api/revenue/summary"],
     queryFn: () => fetch("/api/revenue/summary", { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: appealStats } = useQuery<any>({
+  const { data: appealStats } = useQuery<{ won: number; winRate: number; totalRecovered: number }>({
     queryKey: ["/api/revenue/appeals/stats"],
     queryFn: () => fetch("/api/revenue/appeals/stats", { credentials: "include" }).then(r => r.json()),
   });
 
   // Aggregate KPIs from summary rows
   const totals = (summary || []).reduce(
-    (acc: any, row: any) => ({
+    (acc, row) => ({
       totalUnderpaid: acc.totalUnderpaid + (row.totalUnderpaid || 0),
       totalBilled: acc.totalBilled + (row.totalBilled || 0),
       totalPaid: acc.totalPaid + (row.totalPaid || 0),
@@ -165,7 +176,7 @@ export default function RevenueDashboardPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    (summary || []).map((row: any) => (
+                    (summary || []).map((row) => (
                       <TableRow key={row.payer}>
                         <TableCell className="font-medium">{row.payer}</TableCell>
                         <TableCell className="text-right">{row.claimCount}</TableCell>

@@ -160,7 +160,7 @@ export default function TeamLeaderboardPage() {
                     </Badge>
                   </div>
                   <div className={`text-3xl font-bold ${colors.text}`} data-testid={`text-podium-score-${idx + 1}`}>
-                    {entry.performanceScore.toLocaleString()}
+                    {(entry.performanceScore || 0).toLocaleString()}
                   </div>
                   <p className="text-[10px] text-muted-foreground uppercase tracking-wider">Performance Score</p>
                   <div className="grid grid-cols-3 gap-3 w-full mt-1 text-xs">
@@ -227,7 +227,7 @@ export default function TeamLeaderboardPage() {
                         </div>
                       </TableCell>
                       <TableCell className="text-right font-bold" data-testid={`text-score-${entry.userId}`}>
-                        {entry.performanceScore.toLocaleString()}
+                        {(entry.performanceScore || 0).toLocaleString()}
                       </TableCell>
                       <TableCell className="text-right">
                         <Tooltip>
@@ -287,7 +287,7 @@ export default function TeamLeaderboardPage() {
                   <Activity className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-lg font-bold" data-testid="text-total-interactions">{teamTotals.interactions.toLocaleString()}</p>
+                  <p className="text-lg font-bold" data-testid="text-total-interactions">{(teamTotals.interactions || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-muted-foreground">Interactions</p>
                 </div>
               </div>
@@ -296,7 +296,7 @@ export default function TeamLeaderboardPage() {
                   <Target className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-lg font-bold" data-testid="text-total-referrals">{teamTotals.referralsGenerated.toLocaleString()}</p>
+                  <p className="text-lg font-bold" data-testid="text-total-referrals">{(teamTotals.referralsGenerated || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-muted-foreground">Referrals</p>
                 </div>
               </div>
@@ -305,7 +305,7 @@ export default function TeamLeaderboardPage() {
                   <CheckCircle className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-lg font-bold" data-testid="text-total-converted">{teamTotals.referralsConverted.toLocaleString()}</p>
+                  <p className="text-lg font-bold" data-testid="text-total-converted">{(teamTotals.referralsConverted || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-muted-foreground">Converted</p>
                 </div>
               </div>
@@ -314,7 +314,7 @@ export default function TeamLeaderboardPage() {
                   <Star className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-lg font-bold" data-testid="text-total-tasks">{teamTotals.tasksCompleted.toLocaleString()}</p>
+                  <p className="text-lg font-bold" data-testid="text-total-tasks">{(teamTotals.tasksCompleted || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-muted-foreground">Tasks Done</p>
                 </div>
               </div>
@@ -323,7 +323,7 @@ export default function TeamLeaderboardPage() {
                   <Users className="w-4 h-4" />
                 </div>
                 <div className="min-w-0">
-                  <p className="text-lg font-bold" data-testid="text-total-providers">{teamTotals.uniqueProviders.toLocaleString()}</p>
+                  <p className="text-lg font-bold" data-testid="text-total-providers">{(teamTotals.uniqueProviders || 0).toLocaleString()}</p>
                   <p className="text-[10px] text-muted-foreground">Providers</p>
                 </div>
               </div>

@@ -50,7 +50,7 @@ export default function TasksPage() {
   };
 
   const addMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: { physicianId: FormDataEntryValue | null; assignedToUserId: string | null | undefined; dueAt: string; priority: FormDataEntryValue | string; description: FormDataEntryValue | null }) => {
       const res = await apiRequest("POST", "/api/tasks", data);
       return res.json();
     },
@@ -59,7 +59,7 @@ export default function TasksPage() {
       setShowAdd(false);
       toast({ title: "Task created" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
@@ -77,7 +77,7 @@ export default function TasksPage() {
     const fd = new FormData(e.currentTarget);
     addMutation.mutate({
       physicianId: fd.get("physicianId"),
-      assignedToUserId: fd.get("assignedToUserId") || user?.id,
+      assignedToUserId: (fd.get("assignedToUserId") as string | null) || user?.id,
       dueAt: new Date(fd.get("dueAt") as string).toISOString(),
       priority: fd.get("priority") || "MEDIUM",
       description: fd.get("description"),

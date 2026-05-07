@@ -4,7 +4,7 @@
  */
 import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { queryClient } from "@/lib/queryClient";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,13 +51,16 @@ export default function RevenueClaimsPage() {
   if (dateFrom) params.set("dateFrom", dateFrom);
   if (dateTo) params.set("dateTo", dateTo);
 
-  const { data, isLoading } = useQuery<any>({
+  interface ClaimItem { id: string; claimNumber: string; dos: string; payer?: string; cptCodes?: string; billedAmount: number | string | null; paidAmount: number | string | null; expectedAmount?: number | string | null; status: string; isUnderpaid?: boolean; }
+  interface ClaimsResult { data: ClaimItem[]; total: number; }
+  interface AppealTemplate { id: string; name: string; }
+  const { data, isLoading } = useQuery<ClaimsResult>({
     queryKey: ["/api/revenue/claims", params.toString()],
     queryFn: () =>
       fetch(`/api/revenue/claims?${params.toString()}`, { credentials: "include" }).then(r => r.json()),
   });
 
-  const { data: templates } = useQuery<any[]>({
+  const { data: templates } = useQuery<AppealTemplate[]>({
     queryKey: ["/api/revenue/appeal-templates"],
     queryFn: () =>
       fetch("/api/revenue/appeal-templates?activeOnly=true", { credentials: "include" }).then(r => r.json()),
@@ -65,12 +68,7 @@ export default function RevenueClaimsPage() {
 
   const appealMutation = useMutation({
     mutationFn: async () => {
-      const res = await fetch("/api/revenue/appeals/generate", {
-        method: "POST",
-        credentials: "include",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ claimId: selectedClaimId, templateId: selectedTemplateId || undefined }),
-      });
+      const res = await apiRequest("POST", "/api/revenue/appeals/generate", { claimId: selectedClaimId, templateId: selectedTemplateId || undefined });
       if (!res.ok) throw new Error((await res.json()).message || "Failed to generate appeal");
       return res.json();
     },
@@ -80,12 +78,12 @@ export default function RevenueClaimsPage() {
       setSelectedClaimId(null);
       queryClient.invalidateQueries({ queryKey: ["/api/revenue/appeals"] });
     },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
-  const claims: any[] = data?.data || [];
+  const claims = data?.data || [];
   const total: number = data?.total || 0;
   const totalPages = Math.max(1, Math.ceil(total / 50));
 
@@ -199,7 +197,7 @@ export default function RevenueClaimsPage() {
                       </TableCell>
                     </TableRow>
                   ) : (
-                    claims.map((c: any) => {
+                    claims.map((c) => {
                       const expected = parseFloat(String(c.expectedAmount ?? 0));
                       const paid = parseFloat(String(c.paidAmount ?? 0));
                       const variance = expected > 0 ? expected - paid : 0;
@@ -274,7 +272,7 @@ export default function RevenueClaimsPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="">Auto-select</SelectItem>
-                  {(templates || []).map((t: any) => (
+                  {(templates || []).map((t) => (
                     <SelectItem key={t.id} value={t.id}>{t.name}</SelectItem>
                   ))}
                 </SelectContent>

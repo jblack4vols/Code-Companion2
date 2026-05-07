@@ -307,7 +307,7 @@ export default function ROICalculatorPage() {
                         {formatCurrency(provider.revenue_per_referral)}
                       </TableCell>
                       <TableCell className="text-right tabular-nums" data-testid={`text-visits-per-referral-${provider.physician_id}`}>
-                        {parseFloat(provider.visits_per_referral).toFixed(1)}
+                        {(parseFloat(provider.visits_per_referral) || 0).toFixed(1)}
                       </TableCell>
                     </TableRow>
                   ))

@@ -25,7 +25,7 @@ export default function TerritoriesPage() {
   const [selectedPhysicians, setSelectedPhysicians] = useState<string[]>([]);
   const [assignToMarketer, setAssignToMarketer] = useState<string>("");
 
-  const { data: territories, isLoading } = useQuery<any>({
+  const { data: territories, isLoading } = useQuery<{ territories: { marketer: { id: string; name: string; role: string }; assignedCount: number }[]; unassignedCount: number; totalPhysicians: number }>({
     queryKey: ["/api/territories"],
     queryFn: async () => {
       const res = await fetch("/api/territories", { credentials: "include" });
@@ -34,7 +34,7 @@ export default function TerritoriesPage() {
     },
   });
 
-  const { data: marketers } = useQuery<any[]>({
+  const { data: marketers } = useQuery<{ id: string; name: string; role: string }[]>({
     queryKey: ["/api/marketers"],
     queryFn: async () => {
       const res = await fetch("/api/marketers", { credentials: "include" });
@@ -43,7 +43,7 @@ export default function TerritoriesPage() {
     },
   });
 
-  const unassignedQuery = useQuery<any>({
+  const unassignedQuery = useQuery<{ data: { id: string; firstName: string; lastName: string; credentials: string | null; practiceName: string | null; assignedOwnerId: string | null }[] }>({
     queryKey: ["/api/physicians/paginated", "unassigned", selectedMarketer],
     queryFn: async () => {
       const params = new URLSearchParams();
@@ -69,8 +69,8 @@ export default function TerritoriesPage() {
       setSelectedPhysicians([]);
       setAssignToMarketer("");
     },
-    onError: (err: any) => {
-      toast({ title: "Error", description: err.message, variant: "destructive" });
+    onError: (err: unknown) => {
+      toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
     },
   });
 
@@ -89,8 +89,8 @@ export default function TerritoriesPage() {
   const unassignedCount = territories?.unassignedCount || 0;
   const totalPhysicians = territories?.totalPhysicians || 0;
 
-  const allUnassigned = (unassignedQuery.data?.data || []).filter((p: any) => !p.assignedOwnerId);
-  const filteredUnassigned = allUnassigned.filter((p: any) => {
+  const allUnassigned = (unassignedQuery.data?.data || []).filter((p) => !p.assignedOwnerId);
+  const filteredUnassigned = allUnassigned.filter((p) => {
     if (!assignSearch) return true;
     const term = assignSearch.toLowerCase();
     return `${p.firstName} ${p.lastName}`.toLowerCase().includes(term) ||
@@ -180,14 +180,14 @@ export default function TerritoriesPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {terrData.map((t: any) => {
+              {terrData.map((t) => {
                 const pct = totalPhysicians > 0 ? Math.round((t.assignedCount / totalPhysicians) * 100) : 0;
                 return (
                   <TableRow key={t.marketer.id} data-testid={`row-territory-${t.marketer.id}`}>
                     <TableCell>
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-md bg-primary/10 flex items-center justify-center text-primary text-[10px] font-medium shrink-0">
-                          {t.marketer.name.split(" ").map((n: string) => n[0]).join("").slice(0, 2)}
+                          {t.marketer.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
                         </div>
                         <span className="text-sm font-medium">{t.marketer.name}</span>
                       </div>
@@ -250,7 +250,7 @@ export default function TerritoriesPage() {
               />
             </div>
             <div className="max-h-[300px] overflow-y-auto space-y-1 border rounded-md p-2">
-              {filteredUnassigned.slice(0, 50).map((p: any) => (
+              {filteredUnassigned.slice(0, 50).map((p) => (
                 <label key={p.id} className="flex items-center gap-2 p-2 rounded-md hover-elevate cursor-pointer text-sm">
                   <Checkbox
                     checked={selectedPhysicians.includes(p.id)}

@@ -1,0 +1,240 @@
+You are ClaudeKit Engineer working inside an existing Express + React + Drizzle application.
+
+The project already contains many route modules under /routes.
+
+DO NOT create duplicate functionality.
+
+Instead, extend the existing modules.
+
+Existing route modules include:
+
+dashboard
+referrals
+import
+physicians
+calendar
+locations
+practice-intelligence
+revenue-recovery
+billing-lag
+unit-economics
+users
+tasks
+search
+
+Your job is to extend these routes and ensure everything integrates cleanly.
+
+--------------------------------
+
+SYSTEMS TO ADD
+
+1. Command Center KPI Intelligence
+2. Referral Growth Intelligence
+3. Claim Underpayment Detector
+4. AI Front Desk Intake + Scheduling
+
+--------------------------------
+
+INTEGRATION RULES
+
+1. Inspect all existing routes first.
+2. Reuse existing data models where possible.
+3. Do not create duplicate tables if similar ones already exist.
+4. Extend routes instead of creating new ones.
+5. Maintain existing auth/session middleware.
+6. Follow existing Zod validation patterns.
+
+--------------------------------
+
+MODULE 1 — COMMAND CENTER
+
+Extend:
+
+routes/dashboard.ts
+routes/practice-intelligence.ts
+
+Add endpoints:
+
+GET /api/dashboard/kpis
+GET /api/dashboard/alerts
+GET /api/dashboard/location-performance
+
+Metrics:
+
+revenue
+visits
+revenue_per_visit
+arrival_rate
+cancellations
+no_shows
+
+Alerts:
+
+arrival_rate < 85%
+revenue_per_visit drop > 5%
+visit volume drop > 10% WoW
+
+--------------------------------
+
+MODULE 2 — REFERRAL INTELLIGENCE
+
+Extend:
+
+routes/referrals.ts
+routes/physicians.ts
+
+Add analytics endpoints:
+
+GET /api/referrals/top-sources
+GET /api/referrals/trending
+GET /api/referrals/by-location
+
+Compute:
+
+last_30_days
+previous_30_days
+trend %
+
+Return marketing recommendations.
+
+--------------------------------
+
+MODULE 3 — UNDERPAYMENT DETECTOR
+
+Extend:
+
+routes/revenue-recovery.ts
+routes/billing-lag.ts
+
+Add logic:
+
+expected_payment = fee_schedule[cpt]
+
+variance = actual_payment - expected_payment
+
+Flag if:
+
+variance < -5
+paid = 0 but expected > 0
+
+Endpoints:
+
+GET /api/revenue/underpayments
+GET /api/revenue/underpayments/by-payer
+POST /api/revenue/underpayments/resolve
+
+--------------------------------
+
+MODULE 4 — FRONT DESK INTAKE AI
+
+Extend:
+
+routes/calendar.ts
+routes/interactions.ts
+
+Add:
+
+POST /api/frontdesk/intake
+POST /api/frontdesk/triage
+POST /api/frontdesk/book
+
+Workflow:
+
+patient submits symptoms
+triage classification runs
+system proposes earliest appointment slot
+slot booked or waitlist created
+
+--------------------------------
+
+TRIAGE CLASSIFICATION
+
+Red:
+severe pain
+sudden weakness
+fall injury
+post surgery complication
+
+Orange:
+acute injury
+severe inflammation
+limited mobility
+
+Yellow:
+subacute pain
+moderate limitation
+
+Green:
+chronic condition
+
+Emergency phrases:
+
+chest pain
+stroke
+shortness of breath
+severe bleeding
+
+If detected:
+
+Return response instructing patient to call 911.
+
+--------------------------------
+
+CSV IMPORTS
+
+Extend:
+
+routes/import.ts
+
+Add templates for:
+
+KPI data
+referrals
+claims
+
+Ensure idempotent upserts.
+
+--------------------------------
+
+DEBUG PROCESS
+
+After implementing changes:
+
+Run:
+
+npm run check
+npm run dev
+
+Then verify flows:
+
+Upload KPI CSV
+Dashboard updates
+
+Upload claims CSV
+Underpayment flags appear
+
+Create front desk intake
+Triage runs
+Appointment booked
+
+Ensure:
+
+No console errors
+No TypeScript errors
+All endpoints respond correctly
+
+--------------------------------
+
+FINAL RESULT
+
+The application should start with:
+
+npm run dev
+
+and the following systems should be operational:
+
+Dashboard intelligence
+Referral analytics
+Underpayment detection
+Front desk intake scheduling
+CSV imports

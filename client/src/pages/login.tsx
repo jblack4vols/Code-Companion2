@@ -6,7 +6,7 @@ import { Label } from "@/components/ui/label";
 import { useAuth } from "@/lib/auth";
 import { AlertCircle, Loader2, Lock, CheckCircle2, ArrowLeft, Mail } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import tristarLogo from "@assets/Jordan_Black_-_Transparent_Bacground_PNG_File.638e6192486320._1770818919661.jpeg";
+import tristarLogo from "@assets/tristar-logo-transparent.png";
 
 type View = "login" | "register" | "forgot" | "register-success" | "forgot-success";
 
@@ -42,8 +42,8 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await login(email, password);
-    } catch (err: any) {
-      const msg = err.message || "Invalid credentials";
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Invalid credentials";
       if (msg.includes("locked") || msg.includes("Locked")) {
         setIsLocked(true);
       }
@@ -64,8 +64,8 @@ export default function LoginPage() {
     try {
       await apiRequest("POST", "/api/auth/register", { name, email, password });
       setView("register-success");
-    } catch (err: any) {
-      setError(err.message || "Registration failed");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Registration failed");
     } finally {
       setLoading(false);
     }
@@ -78,8 +78,8 @@ export default function LoginPage() {
     try {
       await apiRequest("POST", "/api/auth/forgot-password", { email });
       setView("forgot-success");
-    } catch (err: any) {
-      setError(err.message || "Failed to send reset email");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to send reset email");
     } finally {
       setLoading(false);
     }
@@ -117,6 +117,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email"
                     required
+                    autoComplete="email"
                     data-testid="input-email"
                   />
                 </div>
@@ -140,6 +141,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Enter password"
                     required
+                    autoComplete="current-password"
                     data-testid="input-password"
                   />
                 </div>
@@ -190,6 +192,7 @@ export default function LoginPage() {
                     onChange={(e) => setName(e.target.value)}
                     placeholder="Jane Smith"
                     required
+                    autoComplete="name"
                     data-testid="input-register-name"
                   />
                 </div>
@@ -203,6 +206,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="jane@company.com"
                     required
+                    autoComplete="email"
                     data-testid="input-register-email"
                   />
                 </div>
@@ -216,6 +220,7 @@ export default function LoginPage() {
                     onChange={(e) => setPassword(e.target.value)}
                     placeholder="Min 8 chars, upper/lower/number/special"
                     required
+                    autoComplete="new-password"
                     data-testid="input-register-password"
                   />
                 </div>
@@ -229,6 +234,7 @@ export default function LoginPage() {
                     onChange={(e) => setConfirmPassword(e.target.value)}
                     placeholder="Re-enter password"
                     required
+                    autoComplete="new-password"
                     data-testid="input-register-confirm"
                   />
                 </div>
@@ -296,6 +302,7 @@ export default function LoginPage() {
                     onChange={(e) => setEmail(e.target.value)}
                     placeholder="Enter your email"
                     required
+                    autoComplete="email"
                     data-testid="input-forgot-email"
                   />
                 </div>

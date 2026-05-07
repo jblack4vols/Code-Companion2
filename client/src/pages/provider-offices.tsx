@@ -52,8 +52,20 @@ function useRecentSearches(userId: string | undefined) {
   return { recent, addRecent, clearRecent };
 }
 
+interface OfficeProvider {
+  id: string;
+  firstName: string;
+  lastName: string;
+  credentials: string | null;
+  npi: string | null;
+  specialty: string | null;
+  status: string;
+  relationshipStage: string | null;
+  referralCount: number;
+}
+
 function OfficeProviders({ officeName }: { officeName: string }) {
-  const { data: providers, isLoading } = useQuery<any[]>({
+  const { data: providers, isLoading } = useQuery<OfficeProvider[]>({
     queryKey: ["/api/provider-offices", officeName, "providers"],
     queryFn: async () => {
       const res = await fetch(`/api/provider-offices/${encodeURIComponent(officeName)}/providers`, { credentials: "include" });
@@ -89,7 +101,7 @@ function OfficeProviders({ officeName }: { officeName: string }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {providers.map((p: any) => (
+          {providers.map((p) => (
             <TableRow key={p.id} className="hover:bg-muted/20">
               <TableCell>
                 <Link href={`/physicians/${p.id}`} className="text-primary hover:underline font-medium text-sm" data-testid={`link-provider-${p.id}`}>
@@ -125,7 +137,7 @@ export default function ProviderOfficesPage() {
   const { recent, addRecent, clearRecent } = useRecentSearches(user?.id);
   const [addDialogOpen, setAddDialogOpen] = useState(false);
 
-  const canManage = user && ["OWNER", "DIRECTOR", "MARKETER"].includes((user as any).role);
+  const canManage = user && ["OWNER", "DIRECTOR", "MARKETER"].includes(user.role);
 
   const addOfficeMutation = useMutation({
     mutationFn: async (data: { practiceName: string; address?: string; city?: string; state?: string; zip?: string; phone?: string; fax?: string }) => {
@@ -151,7 +163,7 @@ export default function ProviderOfficesPage() {
       setAddDialogOpen(false);
       toast({ title: "Office added", description: `"${vars.practiceName}" has been created. You can now add providers to it.` });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const handleAddOffice = (e: React.FormEvent<HTMLFormElement>) => {
@@ -178,7 +190,9 @@ export default function ProviderOfficesPage() {
     sortOrder: "desc",
   }).toString();
 
-  const { data: result, isLoading, isError, refetch } = useQuery<any>({
+  interface OfficeEntry { office_name: string; city?: string; state?: string; phone?: string; provider_count: number; total_referrals: number; }
+  interface OfficesResult { data: OfficeEntry[]; total: number; totalPages: number; }
+  const { data: result, isLoading, isError, refetch } = useQuery<OfficesResult>({
     queryKey: ["/api/provider-offices", queryParams],
     queryFn: async () => {
       const res = await fetch(`/api/provider-offices?${queryParams}`, { credentials: "include" });
@@ -295,7 +309,7 @@ export default function ProviderOfficesPage() {
         </Card>
       ) : (
         <div className="space-y-2">
-          {offices.map((office: any) => {
+          {offices.map((office) => {
             const isExpanded = expandedOffice === office.office_name;
             return (
               <Card key={office.office_name} className={isExpanded ? "border-primary/40" : ""} data-testid={`card-office-${office.office_name.replace(/\s+/g, "-").toLowerCase()}`}>

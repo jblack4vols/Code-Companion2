@@ -3,15 +3,15 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { eq, lt } from "drizzle-orm";
 import { appSettings, auditLogs, insertScheduledReportSchema } from "@shared/schema";
-import { requireRole, getClientIp, qstr } from "./shared";
+import { requireRole, getClientIp, qstr, qstrReq } from "./shared";
 
 export function registerAdminRoutes(app: Express) {
   app.get("/api/audit-logs", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     const filters = {
-      userId: req.query.userId as string | undefined,
-      entity: req.query.entity as string | undefined,
-      action: req.query.action as string | undefined,
-      limit: req.query.limit ? parseInt(req.query.limit as string) : undefined,
+      userId: qstr(req.query.userId),
+      entity: qstr(req.query.entity),
+      action: qstr(req.query.action),
+      limit: req.query.limit ? parseInt(qstrReq(req.query.limit)) : undefined,
     };
     res.json(await storage.getAuditLogs(filters));
   });
@@ -21,7 +21,8 @@ export function registerAdminRoutes(app: Express) {
       const result = await db.select().from(appSettings).where(eq(appSettings.key, "audit_retention_days")).limit(1);
       res.json({ value: result[0]?.value || "365" });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -34,7 +35,8 @@ export function registerAdminRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Setting", entityId: "audit_retention_days", detailJson: { days }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -48,7 +50,8 @@ export function registerAdminRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "PURGE", entity: "AuditLog", entityId: "bulk", detailJson: { retentionDays, cutoffDate: cutoffDate.toISOString() }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ deleted: deleted.rowCount || 0 });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -63,7 +66,8 @@ export function registerAdminRoutes(app: Express) {
         reportTime: reportResult[0]?.value || "6:30",
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -95,7 +99,8 @@ export function registerAdminRoutes(app: Express) {
 
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -116,7 +121,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="physicians_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -139,7 +145,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="referrals_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -159,7 +166,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="interactions_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -177,7 +185,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="tasks_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -195,7 +204,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="audit_logs_export_${new Date().toISOString().slice(0,10)}.csv"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -203,7 +213,8 @@ export function registerAdminRoutes(app: Express) {
     try {
       res.json(await storage.getScheduledReports());
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -223,10 +234,15 @@ export function registerAdminRoutes(app: Express) {
 
   app.patch("/api/scheduled-reports/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const existing = await storage.getScheduledReport(req.params.id);
+      const patchSchema = insertScheduledReportSchema.partial();
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const existing = await storage.getScheduledReport(String(req.params.id));
       if (!existing) return res.status(404).json({ message: "Not found" });
-      const report = await storage.updateScheduledReport(req.params.id, req.body);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "ScheduledReport", entityId: report.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      const report = await storage.updateScheduledReport(String(req.params.id), parsed.data);
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "ScheduledReport", entityId: report.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(report);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -235,19 +251,20 @@ export function registerAdminRoutes(app: Express) {
 
   app.delete("/api/scheduled-reports/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const existing = await storage.getScheduledReport(req.params.id);
+      const existing = await storage.getScheduledReport(String(req.params.id));
       if (!existing) return res.status(404).json({ message: "Not found" });
-      await storage.deleteScheduledReport(req.params.id);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "ScheduledReport", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.deleteScheduledReport(String(req.params.id));
+      await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "ScheduledReport", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.post("/api/scheduled-reports/:id/run", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const report = await storage.getScheduledReport(req.params.id);
+      const report = await storage.getScheduledReport(String(req.params.id));
       if (!report) return res.status(404).json({ message: "Not found" });
 
       let csv = "";
@@ -286,7 +303,8 @@ export function registerAdminRoutes(app: Express) {
       res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
       res.send(csv);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

@@ -22,7 +22,8 @@ import { useDebounce } from "@/hooks/use-debounce";
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatCurrency(value: number): string {
+function formatCurrency(value: number | undefined | null): string {
+  if (value == null) return "$0";
   return "$" + value.toLocaleString("en-US", { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
@@ -31,7 +32,8 @@ function formatDate(iso: string | null): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
-function formatPercent(value: number): string {
+function formatPercent(value: number | undefined | null): string {
+  if (value == null) return "0.0%";
   return value.toFixed(1) + "%";
 }
 
@@ -41,9 +43,9 @@ type SortColumn =
   | "city"
   | "physicianCount"
   | "totalReferrals"
-  | "revenue"
+  | "totalRevenue"
   | "arrivalRate"
-  | "lastInteraction";
+  | "lastInteractionAt";
 
 function SortIcon({ column, current, order }: { column: SortColumn; current: SortColumn; order: SortOrder }) {
   if (column !== current) return <ArrowUpDown className="ml-1 h-3 w-3 text-muted-foreground/50 inline" />;
@@ -73,9 +75,9 @@ interface PracticeRow {
   state: string | null;
   physicianCount: number;
   totalReferrals: number;
-  revenue: number;
+  totalRevenue: number;
   arrivalRate: number;
-  lastInteraction: string | null;
+  lastInteractionAt: string | null;
 }
 
 interface PracticeListResponse {
@@ -190,14 +192,14 @@ function PracticeListView() {
                     <TableHead {...thProps("totalReferrals")} className={thProps("totalReferrals").className + " text-right"}>
                       Total Referrals <SortIcon column="totalReferrals" current={sortBy} order={sortOrder} />
                     </TableHead>
-                    <TableHead {...thProps("revenue")} className={thProps("revenue").className + " text-right"}>
-                      Revenue <SortIcon column="revenue" current={sortBy} order={sortOrder} />
+                    <TableHead {...thProps("totalRevenue")} className={thProps("totalRevenue").className + " text-right"}>
+                      Revenue <SortIcon column="totalRevenue" current={sortBy} order={sortOrder} />
                     </TableHead>
                     <TableHead {...thProps("arrivalRate")} className={thProps("arrivalRate").className + " text-right"}>
                       Arrival Rate <SortIcon column="arrivalRate" current={sortBy} order={sortOrder} />
                     </TableHead>
-                    <TableHead {...thProps("lastInteraction")}>
-                      Last Interaction <SortIcon column="lastInteraction" current={sortBy} order={sortOrder} />
+                    <TableHead {...thProps("lastInteractionAt")}>
+                      Last Interaction <SortIcon column="lastInteractionAt" current={sortBy} order={sortOrder} />
                     </TableHead>
                   </TableRow>
                 </TableHeader>
@@ -221,9 +223,9 @@ function PracticeListView() {
                         <Badge variant="secondary" className="text-xs">{p.physicianCount}</Badge>
                       </TableCell>
                       <TableCell className="text-right text-sm font-medium">{p.totalReferrals}</TableCell>
-                      <TableCell className="text-right text-sm">{formatCurrency(p.revenue)}</TableCell>
+                      <TableCell className="text-right text-sm">{formatCurrency(p.totalRevenue)}</TableCell>
                       <TableCell className="text-right text-sm">{formatPercent(p.arrivalRate)}</TableCell>
-                      <TableCell className="text-sm text-muted-foreground">{formatDate(p.lastInteraction)}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">{formatDate(p.lastInteractionAt)}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -279,10 +281,10 @@ interface PhysicianCard {
   specialty: string | null;
   status: string;
   referralCount: number;
-  revenue: number;
+  revenueGenerated: number;
   arrivalRate: number;
   interactionCount: number;
-  lastInteraction: string | null;
+  lastInteractionAt: string | null;
 }
 
 interface PracticeDetail {
@@ -290,7 +292,7 @@ interface PracticeDetail {
   city: string | null;
   state: string | null;
   totalReferrals: number;
-  revenue: number;
+  totalRevenue: number;
   arrivalRate: number;
 }
 
@@ -371,7 +373,7 @@ function PracticeDetailView({ practiceName }: { practiceName: string }) {
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <MetricCard icon={Users} label="Total Physicians" value={String(physicians.length)} />
           <MetricCard icon={Activity} label="Total Referrals" value={String(practice.totalReferrals)} />
-          <MetricCard icon={DollarSign} label="Total Revenue" value={formatCurrency(practice.revenue)} />
+          <MetricCard icon={DollarSign} label="Total Revenue" value={formatCurrency(practice.totalRevenue)} />
           <MetricCard icon={TrendingUp} label="Avg Arrival Rate" value={formatPercent(practice.arrivalRate)} />
         </div>
       )}
@@ -417,7 +419,7 @@ function PracticeDetailView({ practiceName }: { practiceName: string }) {
                     </div>
                     <div>
                       <p className="text-muted-foreground">Revenue</p>
-                      <p className="font-medium">{formatCurrency(physician.revenue)}</p>
+                      <p className="font-medium">{formatCurrency(physician.revenueGenerated)}</p>
                     </div>
                     <div>
                       <p className="text-muted-foreground">Arrival Rate</p>
@@ -429,7 +431,7 @@ function PracticeDetailView({ practiceName }: { practiceName: string }) {
                     </div>
                   </div>
                   <div className="text-xs text-muted-foreground border-t pt-2">
-                    Last interaction: {formatDate(physician.lastInteraction)}
+                    Last interaction: {formatDate(physician.lastInteractionAt)}
                   </div>
                   <Link href={`/scorecard/${physician.id}`}>
                     <Button variant="outline" size="sm" className="w-full text-xs h-7" data-testid={`link-scorecard-${physician.id}`}>

@@ -5,12 +5,13 @@ import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
 export function registerSearchRoutes(app: Express) {
   app.get("/api/search", requireAuth, async (req, res) => {
     try {
-      const q = qstr(req.query.q as string);
+      const q = qstr(req.query.q);
       if (!q || q.length < 2) return res.json({ physicians: [], referrals: [] });
       const results = await storage.globalSearch(q, 10);
       res.json(results);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -19,36 +20,40 @@ export function registerSearchRoutes(app: Express) {
       const favoriteIds = await storage.getPhysicianFavorites(req.session.userId!);
       res.json(favoriteIds);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.post("/api/favorites/:physicianId", requireAuth, async (req, res) => {
     try {
-      await storage.addPhysicianFavorite(req.session.userId!, req.params.physicianId);
+      await storage.addPhysicianFavorite(req.session.userId!, String(req.params.physicianId));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.delete("/api/favorites/:physicianId", requireAuth, async (req, res) => {
     try {
-      await storage.removePhysicianFavorite(req.session.userId!, req.params.physicianId);
+      await storage.removePhysicianFavorite(req.session.userId!, String(req.params.physicianId));
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/referrals/unlinked", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const page = parseInt(qstr(req.query.page as string) || "1");
-      const pageSize = parseInt(qstr(req.query.pageSize as string) || "50");
+      const page = parseInt(qstr(req.query.page) || "1");
+      const pageSize = parseInt(qstr(req.query.pageSize) || "50");
       const result = await storage.getUnlinkedReferrals(page, pageSize);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -56,44 +61,47 @@ export function registerSearchRoutes(app: Express) {
     try {
       const { physicianId, linkAll } = req.body;
       if (!physicianId) return res.status(400).json({ message: "physicianId is required" });
-      const updated = await storage.linkReferralToPhysician(req.params.id, physicianId);
+      const updated = await storage.linkReferralToPhysician(String(req.params.id), physicianId);
       if (!updated) return res.status(404).json({ message: "Referral or physician not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "LINK_REFERRAL", entity: "Referral", entityId: req.params.id, detailJson: { physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "LINK_REFERRAL", entity: "Referral", entityId: String(req.params.id), detailJson: { physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
 
       let linkedCount = 1;
       if (linkAll && updated.referringProviderName) {
-        const additionalCount = await storage.bulkLinkReferralsByProviderName(updated.referringProviderName, physicianId, req.params.id);
+        const additionalCount = await storage.bulkLinkReferralsByProviderName(updated.referringProviderName, physicianId, String(req.params.id));
         linkedCount += additionalCount;
       }
 
       res.json({ ...updated, linkedCount });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.post("/api/referrals/:id/self-referral", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const updated = await storage.categorizeReferralAsSelfReferral(req.params.id);
+      const updated = await storage.categorizeReferralAsSelfReferral(String(req.params.id));
       if (!updated) return res.status(404).json({ message: "Referral not found" });
       res.json(updated);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/referrals/:id/suggested-matches", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const matches = await storage.getSuggestedPhysicianMatches(req.params.id);
+      const matches = await storage.getSuggestedPhysicianMatches(String(req.params.id));
       res.json(matches);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/physicians/:id/health-score", requireAuth, async (req, res) => {
     try {
-      const physId = req.params.id;
+      const physId = String(req.params.id);
       const summaries = await storage.getPhysicianMonthlySummaries({ physicianId: physId, months: 6 });
       const interactionsAll = await storage.getInteractions(physId);
       const activeInteractions = interactionsAll.filter(i => !i.deletedAt);
@@ -147,7 +155,8 @@ export function registerSearchRoutes(app: Express) {
         },
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft } from "lucide-react";
+import { ArrowLeft, Phone, Mail, MapPin, Calendar, MessageSquare, FileText, ClipboardList, Stethoscope, Plus, Edit2, Save, X, Building2, StickyNote, Trash2, Pencil, Send, ToggleLeft, GitBranch } from "lucide-react";
+import { ProviderRelationshipTimeline } from "@/components/provider-relationship-timeline";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -44,6 +45,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const [newComment, setNewComment] = useState("");
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentContent, setEditingCommentContent] = useState("");
+  const [practiceNameValue, setPracticeNameValue] = useState("");
+  const [linkingOffice, setLinkingOffice] = useState(false);
+  const [linkOfficeName, setLinkOfficeName] = useState("");
 
   const { data: physician, isLoading } = useQuery<Physician>({
     queryKey: ["/api/physicians", params.id],
@@ -62,6 +66,10 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   });
   const { data: users } = useQuery<User[]>({ queryKey: ["/api/users"] });
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
+  const { data: practiceNamesData } = useQuery<string[]>({
+    queryKey: ["/api/physicians/practice-names"],
+    enabled: editing || linkingOffice,
+  });
   const { data: comments } = useQuery<PhysicianComment[]>({
     queryKey: ["/api/physicians", params.id, "comments"],
     queryFn: async () => {
@@ -71,7 +79,13 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
     },
     enabled: !!params.id,
   });
-  const { data: healthScore } = useQuery<any>({
+  useEffect(() => {
+    if (editing && physician) {
+      setPracticeNameValue(physician.practiceName || "");
+    }
+  }, [editing, physician]);
+
+  const { data: healthScore } = useQuery<{ healthScore: number } | null>({
     queryKey: ["/api/physicians", params.id, "health-score"],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/${params.id}/health-score`, { credentials: "include" });
@@ -86,7 +100,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
   const canDeleteComments = user ? (user.role === "OWNER" || user.role === "DIRECTOR") : false;
 
   const updateMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("PATCH", `/api/physicians/${params.id}`, data);
       return res.json();
     },
@@ -96,11 +110,27 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setEditing(false);
       toast({ title: "Referring provider updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const linkOfficeMutation = useMutation({
+    mutationFn: async (practiceName: string) => {
+      const res = await apiRequest("PATCH", `/api/physicians/${params.id}/link-office`, { practiceName });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id] });
+      queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/provider-offices"] });
+      setLinkingOffice(false);
+      setLinkOfficeName("");
+      toast({ title: "Office linked successfully" });
+    },
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const addInteraction = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/interactions", data);
       return res.json();
     },
@@ -112,7 +142,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setShowInteraction(false);
       toast({ title: "Interaction logged" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const addCommentMutation = useMutation({
@@ -125,7 +155,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setNewComment("");
       toast({ title: "Comment added" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const updateCommentMutation = useMutation({
@@ -139,7 +169,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       setEditingCommentContent("");
       toast({ title: "Comment updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const deleteCommentMutation = useMutation({
@@ -151,7 +181,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       queryClient.invalidateQueries({ queryKey: ["/api/physicians", params.id, "comments"] });
       toast({ title: "Comment deleted" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -164,7 +194,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       toast({ title: "Referring provider deleted" });
       setLoc("/physicians");
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const setInactiveMutation = useMutation({
@@ -177,7 +207,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       queryClient.invalidateQueries({ queryKey: ["/api/physicians/paginated"] });
       toast({ title: "Referring provider set to inactive" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const handleAddComment = () => {
@@ -194,7 +224,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
       credentials: fd.get("credentials") || null,
       npi: fd.get("npi") || null,
       specialty: fd.get("specialty") || null,
-      practiceName: fd.get("practiceName") || null,
+      practiceName: practiceNameValue.trim() || null,
       phone: fd.get("phone") || null,
       email: fd.get("email") || null,
       city: fd.get("city") || null,
@@ -274,7 +304,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
             {physician.relationshipStage.replace("_", " ")}
           </Badge>
           {canEdit && !editing && (
-            <Button variant="outline" size="sm" onClick={() => setEditing(true)} data-testid="button-edit-physician">
+            <Button variant="outline" size="sm" onClick={() => { setPracticeNameValue(physician?.practiceName || ""); setEditing(true); }} data-testid="button-edit-physician">
               <Edit2 className="w-3 h-3 mr-1.5" />Edit
             </Button>
           )}
@@ -352,7 +382,20 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                 </div>
                 <div className="space-y-1.5">
                   <Label>Office/Practice Name</Label>
-                  <Input name="practiceName" defaultValue={physician.practiceName || ""} />
+                  <div className="relative">
+                    <Input
+                      value={practiceNameValue}
+                      onChange={(e) => setPracticeNameValue(e.target.value)}
+                      placeholder="Type or select a practice..."
+                      list="practice-names-list"
+                      data-testid="input-edit-practice-name"
+                    />
+                    <datalist id="practice-names-list">
+                      {(practiceNamesData || []).map((name) => (
+                        <option key={name} value={name} />
+                      ))}
+                    </datalist>
+                  </div>
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-3">
@@ -453,7 +496,7 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                   <span>{physician.credentials}</span>
                 </div>
               )}
-              {physician.practiceName && (
+              {physician.practiceName ? (
                 <div className="flex justify-between text-xs">
                   <span className="text-muted-foreground">Office/Practice Name</span>
                   <Link href={`/physicians?practice=${encodeURIComponent(physician.practiceName)}`}>
@@ -462,6 +505,32 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                     </span>
                   </Link>
                 </div>
+              ) : null}
+              {linkingOffice ? (
+                <div className="space-y-2 p-2 border rounded-md bg-muted/30">
+                  <Label className="text-xs">Link to Office/Practice</Label>
+                  <Input
+                    value={linkOfficeName}
+                    onChange={(e) => setLinkOfficeName(e.target.value)}
+                    placeholder="Type practice name..."
+                    list="link-practice-names-list"
+                    data-testid="input-link-office"
+                    className="text-sm"
+                  />
+                  <datalist id="link-practice-names-list">
+                    {(practiceNamesData || []).map((name) => (
+                      <option key={name} value={name} />
+                    ))}
+                  </datalist>
+                  <div className="flex gap-2">
+                    <Button size="sm" variant="outline" onClick={() => { setLinkingOffice(false); setLinkOfficeName(""); }} data-testid="button-cancel-link-office"><X className="w-3 h-3 mr-1" />Cancel</Button>
+                    <Button size="sm" disabled={!linkOfficeName.trim() || linkOfficeMutation.isPending} onClick={() => linkOfficeMutation.mutate(linkOfficeName.trim())} data-testid="button-save-link-office"><Save className="w-3 h-3 mr-1" />Save</Button>
+                  </div>
+                </div>
+              ) : (
+                <Button variant="outline" size="sm" className="w-full text-xs" onClick={() => { setLinkOfficeName(physician.practiceName || ""); setLinkingOffice(true); }} data-testid="button-link-office">
+                  <Building2 className="w-3 h-3 mr-1.5" />{physician.practiceName ? "Change Office" : "Link to Office"}
+                </Button>
               )}
               <div className="pt-2 border-t" />
               {physician.phone && (
@@ -532,6 +601,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                       {comments && comments.length > 0 && (
                         <Badge variant="secondary" className="ml-1 text-[10px] px-1.5">{comments.length}</Badge>
                       )}
+                    </TabsTrigger>
+                    <TabsTrigger value="timeline" data-testid="tab-timeline">
+                      <GitBranch className="w-3.5 h-3.5 mr-1.5" />Timeline
                     </TabsTrigger>
                   </TabsList>
                   {canEdit && (
@@ -763,6 +835,9 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
                       No notes yet. Add the first note above.
                     </div>
                   )}
+                </TabsContent>
+                <TabsContent value="timeline" className="mt-0">
+                  <ProviderRelationshipTimeline physicianId={params.id} />
                 </TabsContent>
               </CardContent>
             </Tabs>

@@ -3,7 +3,7 @@ google-genai>=0.2.0
 python-dotenv>=1.0.0
 
 # Image processing
-pillow>=10.0.0
+pillow>=10.2.0
 
 # PDF processing
 pypdf>=3.0.0

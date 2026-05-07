@@ -7,7 +7,7 @@ import { sendTaskAssignmentEmail } from "../outlook";
 
 export function registerTaskRoutes(app: Express) {
   app.get("/api/tasks", requireAuth, async (req, res) => {
-    const physicianId = req.query.physicianId as string | undefined;
+    const physicianId = (req.query.physicianId ? String(req.query.physicianId) : undefined);
     res.json(await storage.getTasks(physicianId));
   });
 
@@ -49,7 +49,7 @@ export function registerTaskRoutes(app: Express) {
 
   app.patch("/api/tasks/:id", requireAuth, async (req, res) => {
     try {
-      const existing = await storage.getTask(req.params.id);
+      const existing = await storage.getTask(String(req.params.id));
       if (!existing) return res.status(404).json({ message: "Not found" });
       const user = await storage.getUser(req.session.userId!);
       if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && existing.assignedToUserId !== req.session.userId) {
@@ -58,7 +58,7 @@ export function registerTaskRoutes(app: Express) {
       const body = { ...req.body };
       if (typeof body.dueAt === "string") body.dueAt = new Date(body.dueAt);
       const validated = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() }).parse(body);
-      const task = await storage.updateTask(req.params.id, validated);
+      const task = await storage.updateTask(String(req.params.id), validated);
       if (!task) return res.status(404).json({ message: "Not found" });
       res.json(task);
     } catch (err: any) {

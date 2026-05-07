@@ -14,7 +14,7 @@ function getSmtpTransporter() {
     port: SMTP_PORT,
     secure: false,
     auth: { user: SMTP_USER, pass: password },
-    tls: { ciphers: 'SSLv3', rejectUnauthorized: false }
+    tls: { minVersion: 'TLSv1.2' }
   });
 }
 
@@ -194,7 +194,7 @@ export async function sendWelcomeEmail(
             <a href="${loginUrl}" style="background-color: #2563eb; color: #ffffff; padding: 12px 30px; border-radius: 6px; text-decoration: none; font-weight: 600; display: inline-block;">Log In to Tristar 360°</a>
           </div>
           <p style="color: #94a3b8; font-size: 13px; margin-bottom: 0; text-align: center;">
-            For security, we recommend changing your password after your first login.
+            For security, you will be required to set a new password when you first log in.
           </p>
         </div>
         <div style="text-align: center; padding: 15px; color: #94a3b8; font-size: 12px;">

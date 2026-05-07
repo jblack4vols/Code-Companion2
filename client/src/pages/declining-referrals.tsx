@@ -12,7 +12,9 @@ import { Link } from "wouter";
 export default function DecliningReferralsPage() {
   const [months, setMonths] = useState<number>(3);
 
-  const { data, isLoading } = useQuery<any>({
+  interface DecliningReferrer { physicianId: string; priorCount: number; currentCount: number; change: number; changePercent: number; physician?: { firstName: string; lastName: string; credentials?: string; practiceName?: string }; }
+  interface DecliningResult { data: DecliningReferrer[]; period?: { currentStart: string; currentEnd: string; priorStart: string; priorEnd: string }; }
+  const { data, isLoading } = useQuery<DecliningResult>({
     queryKey: ["/api/physicians/declining", months],
     queryFn: async () => {
       const res = await fetch(`/api/physicians/declining?months=${months}`, { credentials: "include" });
@@ -110,7 +112,7 @@ export default function DecliningReferralsPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {results.map((r: any) => (
+                {results.map((r) => (
                   <TableRow key={r.physicianId} data-testid={`row-declining-${r.physicianId}`}>
                     <TableCell>
                       <Link href={`/physicians/${r.physicianId}`}>

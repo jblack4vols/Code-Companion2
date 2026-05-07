@@ -8,6 +8,9 @@ import os from "os";
 import path from "path";
 import fs from "fs";
 import { storage } from "../storage";
+import { db } from "../db";
+import { sql } from "drizzle-orm";
+import { z } from "zod";
 import { requireRole, qstr } from "./shared";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
@@ -18,7 +21,19 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
 
   const uploadDir = path.join(os.tmpdir(), "crm-uploads");
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  const allowedExtensions = [".csv", ".xlsx", ".xls"];
+  const upload = multer({
+    dest: uploadDir,
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExtensions.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only .csv, .xlsx, and .xls files are allowed") as any, false);
+      }
+    },
+  });
 
   const READ = requireRole("OWNER", "DIRECTOR", "ANALYST");
   const WRITE = requireRole("OWNER", "DIRECTOR");
@@ -105,6 +120,39 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
     return {};
   }
 
+  // ---- CSV Template Downloads ----
+  app.get("/api/revenue/claims/template/:type", READ, (req, res) => {
+    const type = req.params.type;
+    if (type === "claims") {
+      const headers = ["Claim Number","Date of Service","Payer","CPT Code(s)","Units","Billed Amount","Paid Amount","Claim Status","Denial Codes"];
+      const row1 = ["CLM-2025-001","2025-01-15","Blue Cross","97110","4","$480.00","$360.00","PAID",""];
+      const row2 = ["CLM-2025-002","2025-01-16","Aetna","97140","3","$330.00","$0.00","DENIED","CO-4, PR-1"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=claims_template.csv");
+      return res.send(csv);
+    }
+    if (type === "payments") {
+      const headers = ["Claim Number","Payment Date","Paid Amount","Adjustment Amount","Check / EFT Number"];
+      const row1 = ["CLM-2025-001","2025-02-01","$360.00","$120.00","EFT-88901"];
+      const row2 = ["CLM-2025-003","2025-02-05","$275.00","$25.00","CHK-44502"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=payments_template.csv");
+      return res.send(csv);
+    }
+    if (type === "rates") {
+      const headers = ["Payer","CPT Code","Expected Rate","Effective Date"];
+      const row1 = ["Blue Cross","97110","$120.00","2025-01-01"];
+      const row2 = ["Aetna","97140","$110.00","2025-01-01"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=rates_template.csv");
+      return res.send(csv);
+    }
+    return res.status(400).json({ message: "Invalid template type. Use: claims, payments, rates" });
+  });
+
   // ---- Claims ----
 
   // GET /api/revenue/claims — paginated claims list
@@ -124,7 +172,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json({ ...result, page, pageSize });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -135,7 +184,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       if (!claim) return res.status(404).json({ message: "Claim not found" });
       res.json(claim);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -145,7 +195,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const claim = await storage.upsertClaim(req.body);
       res.status(201).json(claim);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -156,7 +207,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const result = await storage.bulkUpsertClaims(req.body);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -345,7 +397,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -359,7 +412,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -369,7 +423,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const count = await storage.flagUnderpaidClaims(req.body?.locationId ? { locationId: req.body.locationId } : undefined);
       res.json({ flagged: count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -384,7 +439,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       );
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -394,7 +450,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const rate = await storage.upsertPayerRate(req.body);
       res.status(201).json(rate);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -404,11 +461,89 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const count = await storage.buildRatesFromHistory(req.body?.payer);
       res.json({ ratesBuilt: count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   // ---- Denial Intelligence ----
+
+  app.get("/api/revenue/underpayments/by-payer", READ, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          payer,
+          payer_type,
+          COUNT(*) as claim_count,
+          SUM(billed_amount::numeric) as total_billed,
+          SUM(paid_amount::numeric) as total_paid,
+          SUM(expected_amount::numeric) as total_expected,
+          SUM(underpaid_amount::numeric) as total_underpaid,
+          ROUND(AVG(underpaid_amount::numeric), 2) as avg_underpaid,
+          ROUND(SUM(underpaid_amount::numeric) / NULLIF(SUM(expected_amount::numeric), 0) * 100, 1) as underpaid_pct
+        FROM claims
+        WHERE is_underpaid = true
+          AND underpaid_amount IS NOT NULL
+          AND underpaid_amount > 0
+        GROUP BY payer, payer_type
+        ORDER BY total_underpaid DESC
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/revenue/underpayments/by-cpt", READ, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          cpt_codes as cpt_code,
+          COUNT(*) as claim_count,
+          SUM(billed_amount::numeric) as total_billed,
+          SUM(paid_amount::numeric) as total_paid,
+          SUM(expected_amount::numeric) as total_expected,
+          SUM(underpaid_amount::numeric) as total_underpaid
+        FROM claims
+        WHERE is_underpaid = true
+          AND underpaid_amount IS NOT NULL
+          AND underpaid_amount > 0
+          AND cpt_codes IS NOT NULL
+        GROUP BY cpt_codes
+        ORDER BY total_underpaid DESC
+        LIMIT 50
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/revenue/underpayments/resolve", WRITE, async (req, res) => {
+    try {
+      const schema = z.object({
+        claimIds: z.array(z.string().uuid()).min(1, "At least one claim ID required"),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
+      }
+
+      const { claimIds } = parsed.data;
+      await db.execute(sql`
+        UPDATE claims
+        SET is_underpaid = false, updated_at = NOW()
+        WHERE id = ANY(${claimIds}::uuid[])
+      `);
+
+      res.json({ resolved: claimIds.length });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
 
   // GET /api/revenue/denials/summary — overall denial stats
   app.get("/api/revenue/denials/summary", READ, async (req, res) => {
@@ -420,7 +555,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -434,7 +570,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -447,7 +584,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -461,7 +599,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       });
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

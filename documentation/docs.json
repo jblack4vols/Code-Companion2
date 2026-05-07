@@ -1,0 +1,50 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Tristar 360\u00b0",
+  "logo": {
+    "light": "/logo/light.svg",
+    "dark": "/logo/dark.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#1e40af",
+    "light": "#3b82f6",
+    "dark": "#1e3a8a"
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Getting Started",
+            "pages": [
+              "introduction",
+              "local-dev"
+            ]
+          },
+          {
+            "group": "Architecture",
+            "pages": [
+              "architecture",
+              "data-model"
+            ]
+          },
+          {
+            "group": "Security & Access",
+            "pages": [
+              "permissions"
+            ]
+          },
+          {
+            "group": "Operations",
+            "pages": [
+              "workflows"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footerSocials": {}
+}

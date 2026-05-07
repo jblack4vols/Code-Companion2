@@ -1,0 +1,59 @@
+---
+title: "Introduction"
+description: "Tristar 360° — Multi-location healthcare physician relationship management and referral tracking platform"
+---
+
+# Tristar 360°
+
+Tristar 360° is a production-grade, multi-location healthcare CRM built for physical therapy organizations to manage physician relationships, track referrals, and optimize revenue across clinic locations.
+
+## Key Capabilities
+
+<CardGroup cols={2}>
+  <Card title="Physician CRM" icon="user-doctor">
+    Track referring providers, manage relationship stages, log interactions, and assign territories.
+  </Card>
+  <Card title="Referral Tracking" icon="arrow-right-arrow-left">
+    Import and monitor patient referrals by physician, location, and payer type with full lifecycle tracking.
+  </Card>
+  <Card title="Revenue Intelligence" icon="chart-line">
+    Unit economics dashboards, denial management, billing lag tracking, and reimbursement analysis.
+  </Card>
+  <Card title="Practice Intelligence" icon="brain">
+    Automated at-risk detection, physician tiering, territory analytics, and goal tracking.
+  </Card>
+</CardGroup>
+
+## Platform Overview
+
+| Layer | Technology |
+|---|---|
+| Client | React 18, Vite 7, wouter, TanStack Query v5 |
+| UI | shadcn/ui (Radix), Tailwind CSS 3, Lucide icons |
+| Server | Express 5, TypeScript, tsx runtime |
+| ORM | Drizzle ORM 0.39 + pg driver |
+| Database | PostgreSQL 16 (Neon) |
+| Auth | Session-based (cookie), bcryptjs, connect-pg-simple |
+
+## Core Modules
+
+- **Dashboard** — Executive, location, and territory-level KPI views
+- **Physicians** — Full CRM with tiering, favorites, comments, and stage history
+- **Referrals** — Import, link, and track referral lifecycle
+- **Interactions** — Log visits, calls, emails, events with templates
+- **Tasks** — Follow-up management with priority and assignment
+- **Calendar** — Meeting and event scheduling with Outlook sync
+- **Revenue Recovery** — Claims, denials, appeals, and billing lag analysis
+- **Unit Economics** — Provider productivity, cost analysis, and alerting
+- **Territories & Goals** — Geographic assignment and monthly target tracking
+- **Admin** — User management, locations, audit logs, integrations, and scheduled reports
+
+## User Roles
+
+| Role | Description |
+|---|---|
+| OWNER | Full admin, bypasses all role checks |
+| DIRECTOR | Management, most admin operations |
+| MARKETER | Field rep, physician relationship management |
+| FRONT_DESK | Clinic front desk, referral data entry |
+| ANALYST | Read-only analytics and exports |

@@ -32,7 +32,7 @@ export default function AdminLocationsPage() {
   const canDelete = user?.role === "OWNER";
 
   const saveMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: { name: FormDataEntryValue | null; address: FormDataEntryValue | null; city: FormDataEntryValue | null; state: FormDataEntryValue | null; phone?: FormDataEntryValue | null; isActive: boolean }) => {
       if (editingLocation) {
         const res = await apiRequest("PATCH", `/api/locations/${editingLocation.id}`, data);
         return res.json();
@@ -46,7 +46,7 @@ export default function AdminLocationsPage() {
       setEditingLocation(null);
       toast({ title: editingLocation ? "Location updated" : "Location added" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -57,7 +57,7 @@ export default function AdminLocationsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       toast({ title: "Location deleted" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const toggleMutation = useMutation({
@@ -69,7 +69,7 @@ export default function AdminLocationsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/locations"] });
       toast({ title: "Status updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const handleSubmit = (e: React.FormEvent<HTMLFormElement>) => {

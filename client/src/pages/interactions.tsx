@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Search, Plus, MessageSquare, Phone, Mail, Calendar as CalIcon, Coffee, Users, MoreHorizontal, X, Download, FileStack, Trash2, RotateCcw, Archive, ChevronLeft, ChevronRight, Pencil } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { useAuth, hasPermission } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -17,7 +18,7 @@ import { useDebounce } from "@/hooks/use-debounce";
 import type { Physician, User, Location, InteractionTemplate } from "@shared/schema";
 import { format } from "date-fns";
 
-const typeIcons: Record<string, { icon: any; color: string }> = {
+const typeIcons: Record<string, { icon: LucideIcon; color: string }> = {
   VISIT: { icon: Users, color: "bg-chart-1/15 text-chart-1" },
   CALL: { icon: Phone, color: "bg-chart-2/15 text-chart-2" },
   EMAIL: { icon: Mail, color: "bg-chart-3/15 text-chart-3" },
@@ -135,7 +136,7 @@ export default function InteractionsPage() {
   };
 
   const addMutation = useMutation({
-    mutationFn: async (data: any) => {
+    mutationFn: async (data: Record<string, unknown>) => {
       const res = await apiRequest("POST", "/api/interactions", data);
       return res.json();
     },
@@ -144,11 +145,11 @@ export default function InteractionsPage() {
       setShowAdd(false);
       toast({ title: "Interaction logged" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const editMutation = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) => {
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) => {
       const res = await apiRequest("PATCH", `/api/interactions/${id}`, data);
       return res.json();
     },
@@ -157,7 +158,7 @@ export default function InteractionsPage() {
       setEditingInteraction(null);
       toast({ title: "Interaction updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const deleteMutation = useMutation({
@@ -168,7 +169,7 @@ export default function InteractionsPage() {
       invalidateInteractions();
       toast({ title: "Interaction deleted" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const restoreMutation = useMutation({
@@ -179,7 +180,7 @@ export default function InteractionsPage() {
       invalidateInteractions();
       toast({ title: "Interaction restored" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: unknown) => toast({ title: "Error", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {

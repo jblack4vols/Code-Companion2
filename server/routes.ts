@@ -3,7 +3,9 @@ import { type Server } from "http";
 import session from "express-session";
 import cookieParser from "cookie-parser";
 import connectPgSimple from "connect-pg-simple";
-import { apiLimiter } from "./middleware/rateLimiter";
+import { db } from "./db";
+import { sql } from "drizzle-orm";
+import { apiLimiter, publicApiLimiter } from "./middleware/rateLimiter";
 import { csrfProtection, csrfTokenEndpoint } from "./middleware/csrf";
 import { SESSION_TIMEOUT_MS } from "./routes/shared";
 import { registerAuthRoutes } from "./routes/auth";
@@ -24,17 +26,31 @@ import { registerSearchRoutes } from "./routes/search";
 import { registerGoalRoutes } from "./routes/goals";
 import { registerTemplateRoutes } from "./routes/templates";
 import { registerFeatureRoutes } from "./routes/features";
+import { registerFeedbackRoutes } from "./routes/feedback";
 import { registerPracticeRoutes } from "./routes/practice-intelligence";
 import { registerUnitEconomicsRoutes } from "./routes/unit-economics";
 import { registerRevenueRecoveryRoutes } from "./routes/revenue-recovery";
 import { registerBillingLagRoutes } from "./routes/billing-lag";
 import { registerRevenueRecoveryAppealsRoutes } from "./routes/revenue-recovery-appeals";
+import { registerFrontDeskRoutes } from "./routes/frontdesk";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
   const PgStore = connectPgSimple(session);
+
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS "session" (
+      "sid" varchar NOT NULL COLLATE "default",
+      "sess" json NOT NULL,
+      "expire" timestamp(6) NOT NULL,
+      CONSTRAINT "session_pkey" PRIMARY KEY ("sid") NOT DEFERRABLE INITIALLY IMMEDIATE
+    ) WITH (OIDS=FALSE)
+  `);
+  await db.execute(sql`
+    CREATE INDEX IF NOT EXISTS "IDX_session_expire" ON "session" ("expire")
+  `);
 
   app.use(cookieParser());
 
@@ -44,7 +60,7 @@ export async function registerRoutes(
     res.setHeader("X-XSS-Protection", "1; mode=block");
     res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
     res.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=()");
-    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.tile.openstreetmap.org wss:; frame-ancestors 'none'");
+    res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: https: blob:; connect-src 'self' https://*.tile.openstreetmap.org wss:; frame-ancestors 'none'");
     if (process.env.NODE_ENV === "production") {
       res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
     }
@@ -55,7 +71,9 @@ export async function registerRoutes(
     session({
       store: new PgStore({
         conString: process.env.DATABASE_URL,
-        createTableIfMissing: true,
+        createTableIfMissing: false,
+        pruneSessionInterval: 60 * 15,
+        tableName: "session",
       }),
       secret: process.env.SESSION_SECRET ?? (() => { throw new Error("SESSION_SECRET environment variable is required"); })(),
       resave: false,
@@ -71,6 +89,7 @@ export async function registerRoutes(
   );
 
   app.use("/api", apiLimiter);
+  app.use("/api/public", publicApiLimiter);
 
   app.use("/api", csrfProtection);
   app.get("/api/csrf-token", csrfTokenEndpoint);
@@ -98,6 +117,8 @@ export async function registerRoutes(
   await registerRevenueRecoveryRoutes(app);
   registerBillingLagRoutes(app);
   await registerRevenueRecoveryAppealsRoutes(app);
+  registerFrontDeskRoutes(app);
+  registerFeedbackRoutes(app);
 
   return httpServer;
 }

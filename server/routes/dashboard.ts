@@ -1,9 +1,10 @@
 import type { Express } from "express";
+import { z } from "zod";
 import { storage } from "../storage";
 import { db } from "../db";
 import { sql, eq, and, gte, lt, lte, isNull, asc, desc } from "drizzle-orm";
 import { referrals as referralsTable, calendarEvents, tasks, interactions, physicians, locations } from "@shared/schema";
-import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
+import { requireAuth, requireRole, getClientIp, qstr, qstrReq, getUserLocationScope } from "./shared";
 
 export function registerDashboardRoutes(app: Express) {
   app.get("/api/tiering-weights", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
@@ -11,11 +12,22 @@ export function registerDashboardRoutes(app: Express) {
     res.json(weights || {});
   });
 
+  const tieringWeightsSchema = z.object({
+    referralWeight: z.number().optional(),
+    revenueWeight: z.number().optional(),
+    interactionWeight: z.number().optional(),
+    growthWeight: z.number().optional(),
+  }).catchall(z.number());
+
   app.patch("/api/tiering-weights", requireRole("OWNER"), async (req, res) => {
     try {
-      const updated = await storage.updateTieringWeights(req.body);
+      const parsed = tieringWeightsSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid data", errors: parsed.error.flatten() });
+      }
+      const updated = await storage.updateTieringWeights(parsed.data);
       if (!updated) return res.status(404).json({ message: "No weights configured" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "TieringWeights", entityId: updated.id, detailJson: parsed.data, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -33,7 +45,8 @@ export function registerDashboardRoutes(app: Express) {
         triggerETL().catch(err => console.error("[ETL] Manual trigger error:", err));
       }
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -99,9 +112,10 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/dashboard/territory/:territoryId", requireAuth, async (req, res) => {
-    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
-    const summary = await storage.getTerritoryMonthlySummaries({ territoryId: req.params.territoryId, month });
-    const territory = await storage.getTerritory(req.params.territoryId);
+    const month = qstr(req.query.month) || new Date().toISOString().slice(0, 7) + "-01";
+    const territoryId = String(req.params.territoryId);
+    const summary = await storage.getTerritoryMonthlySummaries({ territoryId, month });
+    const territory = await storage.getTerritory(territoryId);
     res.json({ territory, summaries: summary, month });
   });
 
@@ -112,16 +126,16 @@ export function registerDashboardRoutes(app: Express) {
     if (locationScope !== null && !locationScope.includes(locationId)) {
       return res.status(403).json({ message: "Forbidden: no access to this location" });
     }
-    const month = (req.query.month as string) || new Date().toISOString().slice(0, 7) + "-01";
-    const summaries = await storage.getLocationMonthlySummaries({ locationId: req.params.locationId, month });
-    const loc = await storage.getLocation(req.params.locationId);
+    const month = qstr(req.query.month) || new Date().toISOString().slice(0, 7) + "-01";
+    const summaries = await storage.getLocationMonthlySummaries({ locationId, month });
+    const loc = await storage.getLocation(locationId);
 
     const monthStart = new Date(month);
     const monthEnd = new Date(monthStart);
     monthEnd.setMonth(monthEnd.getMonth() + 1);
     const locationReferrals = await db.select().from(referralsTable).where(
       and(
-        eq(referralsTable.locationId, req.params.locationId),
+        eq(referralsTable.locationId, locationId),
         gte(referralsTable.referralDate, monthStart.toISOString().slice(0, 10)),
         lt(referralsTable.referralDate, monthEnd.toISOString().slice(0, 10))
       )
@@ -154,17 +168,22 @@ export function registerDashboardRoutes(app: Express) {
   });
 
   app.get("/api/physicians/:id/monthly", requireAuth, async (req, res) => {
-    const months = req.query.months ? parseInt(req.query.months as string) : 6;
-    const summaries = await storage.getPhysicianMonthlySummaries({ physicianId: req.params.id, months });
+    const months = req.query.months ? parseInt(qstrReq(req.query.months)) : 6;
+    const summaries = await storage.getPhysicianMonthlySummaries({ physicianId: String(req.params.id), months });
     res.json(summaries);
   });
 
   app.get("/api/dashboard/funnel", requireAuth, async (req, res) => {
     try {
-      const startDate = req.query.startDate as string | undefined;
-      const endDate = req.query.endDate as string | undefined;
-      const locationId = req.query.locationId as string | undefined;
-      const territoryId = req.query.territoryId as string | undefined;
+      const locationScope = await getUserLocationScope(req);
+      const startDate = qstr(req.query.startDate);
+      const endDate = qstr(req.query.endDate);
+      const locationId = qstr(req.query.locationId);
+      const territoryId = qstr(req.query.territoryId);
+
+      if (locationScope !== null && locationId && !locationScope.includes(locationId)) {
+        return res.status(403).json({ message: "Forbidden: no access to this location" });
+      }
 
       const dateFilter = startDate && endDate
         ? sql`AND r.referral_date >= ${startDate} AND r.referral_date <= ${endDate}`
@@ -172,7 +191,11 @@ export function registerDashboardRoutes(app: Express) {
         : endDate ? sql`AND r.referral_date <= ${endDate}`
         : sql``;
 
-      const locFilter = locationId ? sql`AND r.location_id = ${locationId}` : sql``;
+      const effectiveLocFilter = locationId
+        ? sql`AND r.location_id = ${locationId}`
+        : locationScope !== null
+          ? sql`AND r.location_id = ANY(${locationScope})`
+          : sql``;
       const terrFilter = territoryId
         ? sql`AND r.physician_id IN (SELECT id FROM physicians WHERE territory_id = ${territoryId} AND deleted_at IS NULL)`
         : sql``;
@@ -180,11 +203,11 @@ export function registerDashboardRoutes(app: Express) {
       const result = await db.execute(sql`
         SELECT 
           COUNT(*)::int as received,
-          COUNT(CASE WHEN r.status IN ('SCHEDULED','EVAL_COMPLETED','DISCHARGED') THEN 1 END)::int as scheduled,
+          COUNT(CASE WHEN r.status IN ('SCHEDULED','EVAL_COMPLETED','DISCHARGED') OR r.scheduled_visits > 0 OR r.arrived_visits > 0 THEN 1 END)::int as scheduled,
           COUNT(CASE WHEN r.arrived_visits > 0 THEN 1 END)::int as arrived,
-          COUNT(CASE WHEN r.status = 'DISCHARGED' THEN 1 END)::int as discharged
+          COUNT(CASE WHEN r.status = 'DISCHARGED' AND r.arrived_visits > 0 THEN 1 END)::int as discharged
         FROM referrals r
-        WHERE r.deleted_at IS NULL ${dateFilter} ${locFilter} ${terrFilter}
+        WHERE r.deleted_at IS NULL ${dateFilter} ${effectiveLocFilter} ${terrFilter}
       `);
 
       const row = (result.rows as any[])[0] || { received: 0, scheduled: 0, arrived: 0, discharged: 0 };
@@ -195,7 +218,8 @@ export function registerDashboardRoutes(app: Express) {
         { stage: "Discharged", count: row.discharged },
       ]);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -226,7 +250,8 @@ export function registerDashboardRoutes(app: Express) {
       `);
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -248,14 +273,15 @@ export function registerDashboardRoutes(app: Express) {
       `);
       res.json(result.rows);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/dashboard/stats", requireAuth, async (req, res) => {
     const locationScope = await getUserLocationScope(req);
     // If user requested a specific location, verify they have access to it
-    const requestedLocationId = req.query.locationId as string | undefined;
+    const requestedLocationId = qstr(req.query.locationId);
     if (locationScope !== null && requestedLocationId && !locationScope.includes(requestedLocationId)) {
       return res.status(403).json({ message: "Forbidden: no access to this location" });
     }
@@ -264,11 +290,11 @@ export function registerDashboardRoutes(app: Express) {
       ? locationScope[0]
       : requestedLocationId;
     const filters = {
-      startDate: req.query.startDate as string | undefined,
-      endDate: req.query.endDate as string | undefined,
+      startDate: qstr(req.query.startDate),
+      endDate: qstr(req.query.endDate),
       locationId: effectiveLocationId,
-      territoryId: req.query.territoryId as string | undefined,
-      physicianId: req.query.physicianId as string | undefined,
+      territoryId: qstr(req.query.territoryId),
+      physicianId: qstr(req.query.physicianId),
     };
     res.json(await storage.getDashboardStats(filters));
   });
@@ -313,7 +339,8 @@ export function registerDashboardRoutes(app: Express) {
       ].sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()).slice(0, limit);
       res.json(combined);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -365,14 +392,15 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.get("/api/dashboard/hit-list", requireAuth, async (req, res) => {
     try {
-      const startDate = req.query.startDate as string;
-      const endDate = req.query.endDate as string;
+      const startDate = qstrReq(req.query.startDate);
+      const endDate = qstrReq(req.query.endDate);
       if (!startDate || !endDate) {
         return res.status(400).json({ message: "startDate and endDate are required" });
       }
@@ -452,7 +480,214 @@ export function registerDashboardRoutes(app: Express) {
 
       res.json({ events, tasks: taskList, followUps });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/dashboard/kpis", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const locationId = qstr(req.query.locationId as any);
+      const locFilter = locationId ? sql`AND r.location_id = ${locationId}` : sql``;
+
+      const result = await db.execute(sql`
+        WITH current_period AS (
+          SELECT
+            COUNT(*) as total_referrals,
+            COUNT(*) FILTER (WHERE status = 'EVAL_COMPLETED' OR status = 'DISCHARGED') as arrived,
+            COUNT(*) FILTER (WHERE status = 'SCHEDULED') as scheduled,
+            COUNT(*) FILTER (WHERE status = 'LOST') as lost
+          FROM referrals r
+          WHERE r.deleted_at IS NULL
+            AND r.referral_date >= CURRENT_DATE - INTERVAL '30 days'
+            ${locFilter}
+        ),
+        prior_period AS (
+          SELECT
+            COUNT(*) as total_referrals,
+            COUNT(*) FILTER (WHERE status = 'EVAL_COMPLETED' OR status = 'DISCHARGED') as arrived
+          FROM referrals r
+          WHERE r.deleted_at IS NULL
+            AND r.referral_date >= CURRENT_DATE - INTERVAL '60 days'
+            AND r.referral_date < CURRENT_DATE - INTERVAL '30 days'
+            ${locFilter}
+        ),
+        weekly AS (
+          SELECT
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '7 days') as this_week,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '14 days' AND r.referral_date < CURRENT_DATE - INTERVAL '7 days') as last_week
+          FROM referrals r
+          WHERE r.deleted_at IS NULL
+            ${locFilter}
+        )
+        SELECT
+          cp.total_referrals as visits,
+          cp.arrived,
+          cp.scheduled,
+          cp.lost as cancellations,
+          CASE WHEN cp.total_referrals > 0 THEN ROUND(cp.arrived::numeric / cp.total_referrals * 100, 1) ELSE 0 END as arrival_rate,
+          pp.total_referrals as prior_visits,
+          pp.arrived as prior_arrived,
+          CASE WHEN pp.total_referrals > 0 THEN ROUND(pp.arrived::numeric / pp.total_referrals * 100, 1) ELSE 0 END as prior_arrival_rate,
+          w.this_week,
+          w.last_week,
+          CASE WHEN w.last_week > 0 THEN ROUND((w.this_week - w.last_week)::numeric / w.last_week * 100, 1) ELSE 0 END as wow_change
+        FROM current_period cp, prior_period pp, weekly w
+      `);
+
+      res.json(result.rows[0] || {});
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/dashboard/alerts", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const alerts: Array<{ type: string; severity: string; message: string; value: number; threshold: number }> = [];
+
+      const result = await db.execute(sql`
+        WITH by_location AS (
+          SELECT
+            l.id as location_id,
+            l.name as location_name,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as current_referrals,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as prior_referrals,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days' AND (r.status = 'EVAL_COMPLETED' OR r.status = 'DISCHARGED')) as arrived_current,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '7 days') as this_week,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '14 days' AND r.referral_date < CURRENT_DATE - INTERVAL '7 days') as last_week
+          FROM locations l
+          LEFT JOIN referrals r ON r.location_id = l.id AND r.deleted_at IS NULL
+          WHERE l.is_active = true
+          GROUP BY l.id, l.name
+        )
+        SELECT * FROM by_location
+      `);
+
+      for (const row of result.rows as any[]) {
+        const arrivalRate = row.current_referrals > 0
+          ? (row.arrived_current / row.current_referrals) * 100
+          : 100;
+        if (arrivalRate < 85 && row.current_referrals > 0) {
+          alerts.push({
+            type: "LOW_ARRIVAL_RATE",
+            severity: "warning",
+            message: `${row.location_name}: Arrival rate ${arrivalRate.toFixed(1)}% (below 85% threshold)`,
+            value: arrivalRate,
+            threshold: 85,
+          });
+        }
+
+        if (row.last_week > 0) {
+          const wowChange = ((row.this_week - row.last_week) / row.last_week) * 100;
+          if (wowChange < -10) {
+            alerts.push({
+              type: "VISIT_DROP_WOW",
+              severity: "critical",
+              message: `${row.location_name}: Visit volume dropped ${Math.abs(wowChange).toFixed(1)}% week-over-week`,
+              value: wowChange,
+              threshold: -10,
+            });
+          }
+        }
+
+        if (row.prior_referrals > 0) {
+          const change = ((row.current_referrals - row.prior_referrals) / row.prior_referrals) * 100;
+          if (change < -5) {
+            alerts.push({
+              type: "REFERRAL_DROP",
+              severity: "warning",
+              message: `${row.location_name}: Referral volume dropped ${Math.abs(change).toFixed(1)}% vs prior period`,
+              value: change,
+              threshold: -5,
+            });
+          }
+        }
+      }
+
+      alerts.sort((a, b) => (a.severity === "critical" ? -1 : 1) - (b.severity === "critical" ? -1 : 1));
+      res.json(alerts);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/dashboard/location-conversion", requireAuth, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      const startDate = qstr(req.query.startDate as any);
+      const endDate = qstr(req.query.endDate as any);
+
+      const dateFilter = startDate && endDate
+        ? sql`AND r.referral_date >= ${startDate} AND r.referral_date <= ${endDate}`
+        : startDate ? sql`AND r.referral_date >= ${startDate}`
+        : endDate ? sql`AND r.referral_date <= ${endDate}`
+        : sql`AND r.referral_date >= CURRENT_DATE - INTERVAL '30 days'`;
+
+      const locScopeFilter = locationScope !== null && locationScope.length > 0
+        ? sql`AND l.id = ANY(${locationScope})`
+        : locationScope !== null && locationScope.length === 0
+        ? sql`AND 1=0`
+        : sql``;
+
+      const result = await db.execute(sql`
+        SELECT
+          l.id as location_id,
+          l.name as location_name,
+          COALESCE(SUM(r.scheduled_visits), 0)::int as total_scheduled,
+          COALESCE(SUM(r.arrived_visits), 0)::int as total_arrived,
+          COUNT(r.id)::int as total_referrals,
+          CASE
+            WHEN COALESCE(SUM(r.scheduled_visits), 0) > 0
+            THEN ROUND(COALESCE(SUM(r.arrived_visits), 0)::numeric / SUM(r.scheduled_visits) * 100, 1)
+            ELSE 0
+          END as arrival_rate
+        FROM locations l
+        LEFT JOIN referrals r ON r.location_id = l.id AND r.deleted_at IS NULL ${dateFilter}
+        WHERE l.is_active = true ${locScopeFilter}
+        GROUP BY l.id, l.name
+        HAVING COUNT(r.id) > 0
+        ORDER BY total_scheduled DESC
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/dashboard/location-performance", requireRole("OWNER", "DIRECTOR", "ANALYST"), async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          l.id as location_id,
+          l.name as location_name,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as referrals_30d,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days' AND (r.status = 'EVAL_COMPLETED' OR r.status = 'DISCHARGED')) as arrived_30d,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days' AND r.status = 'SCHEDULED') as scheduled_30d,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days' AND r.status = 'LOST') as lost_30d,
+          CASE
+            WHEN COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') > 0
+            THEN ROUND(
+              COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days' AND (r.status = 'EVAL_COMPLETED' OR r.status = 'DISCHARGED'))::numeric
+              / COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') * 100, 1
+            )
+            ELSE 0
+          END as arrival_rate,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as referrals_prior_30d
+        FROM locations l
+        LEFT JOIN referrals r ON r.location_id = l.id AND r.deleted_at IS NULL
+        WHERE l.is_active = true
+        GROUP BY l.id, l.name
+        ORDER BY referrals_30d DESC
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ElementType } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import { getQueryFn, apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { IntegrationConfig, ApiKey } from "@shared/schema";
 
-const STATUS_BADGE: Record<string, { label: string; variant: string; icon: any }> = {
+const STATUS_BADGE: Record<string, { label: string; variant: string; icon: ElementType }> = {
   CONNECTED: { label: "Connected", variant: "bg-green-500/15 text-green-600 dark:text-green-400", icon: CheckCircle },
   DISCONNECTED: { label: "Not Connected", variant: "bg-muted text-muted-foreground", icon: XCircle },
   ERROR: { label: "Error", variant: "bg-red-500/15 text-red-600 dark:text-red-400", icon: AlertTriangle },
@@ -29,7 +29,7 @@ interface SyncLog {
   status: string;
   recordsProcessed: number;
   recordsFailed: number;
-  details: Record<string, any>;
+  details: Record<string, unknown> & { results?: Array<{ patient?: string; name?: string; physician?: string; action?: string }>; referralsCreated?: number; providersCreated?: number; providersMatched?: number; skipped?: number; created?: number; updated?: number; providersSent?: number; referralsSent?: number };
   startedAt: string;
   finishedAt: string | null;
 }
@@ -66,36 +66,36 @@ export default function IntegrationsPage() {
   const ghlConfig = integrations.find((i) => i.type === "GOHIGHLEVEL");
   const customConfig = integrations.find((i) => i.type === "CUSTOM_API");
 
-  const { data: ghlSyncLogs = [] } = useQuery<any[]>({
+  const { data: ghlSyncLogs = [] } = useQuery<SyncLog[]>({
     queryKey: ["/api/integrations", ghlConfig?.id, "logs"],
     queryFn: ghlConfig ? getQueryFn({ on401: "throw" }) : undefined,
     enabled: !!ghlConfig,
   });
 
-  const { data: customSyncLogs = [] } = useQuery<any[]>({
+  const { data: customSyncLogs = [] } = useQuery<SyncLog[]>({
     queryKey: ["/api/integrations", customConfig?.id, "logs"],
     queryFn: customConfig ? getQueryFn({ on401: "throw" }) : undefined,
     enabled: !!customConfig,
   });
 
   const createIntegration = useMutation({
-    mutationFn: async (data: { type: string; name: string; settings: Record<string, any> }) =>
+    mutationFn: async (data: { type: string; name: string; settings: Record<string, unknown> }) =>
       apiRequest("POST", "/api/integrations", data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
       toast({ title: "Integration created" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const updateIntegration = useMutation({
-    mutationFn: async ({ id, data }: { id: string; data: any }) =>
+    mutationFn: async ({ id, data }: { id: string; data: Record<string, unknown> }) =>
       apiRequest("PATCH", `/api/integrations/${id}`, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
       toast({ title: "Integration updated" });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const testConnection = useMutation({
@@ -103,7 +103,7 @@ export default function IntegrationsPage() {
       const resp = await apiRequest("POST", `/api/integrations/${id}/test`);
       return resp.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { success: boolean; message: string }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
       toast({
         title: data.success ? "Connection Successful" : "Connection Failed",
@@ -118,7 +118,7 @@ export default function IntegrationsPage() {
       const resp = await apiRequest("POST", `/api/integrations/${id}/sync`, { direction });
       return resp.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: { success: boolean; message?: string; processed?: number; failed?: number; providersCreated?: number; providersMatched?: number; referralsCreated?: number }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/integrations"] });
       if (ghlConfig) queryClient.invalidateQueries({ queryKey: ["/api/integrations", ghlConfig.id, "logs"] });
       if (customConfig) queryClient.invalidateQueries({ queryKey: ["/api/integrations", customConfig.id, "logs"] });
@@ -128,10 +128,10 @@ export default function IntegrationsPage() {
         variant: data.success ? "default" : "destructive",
       });
       if (data.success) {
-        if (data.providersCreated > 0 || data.providersMatched > 0) {
+        if ((data.providersCreated ?? 0) > 0 || (data.providersMatched ?? 0) > 0) {
           queryClient.invalidateQueries({ queryKey: ["/api/physicians"] });
         }
-        if (data.referralsCreated > 0) {
+        if ((data.referralsCreated ?? 0) > 0) {
           queryClient.invalidateQueries({ queryKey: ["/api/referrals"] });
         }
       }
@@ -143,13 +143,13 @@ export default function IntegrationsPage() {
       const resp = await apiRequest("POST", "/api/api-keys", data);
       return resp.json();
     },
-    onSuccess: (data: any) => {
+    onSuccess: (data: ApiKey & { rawKey?: string }) => {
       queryClient.invalidateQueries({ queryKey: ["/api/api-keys"] });
-      setGeneratedKey(data.rawKey);
+      setGeneratedKey(data.rawKey ?? null);
       setShowKey(true);
       toast({ title: "API Key Created", description: "Copy your key now — it won't be shown again." });
     },
-    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+    onError: (err: Error) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const deactivateApiKey = useMutation({
@@ -160,14 +160,16 @@ export default function IntegrationsPage() {
     },
   });
 
-  const ghlApiKeyVal = ghlApiKey ?? (ghlConfig?.settings as any)?.apiKey ?? "";
-  const ghlLocationIdVal = ghlLocationId ?? (ghlConfig?.settings as any)?.locationId ?? "";
-  const customBaseUrlVal = customBaseUrl ?? (customConfig?.settings as any)?.baseUrl ?? "";
-  const customApiKeyVal = customApiKey ?? (customConfig?.settings as any)?.apiKey ?? "";
-  const customWebhookUrlVal = customWebhookUrl ?? (customConfig?.settings as any)?.webhookUrl ?? "";
+  const ghlSettings = ghlConfig?.settings as Record<string, unknown> | null | undefined;
+  const customSettings = customConfig?.settings as Record<string, unknown> | null | undefined;
+  const ghlApiKeyVal = ghlApiKey ?? (ghlSettings?.apiKey as string) ?? "";
+  const ghlLocationIdVal = ghlLocationId ?? (ghlSettings?.locationId as string) ?? "";
+  const customBaseUrlVal = customBaseUrl ?? (customSettings?.baseUrl as string) ?? "";
+  const customApiKeyVal = customApiKey ?? (customSettings?.apiKey as string) ?? "";
+  const customWebhookUrlVal = customWebhookUrl ?? (customSettings?.webhookUrl as string) ?? "";
 
   const handleSaveGhl = () => {
-    const existingMappings: Record<string, string> = (ghlConfig?.settings as any)?.fieldMappings || {};
+    const existingMappings: Record<string, string> = (ghlSettings?.fieldMappings as Record<string, string> | undefined) || {};
     const mergedMappings: Record<string, string> = { ...existingMappings, ...ghlFieldMappings };
     const cleanMappings: Record<string, string> = {};
     for (const [k, v] of Object.entries(mergedMappings)) {
@@ -188,7 +190,7 @@ export default function IntegrationsPage() {
     setLoadingFields(true);
     setFieldLoadError(null);
     try {
-      const resp = await fetch(`/api/integrations/${ghlConfig.id}/custom-fields`, { credentials: "include" });
+      const resp = await apiRequest("GET", `/api/integrations/${ghlConfig.id}/custom-fields`);
       const data = await resp.json();
       if (data.success && data.fields) {
         if (data.fields.length === 0) {
@@ -196,7 +198,7 @@ export default function IntegrationsPage() {
           toast({ title: "No custom fields found", description: "Your GoHighLevel location has no custom fields configured.", variant: "destructive" });
         } else {
           setGhlCustomFields(data.fields);
-          const existing = (ghlConfig.settings as any)?.fieldMappings || {};
+          const existing = (ghlSettings?.fieldMappings as Record<string, string> | undefined) || {};
           setGhlFieldMappings(existing);
           setShowFieldMapping(true);
           setFieldLoadError(null);
@@ -215,7 +217,7 @@ export default function IntegrationsPage() {
         setFieldLoadError(userMsg);
         toast({ title: "Could not load custom fields", description: userMsg, variant: "destructive" });
       }
-    } catch (err: any) {
+    } catch {
       const errMsg = "Failed to connect. Please check your settings and try again.";
       setFieldLoadError(errMsg);
       toast({ title: "Error fetching custom fields", description: errMsg, variant: "destructive" });
@@ -446,7 +448,7 @@ export default function IntegrationsPage() {
                 <div className="space-y-2 pt-2 border-t" data-testid="ghl-sync-history">
                   <p className="text-sm font-medium">Sync History</p>
                   <div className="space-y-2 max-h-60 overflow-y-auto">
-                    {ghlSyncLogs.slice(0, 5).map((log: any) => (
+                    {ghlSyncLogs.slice(0, 5).map((log) => (
                       <div key={log.id} className="text-xs border rounded-md p-2.5 space-y-1 bg-muted/30">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-2">
@@ -474,7 +476,7 @@ export default function IntegrationsPage() {
                           <details className="cursor-pointer">
                             <summary className="text-muted-foreground hover:text-foreground">View {log.details.results.length} contacts</summary>
                             <div className="mt-1 pl-2 border-l-2 space-y-0.5">
-                              {log.details.results.map((r: any, i: number) => (
+                              {log.details.results.map((r, i: number) => (
                                 <div key={i} className="flex items-center gap-1.5">
                                   <span>{r.patient || r.name}</span>
                                   {r.physician && r.physician !== "none" && <span className="text-muted-foreground">via {r.physician}</span>}
@@ -581,7 +583,7 @@ export default function IntegrationsPage() {
                 <div className="mt-4 space-y-2">
                   <h4 className="text-sm font-medium">Recent Sync Activity</h4>
                   <div className="space-y-1.5">
-                    {customSyncLogs.slice(0, 5).map((log: any) => (
+                    {customSyncLogs.slice(0, 5).map((log) => (
                       <div key={log.id} className="text-xs flex items-start gap-2 py-1 border-b last:border-0">
                         <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${log.status === "completed" ? "text-green-600 border-green-300" : log.status === "error" ? "text-red-600 border-red-300" : "text-yellow-600 border-yellow-300"}`}>
                           {log.status}

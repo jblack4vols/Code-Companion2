@@ -17,7 +17,8 @@ export function registerPracticeRoutes(app: Express) {
       const result = await storage.getPractices(filters);
       res.json(result);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -30,7 +31,8 @@ export function registerPracticeRoutes(app: Express) {
       if (!detail) return res.status(404).json({ message: "Practice not found" });
       res.json(detail);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

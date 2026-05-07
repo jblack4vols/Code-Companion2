@@ -19,6 +19,8 @@ export function registerReferralRoutes(app: Express) {
       locationId: qstr(req.query.locationId as any),
       locationIds: locationScope ?? undefined,
       discipline: qstr(req.query.discipline as any),
+      referralSource: qstr(req.query.referralSource as any),
+      primaryPayerType: qstr(req.query.primaryPayerType as any),
       dateFrom: qstr(req.query.dateFrom as any),
       dateTo: qstr(req.query.dateTo as any),
       physicianId: qstr(req.query.physicianId as any),
@@ -35,7 +37,7 @@ export function registerReferralRoutes(app: Express) {
     if (locationScope !== null && locationScope.length === 0) {
       return res.json([]);
     }
-    const physicianId = req.query.physicianId as string | undefined;
+    const physicianId = qstr(req.query.physicianId);
     res.json(await storage.getReferrals(physicianId, locationScope ?? undefined));
   });
 
@@ -118,9 +120,9 @@ export function registerReferralRoutes(app: Express) {
       if (!parsed.success) return res.status(400).json({ message: parsed.error.errors.map(e => `${e.path.join(".")}: ${e.message}`).join(", ") });
       if (Object.keys(parsed.data).length === 0) return res.status(400).json({ message: "No valid fields to update" });
 
-      const updated = await storage.updateReferral(req.params.id, parsed.data as any);
+      const updated = await storage.updateReferral(String(req.params.id), parsed.data as any);
       if (!updated) return res.status(404).json({ message: "Referral not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Referral", entityId: req.params.id, detailJson: { fields: Object.keys(parsed.data) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Referral", entityId: String(req.params.id), detailJson: { fields: Object.keys(parsed.data) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -133,7 +135,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE_ALL", entity: "Referral", entityId: "all", detailJson: { count }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -143,7 +146,8 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE_ALL", entity: "Referral", entityId: "all", detailJson: { count }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -157,29 +161,32 @@ export function registerReferralRoutes(app: Express) {
       await storage.createAuditLog({ userId: req.session.userId!, action: "BULK_DELETE", entity: "Referral", entityId: "bulk", detailJson: { count, ids }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true, count });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.delete("/api/referrals/:id", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const deleted = await storage.softDeleteReferral(req.params.id);
+      const deleted = await storage.softDeleteReferral(String(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
   app.post("/api/referrals/:id/restore", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
-      const restored = await storage.restoreReferral(req.params.id);
+      const restored = await storage.restoreReferral(String(req.params.id));
       if (!restored) return res.status(404).json({ message: "Not found" });
-      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: req.params.id, detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -235,7 +242,161 @@ export function registerReferralRoutes(app: Express) {
       }
       res.json(combined.slice(0, 100));
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/referrals/top-sources", requireAuth, async (req, res) => {
+    try {
+      const locationId = qstr(req.query.locationId as any);
+      const limitVal = Math.min(Math.max(parseInt(qstr(req.query.limit as any) || "20") || 20, 1), 100);
+      const locFilter = locationId ? sql`AND r.location_id = ${locationId}` : sql``;
+
+      const result = await db.execute(sql`
+        SELECT
+          p.id as physician_id,
+          p.first_name,
+          p.last_name,
+          p.credentials,
+          p.specialty,
+          p.practice_name,
+          p.relationship_stage,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as current_count,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as prior_count,
+          CASE
+            WHEN COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') > 0
+            THEN ROUND(
+              (COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days')
+               - COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days'))::numeric
+              / COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') * 100, 1
+            )
+            ELSE NULL
+          END as change_percent
+        FROM physicians p
+        LEFT JOIN referrals r ON r.physician_id = p.id AND r.deleted_at IS NULL
+        WHERE 1=1 ${locFilter}
+        GROUP BY p.id, p.first_name, p.last_name, p.credentials, p.specialty, p.practice_name, p.relationship_stage
+        HAVING COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') > 0
+        ORDER BY current_count DESC
+        LIMIT ${limitVal}
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/referrals/trending", requireAuth, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        WITH physician_trends AS (
+          SELECT
+            p.id as physician_id,
+            p.first_name,
+            p.last_name,
+            p.credentials,
+            p.specialty,
+            p.practice_name,
+            p.relationship_stage,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as current_count,
+            COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as prior_count
+          FROM physicians p
+          LEFT JOIN referrals r ON r.physician_id = p.id AND r.deleted_at IS NULL
+          GROUP BY p.id, p.first_name, p.last_name, p.credentials, p.specialty, p.practice_name, p.relationship_stage
+          HAVING COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days') > 0
+        )
+        SELECT *,
+          current_count - prior_count as change_absolute,
+          CASE WHEN prior_count > 0
+            THEN ROUND((current_count - prior_count)::numeric / prior_count * 100, 1)
+            ELSE NULL
+          END as change_percent,
+          CASE
+            WHEN current_count > prior_count THEN 'growing'
+            WHEN current_count < prior_count THEN 'declining'
+            ELSE 'stable'
+          END as trend,
+          CASE
+            WHEN current_count > prior_count AND prior_count > 0 AND ((current_count - prior_count)::numeric / prior_count * 100) > 20 THEN 'Rapid growth — consider strengthening relationship'
+            WHEN current_count < prior_count AND prior_count > 0 AND ((current_count - prior_count)::numeric / prior_count * 100) < -20 THEN 'Significant decline — schedule outreach immediately'
+            WHEN current_count = 0 AND prior_count > 0 THEN 'Referrals stopped — urgent re-engagement needed'
+            ELSE NULL
+          END as recommendation
+        FROM physician_trends
+        ORDER BY change_absolute DESC
+        LIMIT 50
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/referrals/by-location", requireAuth, async (req, res) => {
+    try {
+      const result = await db.execute(sql`
+        SELECT
+          l.id as location_id,
+          l.name as location_name,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as referrals_30d,
+          COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') as referrals_prior_30d,
+          COUNT(DISTINCT r.physician_id) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days') as unique_sources_30d,
+          CASE
+            WHEN COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') > 0
+            THEN ROUND(
+              (COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '30 days')
+               - COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days'))::numeric
+              / COUNT(*) FILTER (WHERE r.referral_date >= CURRENT_DATE - INTERVAL '60 days' AND r.referral_date < CURRENT_DATE - INTERVAL '30 days') * 100, 1
+            )
+            ELSE 0
+          END as change_percent
+        FROM locations l
+        LEFT JOIN referrals r ON r.location_id = l.id AND r.deleted_at IS NULL
+        WHERE l.is_active = true
+        GROUP BY l.id, l.name
+        ORDER BY referrals_30d DESC
+      `);
+
+      res.json(result.rows);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/referrals/filter-options", requireAuth, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      const locFilter = locationScope !== null && locationScope.length > 0
+        ? sql`AND r.location_id = ANY(${locationScope})`
+        : locationScope !== null && locationScope.length === 0
+        ? sql`AND 1=0`
+        : sql``;
+
+      const result = await db.execute(sql`
+        SELECT
+          COALESCE(array_agg(DISTINCT r.referral_source) FILTER (WHERE r.referral_source IS NOT NULL AND r.referral_source != ''), '{}') as referral_sources,
+          COALESCE(array_agg(DISTINCT r.primary_payer_type) FILTER (WHERE r.primary_payer_type IS NOT NULL AND r.primary_payer_type != ''), '{}') as payer_types,
+          COALESCE(array_agg(DISTINCT r.discipline) FILTER (WHERE r.discipline IS NOT NULL AND r.discipline != ''), '{}') as disciplines,
+          COALESCE(array_agg(DISTINCT r.diagnosis_category) FILTER (WHERE r.diagnosis_category IS NOT NULL AND r.diagnosis_category != ''), '{}') as diagnosis_categories
+        FROM referrals r
+        WHERE r.deleted_at IS NULL ${locFilter}
+      `);
+      const row = result.rows[0] as any;
+      res.json({
+        referralSources: (row?.referral_sources || []).sort(),
+        payerTypes: (row?.payer_types || []).sort(),
+        disciplines: (row?.disciplines || []).sort(),
+        diagnosisCategories: (row?.diagnosis_categories || []).sort(),
+      });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

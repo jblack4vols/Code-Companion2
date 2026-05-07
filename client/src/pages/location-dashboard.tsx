@@ -47,7 +47,9 @@ export default function LocationDashboardPage() {
     queryKey: ["/api/physicians"],
   });
 
-  const { data: locationData, isLoading: loadingLocation } = useQuery<any>({
+  interface LocationSummary { month: string; referralsCount: number; totalVisits: number; revenueTotal: number; referralDependencyRatio: number; riskScore: number; }
+  interface LocationDashboardData { summaries: LocationSummary[]; topReferrers: Array<{ physicianId: string; name?: string; count: number }>; }
+  const { data: locationData, isLoading: loadingLocation } = useQuery<LocationDashboardData>({
     queryKey: ["/api/dashboard/location", selectedLocationId, { month: selectedMonth }],
     queryFn: async () => {
       const res = await fetch(`/api/dashboard/location/${selectedLocationId}?month=${selectedMonth}`, { credentials: "include" });
@@ -65,8 +67,8 @@ export default function LocationDashboardPage() {
 
   const trendData = summaries
     .slice()
-    .sort((a: any, b: any) => a.month.localeCompare(b.month))
-    .map((s: any) => ({
+    .sort((a, b) => a.month.localeCompare(b.month))
+    .map((s) => ({
       month: format(new Date(s.month), "MMM yy"),
       referrals: s.referralsCount,
       visits: s.totalVisits,
@@ -244,7 +246,7 @@ export default function LocationDashboardPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {topReferrersForLocation.map((r: any, idx: number) => {
+                      {topReferrersForLocation.map((r, idx: number) => {
                         const phys = physicianMap.get(r.physicianId);
                         const displayName = phys ? `Dr. ${phys.firstName} ${phys.lastName}` : r.name || "Unknown";
                         return (

@@ -1,6 +1,6 @@
 import type { Express } from "express";
 import { storage } from "../storage";
-import { requireRole, getClientIp } from "./shared";
+import { requireAuth, requireRole, getClientIp } from "./shared";
 import os from "os";
 import path from "path";
 import fs from "fs";
@@ -10,7 +10,19 @@ export async function registerImportRoutes(app: Express) {
   const ExcelJS = (await import("exceljs")).default;
   const uploadDir = path.join(os.tmpdir(), "crm-uploads");
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
-  const upload = multer({ dest: uploadDir, limits: { fileSize: 50 * 1024 * 1024 } });
+  const allowedExtensions = [".csv", ".xlsx", ".xls"];
+  const upload = multer({
+    dest: uploadDir,
+    limits: { fileSize: 50 * 1024 * 1024 },
+    fileFilter: (_req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (allowedExtensions.includes(ext)) {
+        cb(null, true);
+      } else {
+        cb(new Error("Only .csv, .xlsx, and .xls files are allowed") as any, false);
+      }
+    },
+  });
 
   function excelSerialToDate(serial: number): Date {
     const utcDays = Math.floor(serial - 25569);
@@ -64,6 +76,29 @@ export async function registerImportRoutes(app: Express) {
     }
     return workbook;
   }
+
+  app.get("/api/import/template/:type", requireRole("OWNER", "DIRECTOR", "MARKETER"), (req, res) => {
+    const type = req.params.type;
+    if (type === "physicians") {
+      const headers = ["First Name","Last Name","Credentials","NPI","Practice Name","Street Address 1","Street Address 2","City","State","Zip","Phone","Fax","Email","Specialty"];
+      const row1 = ["Jane","Smith","MD","1234567890","Valley Orthopedics","123 Main St","Suite 200","Austin","TX","78701","512-555-0100","512-555-0101","jane.smith@example.com","Orthopedic Surgery"];
+      const row2 = ["Robert","Johnson","DO","0987654321","Summit Primary Care","456 Oak Ave","","Denver","CO","80202","303-555-0200","303-555-0201","r.johnson@example.com","Family Medicine"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=physicians_template.csv");
+      return res.send(csv);
+    }
+    if (type === "referrals") {
+      const headers = ["Patient Account Number","Patient Name","Case Title","Case Therapist","Facility","Case Status","Date of Initial Eval","Primary Insurance","Primary Payer Type","Referring Doctor","Referring Doctor NPI","Referral Source","Discharge Date","Discharge Reason","Scheduled Visits","Arrived Visits","Created Date","Date of First Scheduled Visit","Date of First Arrived Visit","Created to Arrived","Discipline","Diagnosis Category"];
+      const row1 = ["PAT-001","John Doe","Knee Rehab","Sarah Thompson","Main Street Clinic","Active","2025-01-15","Blue Cross","Commercial","Dr. Jane Smith","1234567890","Physician Referral","","","12","8","2025-01-10","2025-01-12","2025-01-14","4","PT","Musculoskeletal"];
+      const row2 = ["PAT-002","Mary Williams","Back Pain","Mike Chen","Downtown PT Center","Scheduled","2025-02-01","Medicare","Medicare","Dr. Robert Johnson","0987654321","Self Referral","","","6","3","2025-01-20","2025-01-22","2025-01-25","5","PT","Spine"];
+      const csv = [headers, row1, row2].map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(",")).join("\n");
+      res.setHeader("Content-Type", "text/csv");
+      res.setHeader("Content-Disposition", "attachment; filename=referrals_template.csv");
+      return res.send(csv);
+    }
+    return res.status(400).json({ message: "Invalid template type. Use: physicians, referrals" });
+  });
 
   app.post("/api/import/preview", requireRole("OWNER", "DIRECTOR"), upload.single("file"), async (req, res) => {
     try {
@@ -196,7 +231,8 @@ export async function registerImportRoutes(app: Express) {
       });
       res.json({ ...result, enriched: enrichmentStats.enriched, enrichmentFailed: enrichmentStats.failed });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -210,7 +246,7 @@ export async function registerImportRoutes(app: Express) {
       const allLocations = await storage.getLocations();
       const locationCache = new Map<string, string>();
 
-      function parseDate(val: any): string | null {
+      const parseDate = (val: any): string | null => {
         if (!val) return null;
         if (val instanceof Date) {
           const y = val.getFullYear(); const m = String(val.getMonth() + 1).padStart(2, "0"); const d = String(val.getDate()).padStart(2, "0");
@@ -229,9 +265,9 @@ export async function registerImportRoutes(app: Express) {
           return `${yr}-${m.padStart(2,"0")}-${d.padStart(2,"0")}`;
         }
         return null;
-      }
+      };
 
-      async function resolveLocation(name: string): Promise<string | null> {
+      const resolveLocation = async (name: string): Promise<string | null> => {
         if (!name) return null;
         if (locationCache.has(name)) return locationCache.get(name)!;
         const found = allLocations.find(l => l.name.toLowerCase().includes(name.toLowerCase()) || name.toLowerCase().includes(l.name.toLowerCase()));
@@ -239,9 +275,9 @@ export async function registerImportRoutes(app: Express) {
         const dbFound = await storage.findLocationByName(name);
         if (dbFound) { locationCache.set(name, dbFound.id); return dbFound.id; }
         return null;
-      }
+      };
 
-      async function resolvePhysician(doctorName: string, npi?: string): Promise<string | null> {
+      const resolvePhysician = async (doctorName: string, npi?: string): Promise<string | null> => {
         if (!doctorName) return null;
         const cleaned = doctorName.replace(/^(Dr\.?\s*|MD\.?\s*)/i, "").trim();
         const parts = cleaned.split(/\s+/);
@@ -253,7 +289,7 @@ export async function registerImportRoutes(app: Express) {
         const fuzzyResults = await storage.fuzzyFindPhysicians(lastName, firstName);
         if (fuzzyResults.length === 1) return fuzzyResults[0].id;
         return null;
-      }
+      };
 
       const customFieldMapping = JSON.parse(req.body.customFieldMapping || "{}");
 
@@ -384,7 +420,8 @@ export async function registerImportRoutes(app: Express) {
       });
       res.json(summary);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -454,7 +491,8 @@ export async function registerImportRoutes(app: Express) {
 
       res.json(stats);
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 
@@ -508,7 +546,102 @@ export async function registerImportRoutes(app: Express) {
         results,
       });
     } catch (err: any) {
-      res.status(500).json({ message: err.message });
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/import/npi-lookup", requireAuth, async (req, res) => {
+    try {
+      const { firstName, lastName, npi } = req.body;
+      const params = new URLSearchParams({ version: "2.1", enumeration_type: "NPI-1" });
+      if (npi) {
+        params.set("number", npi);
+      } else if (firstName && lastName) {
+        params.set("first_name", firstName);
+        params.set("last_name", lastName);
+      } else {
+        return res.status(400).json({ message: "Provide either npi or firstName+lastName" });
+      }
+
+      const response = await fetch(`https://npiregistry.cms.hhs.gov/api/?${params.toString()}`);
+      if (!response.ok) return res.status(502).json({ message: "NPI Registry unavailable" });
+      const data = await response.json() as any;
+
+      const results = (data.results || []).slice(0, 20).map((r: any) => {
+        const basic = r.basic || {};
+        const locAddr = r.addresses?.find((a: any) => a.address_purpose === "LOCATION") || {};
+        const mailAddr = r.addresses?.find((a: any) => a.address_purpose === "MAILING") || {};
+        const taxonomy = r.taxonomies?.find((t: any) => t.primary) || r.taxonomies?.[0];
+        const orgName = locAddr.organization_name || mailAddr.organization_name || null;
+        return {
+          npi: r.number,
+          firstName: basic.first_name || "",
+          lastName: basic.last_name || "",
+          credentials: basic.credential || "",
+          specialty: taxonomy?.desc || null,
+          organizationName: orgName,
+          address: [locAddr.address_1, locAddr.address_2].filter(Boolean).join(", ") || null,
+          city: locAddr.city || null,
+          state: locAddr.state || null,
+          zip: locAddr.postal_code?.slice(0, 5) || null,
+          phone: locAddr.telephone_number || null,
+        };
+      });
+
+      res.json({ count: results.length, results });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/import/bulk-link-offices", requireAuth, async (req, res) => {
+    try {
+      const { links } = req.body;
+      if (!Array.isArray(links) || links.length === 0) {
+        return res.status(400).json({ message: "Provide an array of { physicianId, practiceName, npi? }" });
+      }
+
+      let updated = 0;
+      let failed = 0;
+      const details: any[] = [];
+
+      for (const link of links) {
+        try {
+          if (!link.physicianId || !link.practiceName) { failed++; continue; }
+          const updates: Record<string, any> = { practiceName: link.practiceName };
+          if (link.npi) updates.npi = link.npi;
+          if (link.address) updates.primaryOfficeAddress = link.address;
+          if (link.city) updates.city = link.city;
+          if (link.state) updates.state = link.state;
+          if (link.zip) updates.zip = link.zip;
+          if (link.phone) updates.phone = link.phone;
+          if (link.specialty) updates.specialty = link.specialty;
+          if (link.credentials) updates.credentials = link.credentials;
+          await storage.updatePhysician(link.physicianId, updates as any);
+          updated++;
+          details.push({ physicianId: link.physicianId, practiceName: link.practiceName, status: "ok" });
+        } catch {
+          failed++;
+          details.push({ physicianId: link.physicianId, status: "error" });
+        }
+      }
+
+      await storage.createAuditLog({
+        userId: req.session.userId!,
+        action: "IMPORT",
+        entity: "physician",
+        entityId: "bulk-link",
+        detailJson: { action: "bulk-link-offices", updated, failed, count: links.length },
+        ipAddress: getClientIp(req),
+        userAgent: req.headers["user-agent"] || null,
+      });
+
+      res.json({ updated, failed, total: links.length, details });
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
     }
   });
 }

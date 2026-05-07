@@ -1,4 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
+import { type ElementType } from "react";
+import type { Physician, Interaction, Referral, Task, PhysicianStageHistory, PhysicianMonthlySummary } from "@shared/schema";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -28,7 +30,7 @@ const statusBadgeClass: Record<string, string> = {
   INACTIVE: "bg-muted text-muted-foreground",
 };
 
-const interactionTypeColors: Record<string, { bg: string; icon: any }> = {
+const interactionTypeColors: Record<string, { bg: string; icon: ElementType }> = {
   VISIT: { bg: "bg-chart-1/15 text-chart-1", icon: Stethoscope },
   CALL: { bg: "bg-chart-2/15 text-chart-2", icon: Phone },
   EMAIL: { bg: "bg-chart-3/15 text-chart-3", icon: Mail },
@@ -74,7 +76,7 @@ function HealthGauge({ score }: { score: number }) {
 }
 
 function MetricCard({ icon: Icon, label, value, sub, color }: {
-  icon: any; label: string; value: string | number; sub?: string; color: string;
+  icon: ElementType; label: string; value: string | number; sub?: string; color: string;
 }) {
   return (
     <Card data-testid={`card-metric-${label.toLowerCase().replace(/\s+/g, '-')}`}>
@@ -93,12 +95,12 @@ function MetricCard({ icon: Icon, label, value, sub, color }: {
 }
 
 interface ScorecardData {
-  physician: any;
-  interactions: any[];
-  referrals: any[];
-  tasks: any[];
-  stageHistory: any[];
-  monthlySummaries: any[];
+  physician: Physician;
+  interactions: (Interaction & { userName?: string })[];
+  referrals: Referral[];
+  tasks: Task[];
+  stageHistory: (PhysicianStageHistory & { changedByName?: string })[];
+  monthlySummaries: PhysicianMonthlySummary[];
   metrics: {
     totalReferrals: number;
     convertedReferrals: number;
@@ -331,7 +333,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                               <span className="text-xs text-muted-foreground">Stage changed</span>
                             </div>
                             <p className="text-sm mt-0.5">
-                              <Badge variant="outline" className={`text-[10px] mr-1 ${stageBadgeClass[s.previousStage] || ""}`}>
+                              <Badge variant="outline" className={`text-[10px] mr-1 ${s.previousStage ? stageBadgeClass[s.previousStage] || "" : ""}`}>
                                 {(s.previousStage || "None").replace(/_/g, " ")}
                               </Badge>
                               <span className="text-muted-foreground mx-1">&rarr;</span>
@@ -340,7 +342,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                               </Badge>
                             </p>
                             {s.reason && <p className="text-xs text-muted-foreground mt-0.5">{s.reason}</p>}
-                            <p className="text-xs text-muted-foreground mt-0.5">by {s.changedByName || "System"}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">by {s.changedByName || s.changedBy || "System"}</p>
                           </div>
                           <span className="text-[10px] text-muted-foreground shrink-0 mt-1">
                             {format(item.date, "MMM d, yyyy")}
@@ -382,7 +384,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {referrals.map((r: any) => (
+                      {referrals.map((r) => (
                         <TableRow key={r.id} data-testid={`row-referral-${r.id}`}>
                           <TableCell className="text-xs">{format(new Date(r.referralDate), "MMM d, yyyy")}</TableCell>
                           <TableCell className="text-xs font-mono">{r.patientInitialsOrAnonId || "—"}</TableCell>
@@ -419,7 +421,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
               ) : (
                 <div className="space-y-4">
                   <div className="space-y-2">
-                    {[...monthlySummaries].reverse().map((s: any) => {
+                    {[...monthlySummaries].reverse().map((s) => {
                       const barWidth = maxMonthlyReferrals > 0 ? (s.referralsCount / maxMonthlyReferrals) * 100 : 0;
                       return (
                         <div key={s.id || s.month} className="flex items-center gap-3" data-testid={`trend-bar-${s.month}`}>
@@ -475,14 +477,14 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                 <div className="relative">
                   <div className="absolute left-4 top-0 bottom-0 w-px bg-border" />
                   <div className="space-y-4">
-                    {stageHistory.map((s: any) => (
+                    {stageHistory.map((s) => (
                       <div key={s.id} className="flex items-start gap-4 pl-1" data-testid={`stage-history-${s.id}`}>
                         <div className={`relative z-10 w-7 h-7 rounded-full flex items-center justify-center shrink-0 border-2 border-background ${stageBadgeClass[s.newStage] ? stageBadgeClass[s.newStage].split(" ")[0] : "bg-muted"}`}>
                           <ArrowRightLeft className="w-3 h-3" />
                         </div>
                         <div className="flex-1 min-w-0 pb-2">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <Badge variant="outline" className={`text-[10px] ${stageBadgeClass[s.previousStage] || ""}`}>
+                            <Badge variant="outline" className={`text-[10px] ${s.previousStage ? stageBadgeClass[s.previousStage] || "" : ""}`}>
                               {(s.previousStage || "None").replace(/_/g, " ")}
                             </Badge>
                             <span className="text-muted-foreground text-xs">&rarr;</span>
@@ -495,7 +497,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                             <span className="text-[10px] text-muted-foreground">
                               {format(new Date(s.changedAt), "MMM d, yyyy 'at' h:mm a")}
                             </span>
-                            <span className="text-[10px] text-muted-foreground">· {s.changedByName || "System"}</span>
+                            <span className="text-[10px] text-muted-foreground">· {s.changedByName || s.changedBy || "System"}</span>
                           </div>
                         </div>
                       </div>

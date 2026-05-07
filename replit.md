@@ -24,12 +24,50 @@ The application is built with a modern web stack: **React + Vite + TypeScript** 
 - **Data Quality**: Features duplicate detection for providers and referrals with merge capabilities, and robust data import/export functionalities (Excel/CSV).
 - **User Registration & Approval**: Self-registration flow where employees sign up and remain in PENDING status until a super admin (OWNER) approves them. Admins can assign roles during approval or reject registrations. Managed via Admin > Users page.
 - **Forgot Password**: Token-based password reset flow. Users request a reset link via email (sent through Outlook integration). Tokens expire in 1 hour. Reset page at `/reset-password?token=...`.
-- **Security & Compliance (HIPAA)**: Incorporates extensive HIPAA technical safeguards including audit logging (enhanced with IP/user agent), session timeout, account lockout, strong password policy, and security headers (CSRF, Rate Limiting).
+- **Security & Compliance (HIPAA)**: Incorporates extensive HIPAA technical safeguards including audit logging (enhanced with IP/user agent), session timeout, account lockout, strong password policy, and security headers (CSRF with timing-safe token comparison, Rate Limiting, CSP without unsafe-eval). All SQL queries use parameterized Drizzle `sql` template literals (no raw string interpolation). Server error responses return generic messages to prevent information leakage. File uploads are restricted to .csv/.xlsx/.xls extensions.
 - **Scalability**: Employs database indexing for performance (GIN/pg_trgm indexes on search columns, B-tree indexes on sort columns, partial indexes for token lookups), incremental ETL processing, and standardized error handling. Bulk imports use batch pre-fetch pattern to avoid N+1 queries.
 - **Maintainability**: Utilizes soft deletes for data recovery, shared authentication middleware, environment validation, shared hooks (useDebounce), and React.lazy code splitting for route-based loading.
 - **Performance**: Frontend uses useMemo for chart data transformations, React.lazy/Suspense for code splitting (~30 routes lazy-loaded), and shared utility hooks to reduce duplication.
 
 The UI is designed to be mobile-friendly, adapting layout for smaller screens (e.g., card-based provider lists).
+
+## Operational Modules
+The application includes four integrated operational modules:
+
+### Command Center KPI Dashboard
+- Extended `dashboard.ts` with `/api/dashboard/kpis`, `/api/dashboard/alerts`, `/api/dashboard/location-performance`, `/api/dashboard/location-conversion`
+- KPI metrics: visits, arrival rate, scheduled, cancellations with 30-day vs prior comparison
+- Automated alerts: arrival rate <85%, visit drop >10% WoW, referral volume drop >5%
+- Location conversion comparison table on main dashboard with progress bars and color-coded arrival rates
+
+### Referral Explorer
+- Deep-dive page at `/referral-explorer` for browsing all referral cases
+- Multi-filter search: location, referral source, payer type, status, discipline, date range, free-text
+- Expandable rows showing therapist, diagnosis, insurance, visits, discharge details
+- Stats cards: total filtered, active, arrived visits, top referrer
+- Backend: `/api/referrals/filter-options` returns distinct filter values; `getReferralsPaginated` extended with `referralSource` and `primaryPayerType` filters
+
+### Referral Intelligence
+- Extended `referrals.ts` with `/api/referrals/top-sources`, `/api/referrals/trending`, `/api/referrals/by-location`
+- Top sources with 30-day trend analysis and marketing recommendations
+- Growing/declining/stable trend classification
+
+### Claim Underpayment Detector
+- Extended `revenue-recovery.ts` with `/api/revenue/underpayments/by-payer`, `/api/revenue/underpayments/by-cpt`, `/api/revenue/underpayments/resolve`
+- Underpayment analysis grouped by payer and CPT code
+- Resolve functionality with Zod-validated UUID arrays
+
+### AI Front Desk Intake + Scheduling
+- New route: `server/routes/frontdesk.ts`, page: `client/src/pages/frontdesk.tsx`
+- Database tables: `patient_requests`, `appointment_slots`
+- Rule-based triage engine: RED (emergency/911), ORANGE (urgent/24h), YELLOW (moderate/3-5d), GREEN (routine)
+- Appointment slot management with 14-day seeding, scheduling, and waitlist workflow
+- Accessible to OWNER, DIRECTOR, FRONT_DESK roles
+
+## Data Security
+- **Location scoping enforced**: `getPhysiciansPaginated` and `getInteractionsPaginated` accept `locationIds` arrays. Physicians scoped via referrals subquery. Routes call `getUserLocationScope()` — OWNER/DIRECTOR bypass, FRONT_DESK/MARKETER see only assigned locations.
+- **CSV template downloads**: `/api/import/template/:type` (physicians, referrals) and `/api/revenue/claims/template/:type` (claims, payments, rates) serve pre-formatted CSV templates with example rows.
+- **Provider Office Linker**: `/provider-office-linker` page for bulk-linking providers to practice offices using NPI Registry. Backend endpoints: `/api/import/npi-lookup` (name/NPI search), `/api/import/bulk-link-offices` (batch update). Accessible to OWNER and DIRECTOR roles.
 
 ## External Dependencies
 - **PostgreSQL**: Primary database, backed by Neon.
@@ -39,3 +77,53 @@ The UI is designed to be mobile-friendly, adapting layout for smaller screens (e
 - **Microsoft SharePoint**: Used for syncing all application data to SharePoint Lists.
 - **node-cron**: For scheduling nightly ETL jobs and other automated tasks.
 - **ExcelJS**: Utilized for Excel (.xlsx) import functionality.
+
+## ClaudeKit Engineer Integration
+The project includes ClaudeKit Engineer tooling for AI-assisted development:
+
+### Testing
+- **Vitest** unit and integration tests in `tests/unit/` and `tests/integration/`
+- Existing tests in `server/__tests__/`
+- Run: `npx vitest run` (266 tests across 15 files)
+- Watch mode: `npx vitest`
+- Coverage: `npx vitest run --coverage`
+
+### Kanban Project Board
+- Plans-kanban dashboard for task visualization
+- Plans directory: `plans/` with active improvement backlog
+- Start: `node .opencode/skills/plans-kanban/scripts/server.cjs --dir ./plans`
+- Usage guide: `docs/kanban-usage.md`
+
+### Documentation Site (Mintlify)
+- Mintlify docs in `documentation/` directory
+- Config: `documentation/docs.json`
+- Pages: introduction, architecture, data-model, permissions, workflows, local-dev
+
+### Design System
+- Design system documented in `docs/design-system.md`
+- Colors, typography, components, layout patterns, dark mode, interaction system
+
+### Architecture Diagrams
+- Mermaid diagrams in `docs/diagrams/system-architecture.md`
+- System architecture, request flow, ER diagram, ETL flow, auth flow
+
+### Code Review Workflows
+- Review process: `docs/code-review.md`
+- AI agent checklist: `.claude/rules/code-review-checklist.md`
+- HIPAA-specific review items included
+
+### Real Financial Data (Prompt EMR Import)
+- **19,784 real claims** imported from Prompt EMR Revenue Report (Jan 1 – Mar 26, 2026)
+- **19,695 operations records** from Prompt EMR Operations Report
+- Source files: `attached_assets/Revenue_Report_*.xlsx` and `attached_assets/Operations_Report_*.xlsx`
+- Import script: `server/import-real-financials.ts` — runs on startup, skips if already imported
+- Data includes all 8 locations, 67 payers, real billed/paid/outstanding amounts
+- Clinic financials (582 weekly records) computed from real claim payment data
+- Import format guide: `docs/import-formats.md`
+
+### Referral Funnel Logic
+- Funnel stages are monotonically decreasing by construction: Received ≥ Scheduled ≥ Arrived ≥ Discharged
+- **Scheduled** = status in (SCHEDULED, EVAL_COMPLETED, DISCHARGED) OR scheduled_visits > 0 OR arrived_visits > 0
+- **Arrived** = arrived_visits > 0
+- **Discharged** = status = DISCHARGED AND arrived_visits > 0
+- Funnel endpoint (`/api/dashboard/funnel`) enforces location scope via `getUserLocationScope`
