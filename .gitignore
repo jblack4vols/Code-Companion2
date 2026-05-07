@@ -20,4 +20,6 @@ pnpm-debug.log*
 # OS
 .DS_Store
 Thumbs.db
-.vercel
+
+# claude hooks
+.claude/hooks/.logs/
