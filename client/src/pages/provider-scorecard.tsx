@@ -205,7 +205,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
               {physician.status}
             </Badge>
             <Badge variant="outline" className={stageBadgeClass[physician.relationshipStage] || ""} data-testid="badge-stage">
-              {physician.relationshipStage.replace(/_/g, " ")}
+              {physician.relationshipStage?.replace(/_/g, " ") ?? "—"}
             </Badge>
           </div>
         </div>
@@ -305,7 +305,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                           </div>
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <Badge variant="outline" className={`text-[10px] ${referralStatusBadge[r.status] || ""}`}>{r.status.replace(/_/g, " ")}</Badge>
+                              <Badge variant="outline" className={`text-[10px] ${referralStatusBadge[r.status] || ""}`}>{r.status?.replace(/_/g, " ") ?? "—"}</Badge>
                               {r.patientInitialsOrAnonId && (
                                 <span className="text-xs text-muted-foreground">Patient: {r.patientInitialsOrAnonId}</span>
                               )}
@@ -338,7 +338,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                               </Badge>
                               <span className="text-muted-foreground mx-1">&rarr;</span>
                               <Badge variant="outline" className={`text-[10px] ${stageBadgeClass[s.newStage] || ""}`}>
-                                {s.newStage.replace(/_/g, " ")}
+                                {s.newStage?.replace(/_/g, " ") ?? "—"}
                               </Badge>
                             </p>
                             {s.reason && <p className="text-xs text-muted-foreground mt-0.5">{s.reason}</p>}
@@ -391,7 +391,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                           <TableCell className="text-xs max-w-[160px] truncate">{r.caseTitle || "—"}</TableCell>
                           <TableCell>
                             <Badge variant="outline" className={`text-[10px] ${referralStatusBadge[r.status] || ""}`}>
-                              {r.status.replace(/_/g, " ")}
+                              {r.status?.replace(/_/g, " ") ?? "—"}
                             </Badge>
                           </TableCell>
                           <TableCell className="text-xs text-right">{r.arrivedVisits ?? 0}</TableCell>
@@ -489,7 +489,7 @@ export default function ProviderScorecardPage({ params }: { params: { id: string
                             </Badge>
                             <span className="text-muted-foreground text-xs">&rarr;</span>
                             <Badge variant="outline" className={`text-[10px] ${stageBadgeClass[s.newStage] || ""}`}>
-                              {s.newStage.replace(/_/g, " ")}
+                              {s.newStage?.replace(/_/g, " ") ?? "—"}
                             </Badge>
                           </div>
                           {s.reason && <p className="text-xs text-muted-foreground mt-1">{s.reason}</p>}

@@ -71,7 +71,7 @@ export function ReferralsDetailDialog({ referral, onClose, onEdit, editContent }
               </div>
               <div>
                 <p className="text-xs text-muted-foreground">Status</p>
-                <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>{r.status.replace("_", " ")}</Badge>
+                <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status ?? "RECEIVED"]}`}>{r.status?.replace("_", " ") ?? "—"}</Badge>
               </div>
             </div>
             <div className="border-t pt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-sm">

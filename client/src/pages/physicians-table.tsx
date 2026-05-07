@@ -125,7 +125,7 @@ export function PhysiciansTable({ physicians, users, favoriteIds, isLoading, isE
                           </TableCell>
                           <TableCell className="text-sm text-muted-foreground">{[p.city, p.state].filter(Boolean).join(", ") || "-"}</TableCell>
                           <TableCell><Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge></TableCell>
-                          <TableCell><Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage]}`}>{p.relationshipStage.replace("_", " ")}</Badge></TableCell>
+                          <TableCell><Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage ?? "NEW"]}`}>{p.relationshipStage?.replace("_", " ") ?? "—"}</Badge></TableCell>
                           <TableCell><Badge variant="outline" className={`text-[10px] ${priorityBadge[p.priority]}`}>{p.priority}</Badge></TableCell>
                           <TableCell className="text-sm text-center" data-testid={`text-referral-count-${p.id}`}>
                             {Number(p.referralCount) > 0 ? <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)}</Badge> : <span className="text-muted-foreground">0</span>}
@@ -149,7 +149,7 @@ export function PhysiciansTable({ physicians, users, favoriteIds, isLoading, isE
                           <p className="text-xs text-muted-foreground">{[p.city, p.state].filter(Boolean).join(", ") || "-"}</p>
                           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
                             <Badge variant="outline" className={`text-[10px] ${statusBadge[p.status]}`}>{p.status}</Badge>
-                            <Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage]}`}>{p.relationshipStage.replace("_", " ")}</Badge>
+                            <Badge variant="outline" className={`text-[10px] ${stageBadge[p.relationshipStage ?? "NEW"]}`}>{p.relationshipStage?.replace("_", " ") ?? "—"}</Badge>
                             {Number(p.referralCount) > 0 && <Badge variant="secondary" className="text-[10px]">{Number(p.referralCount)} referrals</Badge>}
                           </div>
                         </div>
