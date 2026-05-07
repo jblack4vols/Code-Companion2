@@ -300,8 +300,8 @@ export default function PhysicianDetailPage({ params }: { params: { id: string }
               <span className="text-xs text-muted-foreground">Health</span>
             </div>
           )}
-          <Badge variant="outline" className={stageBadge[physician.relationshipStage]}>
-            {physician.relationshipStage.replace("_", " ")}
+          <Badge variant="outline" className={stageBadge[physician.relationshipStage ?? "NEW"]}>
+            {physician.relationshipStage?.replace("_", " ") ?? "—"}
           </Badge>
           {canEdit && !editing && (
             <Button variant="outline" size="sm" onClick={() => { setPracticeNameValue(physician?.practiceName || ""); setEditing(true); }} data-testid="button-edit-physician">

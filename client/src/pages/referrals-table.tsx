@@ -143,7 +143,7 @@ export function ReferralsTable({
                       <TableCell className="text-sm">{r.physicianFirstName ? `${r.physicianFirstName} ${r.physicianLastName}` : "-"}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">{r.locationName?.replace("Tristar PT - ", "") || "-"}</TableCell>
                       <TableCell>
-                        <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status]}`}>{r.status.replace("_", " ")}</Badge>
+                        <Badge variant="outline" className={`text-[10px] ${statusBadge[r.status ?? "RECEIVED"]}`}>{r.status?.replace("_", " ") ?? "—"}</Badge>
                       </TableCell>
                       <TableCell className="text-sm hidden md:table-cell">
                         {r.discipline && <Badge variant="outline" className="text-[10px]">{r.discipline}</Badge>}

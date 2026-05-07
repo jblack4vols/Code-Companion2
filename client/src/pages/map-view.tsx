@@ -301,7 +301,7 @@ export default function MapViewPage() {
                       variant="outline"
                       className={`text-[10px] ${STAGE_BADGE_CLASS[p.relationshipStage]}`}
                     >
-                      {p.relationshipStage.replace("_", " ")}
+                      {p.relationshipStage?.replace("_", " ") ?? "—"}
                     </Badge>
                     <div className="pt-1">
                       <Button
