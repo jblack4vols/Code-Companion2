@@ -79,6 +79,9 @@ export default function FrontDeskPage() {
       const res = await apiRequest("POST", "/api/frontdesk/triage", { symptoms: symptomsText });
       return res.json();
     },
+    onError: (err: Error) => {
+      toast({ title: "Triage failed", description: err.message, variant: "destructive" });
+    },
   });
 
   const createMutation = useMutation({
@@ -138,6 +141,9 @@ export default function FrontDeskPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/frontdesk/stats"] });
       toast({ title: "Patient added to waitlist" });
     },
+    onError: (err: Error) => {
+      toast({ title: "Could not add to waitlist", description: err.message, variant: "destructive" });
+    },
   });
 
   const cancelMutation = useMutation({
@@ -149,6 +155,9 @@ export default function FrontDeskPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/frontdesk/requests"] });
       queryClient.invalidateQueries({ queryKey: ["/api/frontdesk/stats"] });
       toast({ title: "Request cancelled" });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Cancel failed", description: err.message, variant: "destructive" });
     },
   });
 
