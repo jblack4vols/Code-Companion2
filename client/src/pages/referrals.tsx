@@ -14,13 +14,9 @@ import { ReferralsDetailDialog } from "./referrals-detail-dialog";
 import { ReferralsEditForm } from "./referrals-edit-form";
 import { ReferralsAddForm } from "./referrals-add-form";
 import { ReferralsBulkActions } from "./referrals-bulk-actions";
-import { GoneDarkPanel, type GoneDarkSource } from "./referral-intelligence-gone-dark";
 
 type ReferralRow = Referral & { physicianFirstName?: string; physicianLastName?: string; physicianCredentials?: string; locationName?: string };
 type EditData = Record<string, string | number>;
-
-/** Roles permitted to view referral intelligence data */
-const INTELLIGENCE_ROLES = ["OWNER", "DIRECTOR", "ANALYST"];
 
 const invalidateReferrals = () => queryClient.invalidateQueries({ predicate: (q) => { const k = q.queryKey[0]; return k === "/api/referrals/paginated" || k === "/api/referrals" || k === "/api/physicians"; } });
 
@@ -62,22 +58,6 @@ export default function ReferralsPage() {
   const debouncedSearch = useDebounce(search, 300);
 
   const { data: locations } = useQuery<Location[]>({ queryKey: ["/api/locations"] });
-
-  const canViewIntelligence = user ? INTELLIGENCE_ROLES.includes(user.role) : false;
-
-  // Fetch gone-dark providers for the alert banner (only for permitted roles)
-  const { data: goneDarkRaw = [] } = useQuery<Array<{ physicianId: string; name: string; practiceName: string | null; daysSinceLastReferral: number | null; casesYtd: number }>>({
-    queryKey: ["/api/referral-intelligence/gone-dark"],
-    enabled: canViewIntelligence,
-  });
-
-  const goneDarkSources: GoneDarkSource[] = goneDarkRaw.map((s) => ({
-    id: s.physicianId,
-    name: s.name,
-    practice: s.practiceName ?? "",
-    daysSinceReferral: s.daysSinceLastReferral ?? 0,
-    casesYtd: s.casesYtd,
-  }));
 
   const buildQueryParams = useCallback(() => { const p = new URLSearchParams(); p.set("page", String(page)); p.set("pageSize", String(pageSize)); if (debouncedSearch) p.set("search", debouncedSearch); if (statusFilter !== "all") p.set("status", statusFilter); if (locationFilter !== "all") p.set("locationId", locationFilter); if (disciplineFilter !== "all") p.set("discipline", disciplineFilter); if (physicianFilterId) p.set("physicianId", physicianFilterId); if (dateFrom) p.set("dateFrom", dateFrom); if (dateTo) p.set("dateTo", dateTo); if (sortBy) { p.set("sortBy", sortBy); p.set("sortDir", sortDir); } return p.toString(); }, [page, debouncedSearch, statusFilter, locationFilter, disciplineFilter, physicianFilterId, dateFrom, dateTo, sortBy, sortDir]);
 
@@ -160,8 +140,6 @@ export default function ReferralsPage() {
           )}
         </div>
       </div>
-
-      {canViewIntelligence && <GoneDarkPanel sources={goneDarkSources} />}
 
       <ReferralsFilters
         search={search} statusFilter={statusFilter} locationFilter={locationFilter}
