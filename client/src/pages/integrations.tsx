@@ -933,16 +933,16 @@ export default function IntegrationsPage() {
                   <div className="space-y-2">
                     <p className="font-medium">How to connect:</p>
                     <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground ml-1">
-                      <li>In the Replit workspace, open the <strong>Integrations</strong> panel (puzzle piece icon in left toolbar)</li>
-                      <li>Find <strong>Microsoft Outlook</strong> and click <strong>Connect</strong></li>
+                      <li>Go to the <strong>Calendar</strong> page in this app</li>
+                      <li>Click <strong>Connect Outlook</strong></li>
                       <li>Sign in with your Microsoft 365 account when prompted</li>
-                      <li>Grant the requested permissions (Mail.Send, Calendars.ReadWrite)</li>
-                      <li>Once connected, Tristar can automatically send emails and sync calendar events</li>
+                      <li>Grant the requested permissions (Calendars.ReadWrite, Sites.ReadWrite.All, Sites.Manage.All, Files.ReadWrite.All, offline_access)</li>
+                      <li>Once connected, Tristar will sync calendar events. The same token is also used for SharePoint sync.</li>
                     </ol>
                   </div>
                   <div className="rounded-md bg-blue-500/10 p-3 text-xs flex items-start gap-2 text-blue-700 dark:text-blue-300">
                     <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
-                    <span>The Outlook connection is managed through Replit's integration system. If it disconnects, re-authenticate through the Integrations panel.</span>
+                    <span>The Outlook connection uses Microsoft OAuth and is stored on this server. If it disconnects, click <strong>Disconnect</strong> on the Calendar page and reconnect — no Replit involvement.</span>
                   </div>
                 </div>
               </div>
@@ -958,9 +958,7 @@ export default function IntegrationsPage() {
                   <div className="space-y-2">
                     <p className="font-medium">How to connect:</p>
                     <ol className="list-decimal list-inside space-y-1.5 text-muted-foreground ml-1">
-                      <li>In the Replit workspace, open the <strong>Integrations</strong> panel (puzzle piece icon in left toolbar)</li>
-                      <li>Find <strong>Microsoft SharePoint</strong> and click <strong>Connect</strong></li>
-                      <li>Sign in with your Microsoft 365 account and grant permissions</li>
+                      <li>First connect Outlook (above) — SharePoint access uses the same Microsoft OAuth token</li>
                       <li>Go to <strong>Administration &gt; SharePoint Sync</strong> in this app</li>
                       <li>Search for and select your SharePoint site</li>
                       <li>Click <strong>Sync All</strong> to push data, or sync individual entities</li>
