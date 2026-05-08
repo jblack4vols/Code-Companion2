@@ -253,47 +253,103 @@ async function clearList(client: Client, siteId: string, listId: string) {
   }
 }
 
-async function batchCreateItems(client: Client, siteId: string, listId: string, items: any[]): Promise<{ created: number; failed: number }> {
+async function batchCreateItems(
+  client: Client,
+  siteId: string,
+  listId: string,
+  items: any[],
+): Promise<{ created: number; failed: number }> {
+  // Microsoft Graph $batch returns 200 overall but individual sub-requests
+  // can come back 429 (throttled) when SharePoint's per-app/per-tenant rate
+  // limit is hit (~1200 reqs/min). Previous version logged "throttled" and
+  // dropped those items — sync of 3867 physicians lost ~half. Now we:
+  //   1. Collect items that came back 429 (or 503).
+  //   2. Read their Retry-After hint from response headers.
+  //   3. After the pass finishes, sleep that long.
+  //   4. Retry the throttled subset. Up to MAX_ATTEMPTS rounds.
+  // Plus a small inter-batch pause to stay below the rate limit proactively.
+  const MAX_ATTEMPTS = 4;
+  const INTER_BATCH_PAUSE_MS = 100;
+  const MAX_RETRY_WAIT_SEC = 60;
+
   let created = 0;
   let failed = 0;
+  let pending: any[] = items.slice();
+  let attempt = 1;
 
-  for (let i = 0; i < items.length; i += 20) {
-    const chunk = items.slice(i, i + 20);
-    const batchReqs = chunk.map((fields: any, idx: number) => ({
-      id: `${idx}`,
-      method: "POST",
-      url: `/sites/${siteId}/lists/${listId}/items`,
-      headers: { "Content-Type": "application/json" },
-      body: { fields }
-    }));
+  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+  const readRetryAfter = (headers: any): number => {
+    const v = headers?.['Retry-After'] ?? headers?.['retry-after'] ?? '5';
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : 5;
+  };
 
-    try {
-      const result = await client.api('/$batch').post({ requests: batchReqs });
-      for (const resp of result.responses || []) {
-        if (resp.status >= 200 && resp.status < 300) created++;
-        else {
-          failed++;
-          console.warn(`Item create failed:`, resp.body?.error?.message);
-        }
-      }
-    } catch (err: any) {
-      console.warn('Batch create error, falling back to individual:', err.message);
-      for (const fields of chunk) {
-        try {
-          await client.api(`/sites/${siteId}/lists/${listId}/items`).post({ fields });
-          created++;
-        } catch (e: any) {
-          failed++;
-          console.warn('Individual item create failed:', e.message);
-        }
-      }
+  while (pending.length > 0 && attempt <= MAX_ATTEMPTS) {
+    if (attempt > 1) {
+      console.log(`Retry pass ${attempt}: ${pending.length} items remaining`);
     }
 
-    if (i % 200 === 0 && i > 0) {
-      console.log(`  Progress: ${i}/${items.length} items processed`);
+    const stillThrottled: any[] = [];
+    let maxRetryAfter = 0;
+    let processed = 0;
+    const total = pending.length;
+
+    for (let i = 0; i < pending.length; i += 20) {
+      const chunk = pending.slice(i, i + 20);
+      const batchReqs = chunk.map((fields: any, idx: number) => ({
+        id: `${idx}`,
+        method: 'POST',
+        url: `/sites/${siteId}/lists/${listId}/items`,
+        headers: { 'Content-Type': 'application/json' },
+        body: { fields },
+      }));
+
+      try {
+        const result = await client.api('/$batch').post({ requests: batchReqs });
+        for (const resp of result.responses || []) {
+          const reqIdx = parseInt(resp.id, 10);
+          const item = chunk[reqIdx];
+          if (resp.status >= 200 && resp.status < 300) {
+            created++;
+          } else if (resp.status === 429 || resp.status === 503) {
+            stillThrottled.push(item);
+            const retry = readRetryAfter(resp.headers);
+            if (retry > maxRetryAfter) maxRetryAfter = retry;
+          } else {
+            failed++;
+            console.warn(`Item create failed (${resp.status}):`, resp.body?.error?.message);
+          }
+        }
+      } catch (err: any) {
+        // Whole $batch call exploded — treat as throttle and retry whole chunk
+        console.warn('Batch create error, retrying chunk later:', err?.message);
+        for (const fields of chunk) stillThrottled.push(fields);
+        if (maxRetryAfter < 5) maxRetryAfter = 5;
+      }
+
+      processed += chunk.length;
+      if (processed % 200 === 0 || i + 20 >= pending.length) {
+        console.log(`  Progress: ${processed}/${total} items processed (attempt ${attempt})`);
+      }
+
+      if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
     }
+
+    pending = stillThrottled;
+
+    if (pending.length > 0 && attempt < MAX_ATTEMPTS) {
+      const waitSec = Math.min(Math.max(maxRetryAfter, 5), MAX_RETRY_WAIT_SEC);
+      console.log(`Throttled ${pending.length} items, waiting ${waitSec}s before retry...`);
+      await sleep(waitSec * 1000);
+    }
+
+    attempt++;
   }
 
+  failed += pending.length;
+  if (pending.length > 0) {
+    console.warn(`Gave up on ${pending.length} items after ${MAX_ATTEMPTS} attempts`);
+  }
   return { created, failed };
 }
 
