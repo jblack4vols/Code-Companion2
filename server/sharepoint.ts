@@ -177,17 +177,31 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
 
   const existingLists = await client.api(`/sites/${siteId}/lists`).select('id,displayName').get();
   const existing = existingLists.value?.find((l: any) => l.displayName === def.displayName);
-  if (existing) return existing.id;
 
-  const listPayload: any = {
-    displayName: def.displayName,
-    list: { template: "genericList" }
-  };
+  let listId: string;
+  if (existing) {
+    listId = existing.id;
+  } else {
+    const listPayload: any = {
+      displayName: def.displayName,
+      list: { template: "genericList" }
+    };
+    const created = await client.api(`/sites/${siteId}/lists`).post(listPayload);
+    listId = created.id;
+  }
 
-  const created = await client.api(`/sites/${siteId}/lists`).post(listPayload);
-  const listId = created.id;
+  // Always ensure columns — pre-existing lists (e.g. created by an earlier
+  // sync attempt that failed mid-flight, or a list switched-to from a
+  // different site) won't have the schema we need until we add it. Item
+  // inserts later in the pipeline reference these columns by name, so a
+  // missing column here = "Field 'ExternalId' is not recognized" at insert.
+  // Idempotent: we fetch the existing column names and skip ones already present.
+  const existingCols = await client.api(`/sites/${siteId}/lists/${listId}/columns`).select('name').get();
+  const presentNames = new Set<string>((existingCols.value ?? []).map((c: any) => c.name));
 
   for (const col of def.columns) {
+    if (presentNames.has(col.name)) continue;
+
     const colPayload: any = { name: col.name, enforceUniqueValues: false };
     if (col.text) colPayload.text = col.text;
     else if (col.number) colPayload.number = col.number;
