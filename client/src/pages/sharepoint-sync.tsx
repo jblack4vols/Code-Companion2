@@ -40,6 +40,10 @@ export default function SharePointSyncPage() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedSiteId, setSelectedSiteId] = useState("");
+  // When the user clicks "Change Site" on an already-connected setup, we
+  // surface the search/manual-input controls so they can pick a different
+  // one. POST /api/sharepoint/site is upsert-style — saving overwrites.
+  const [changingSite, setChangingSite] = useState(false);
 
   const { data: statusData, isLoading: loadingStatus } = useQuery<{ siteId: string | null; statuses: SyncStatus[] }>({
     queryKey: ["/api/sharepoint/status"],
@@ -63,6 +67,9 @@ export default function SharePointSyncPage() {
     onSuccess: (data) => {
       toast({ title: "Site configured", description: `Connected to ${data.site?.displayName || "SharePoint site"}` });
       queryClient.invalidateQueries({ queryKey: ["/api/sharepoint/status"] });
+      setChangingSite(false);
+      setSelectedSiteId("");
+      setSearchQuery("");
     },
     onError: (err: unknown) => {
       toast({ title: "Failed to configure site", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" });
@@ -124,12 +131,38 @@ export default function SharePointSyncPage() {
           )}
         </CardHeader>
         <CardContent className="space-y-4">
-          {siteConfigured ? (
-            <div className="text-sm text-muted-foreground" data-testid="text-site-id">
-              Site ID: <span className="font-mono text-xs">{statusData?.siteId}</span>
+          {siteConfigured && !changingSite ? (
+            <div className="flex items-start justify-between gap-3 flex-wrap">
+              <div className="text-sm text-muted-foreground min-w-0 flex-1" data-testid="text-site-id">
+                Site ID: <span className="font-mono text-xs break-all">{statusData?.siteId}</span>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setChangingSite(true); setSelectedSiteId(""); setSearchQuery(""); }}
+                data-testid="button-change-site"
+              >
+                Change Site
+              </Button>
             </div>
           ) : (
             <div className="space-y-3">
+              {siteConfigured && changingSite && (
+                <div className="rounded-md bg-amber-500/10 p-3 text-xs flex items-start gap-2 text-amber-700 dark:text-amber-300">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                  <div className="space-y-1">
+                    <p>Switching sites won't delete the existing <code className="font-mono">Tristar360 - …</code> lists on the old site — they become orphaned. Delete them manually from the old site's Site Contents if you want to clean up.</p>
+                    <button
+                      type="button"
+                      className="underline text-xs"
+                      onClick={() => setChangingSite(false)}
+                      data-testid="button-cancel-change-site"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              )}
               <p className="text-sm text-muted-foreground">
                 Search for your SharePoint site or enter the site ID directly to configure where data will be synced.
               </p>
