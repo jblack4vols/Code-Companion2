@@ -32,7 +32,7 @@ function aggregateTiers(sources: TierChartSource[]): TierBucket[] {
     // D-tier sources roll into C for display purposes
     const key = s.tierLabel === "A" || s.tierLabel === "B" || s.tierLabel === "C" ? s.tierLabel : "C";
     map[key].providers += 1;
-    map[key].cases += s.casesYtd;
+    map[key].cases += s.casesYtd ?? 0;
   }
 
   return ["A", "B", "C"].map((tier) => ({

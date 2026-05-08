@@ -103,10 +103,10 @@ export function ReferralIntelligenceTable({ sources }: Props) {
                       {s.payerTier}
                     </Badge>
                   </TableCell>
-                  <TableCell>{s.casesYtd.toLocaleString()}</TableCell>
+                  <TableCell>{(s.casesYtd ?? 0).toLocaleString()}</TableCell>
                   <TableCell>
-                    <span className={s.yoyDelta >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive"}>
-                      {s.yoyDelta >= 0 ? "+" : ""}{s.yoyDelta}%
+                    <span className={(s.yoyDelta ?? 0) >= 0 ? "text-green-600 dark:text-green-400" : "text-destructive"}>
+                      {(s.yoyDelta ?? 0) >= 0 ? "+" : ""}{s.yoyDelta ?? 0}%
                     </span>
                   </TableCell>
                   <TableCell>
