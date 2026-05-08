@@ -5,6 +5,7 @@ import { sql, eq } from "drizzle-orm";
 import { z } from "zod";
 import { insertPhysicianSchema, insertReferralSchema, referrals as referralsTable, physicians as physiciansTable } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } from "./shared";
+import { syncItemCreate, syncItemUpdate, syncItemDelete } from "../sharepoint-item-sync";
 
 export function registerReferralRoutes(app: Express) {
   app.get("/api/referrals/paginated", requireAuth, async (req, res) => {
@@ -66,6 +67,11 @@ export function registerReferralRoutes(app: Express) {
       const validated = insertReferralSchema.parse(body);
       const ref = await storage.createReferral(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Referral", entityId: ref.id, detailJson: { physicianId: ref.physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      // If a new physician was created inline above, mirror that to SharePoint too
+      if (body.physicianId && body.referringProviderName) {
+        await syncItemCreate("physicians", body.physicianId);
+      }
+      await syncItemCreate("referrals", ref.id);
       res.json(ref);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -123,6 +129,7 @@ export function registerReferralRoutes(app: Express) {
       const updated = await storage.updateReferral(String(req.params.id), parsed.data as any);
       if (!updated) return res.status(404).json({ message: "Referral not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Referral", entityId: String(req.params.id), detailJson: { fields: Object.keys(parsed.data) }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemUpdate("referrals", updated.id);
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -171,6 +178,7 @@ export function registerReferralRoutes(app: Express) {
       const deleted = await storage.softDeleteReferral(String(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Referral", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemDelete("referrals", String(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);
@@ -183,6 +191,7 @@ export function registerReferralRoutes(app: Express) {
       const restored = await storage.restoreReferral(String(req.params.id));
       if (!restored) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Referral", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemCreate("referrals", String(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);

@@ -3,6 +3,13 @@ import { db } from './db';
 import { sharepointSyncStatus, appSettings, physicians, referrals, interactions, tasks, locations, userOauthTokens, users } from '@shared/schema';
 import { eq, sql, desc } from 'drizzle-orm';
 import { getValidAccessToken } from './outlook-oauth-token-helpers';
+import {
+  mapPhysicianFields,
+  mapReferralFields,
+  mapInteractionFields,
+  mapTaskFields,
+  mapLocationFields,
+} from './sharepoint-row-mappers';
 
 /**
  * SharePoint Graph access uses the most recently authenticated OWNER's
@@ -344,115 +351,44 @@ async function getEntityData(entity: string): Promise<any[]> {
   switch (entity) {
     case 'physicians': {
       const rows = await db.select().from(physicians);
-      return rows.map(p => ({
-        Title: `${p.lastName}, ${p.firstName}`,
-        ExternalId: p.id,
-        FirstName: p.firstName || '',
-        LastName: p.lastName || '',
-        Credentials: p.credentials || '',
-        Specialty: p.specialty || '',
-        NPI: p.npi || '',
-        PracticeName: p.practiceName || '',
-        Address: p.primaryOfficeAddress || '',
-        City: p.city || '',
-        State: p.state || '',
-        Zip: p.zip || '',
-        Phone: p.phone || '',
-        Fax: p.fax || '',
-        Email: p.email || '',
-        Status: p.status || '',
-        RelationshipStage: p.relationshipStage || '',
-        Priority: p.priority || '',
-        Notes: p.notes || '',
-        LastInteractionAt: p.lastInteractionAt ? new Date(p.lastInteractionAt).toISOString() : '',
-      }));
+      return rows.map(mapPhysicianFields);
     }
     case 'referrals': {
       const rows = await db.execute(sql`
-        SELECT r.*, 
+        SELECT r.*,
           p.first_name as physician_first_name, p.last_name as physician_last_name, p.npi as physician_npi,
           l.name as location_name
         FROM referrals r
         LEFT JOIN physicians p ON r.physician_id = p.id
         LEFT JOIN locations l ON r.location_id = l.id
       `);
-      return (rows.rows as any[]).map(r => ({
-        Title: r.case_title || r.patient_account_number || 'Referral',
-        ExternalId: r.id,
-        PhysicianName: r.physician_first_name && r.physician_last_name ? `${r.physician_last_name}, ${r.physician_first_name}` : (r.referring_provider_name || ''),
-        PhysicianNPI: r.physician_npi || r.referring_provider_npi || '',
-        LocationName: r.location_name || '',
-        ReferralDate: r.referral_date || '',
-        PatientAccount: r.patient_account_number || '',
-        PatientName: r.patient_full_name || '',
-        CaseTitle: r.case_title || '',
-        CaseTherapist: r.case_therapist || '',
-        ReferralSource: r.referral_source || '',
-        Status: r.status || '',
-        Discipline: r.discipline || '',
-        DiagnosisCategory: r.diagnosis_category || '',
-        PrimaryInsurance: r.primary_insurance || '',
-        PrimaryPayerType: r.primary_payer_type || '',
-        ScheduledVisits: r.scheduled_visits || 0,
-        ArrivedVisits: r.arrived_visits || 0,
-        DischargeDate: r.discharge_date || '',
-        DischargeReason: r.discharge_reason || '',
-        DateOfInitialEval: r.date_of_initial_eval || '',
-      }));
+      return (rows.rows as any[]).map(mapReferralFields);
     }
     case 'interactions': {
       const rows = await db.execute(sql`
-        SELECT i.*, 
+        SELECT i.*,
           p.first_name as physician_first_name, p.last_name as physician_last_name,
           u.name as user_name
         FROM interactions i
         LEFT JOIN physicians p ON i.physician_id = p.id
         LEFT JOIN users u ON i.user_id = u.id
       `);
-      return (rows.rows as any[]).map(r => ({
-        Title: `${r.type} - ${r.physician_last_name || 'Unknown'}`,
-        ExternalId: r.id,
-        PhysicianName: r.physician_first_name && r.physician_last_name ? `${r.physician_last_name}, ${r.physician_first_name}` : '',
-        UserName: r.user_name || '',
-        Type: r.type || '',
-        OccurredAt: r.occurred_at ? new Date(r.occurred_at).toISOString() : '',
-        Summary: r.summary || '',
-        NextStep: r.next_step || '',
-        FollowUpDueAt: r.follow_up_due_at ? new Date(r.follow_up_due_at).toISOString() : '',
-      }));
+      return (rows.rows as any[]).map(mapInteractionFields);
     }
     case 'tasks': {
       const rows = await db.execute(sql`
-        SELECT t.*, 
+        SELECT t.*,
           p.first_name as physician_first_name, p.last_name as physician_last_name,
           u.name as user_name
         FROM tasks t
         LEFT JOIN physicians p ON t.physician_id = p.id
         LEFT JOIN users u ON t.assigned_to_user_id = u.id
       `);
-      return (rows.rows as any[]).map(r => ({
-        Title: (r.description as string)?.substring(0, 100) || 'Task',
-        ExternalId: r.id,
-        PhysicianName: r.physician_first_name && r.physician_last_name ? `${r.physician_last_name}, ${r.physician_first_name}` : '',
-        AssignedTo: r.user_name || '',
-        DueAt: r.due_at ? new Date(r.due_at as string).toISOString() : '',
-        Priority: r.priority || '',
-        Status: r.status || '',
-        Description: r.description || '',
-      }));
+      return (rows.rows as any[]).map(mapTaskFields);
     }
     case 'locations': {
       const rows = await db.select().from(locations);
-      return rows.map(l => ({
-        Title: l.name,
-        ExternalId: l.id,
-        LocationName: l.name || '',
-        Address: l.address || '',
-        City: l.city || '',
-        State: l.state || '',
-        Phone: l.phone || '',
-        IsActive: l.isActive ? 'Yes' : 'No',
-      }));
+      return rows.map(mapLocationFields);
     }
     default:
       throw new Error(`Unknown entity: ${entity}`);

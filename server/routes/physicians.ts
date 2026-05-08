@@ -4,6 +4,7 @@ import { db } from "../db";
 import { sql, type SQL } from "drizzle-orm";
 import { insertPhysicianSchema } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, qstr, qstrReq, getUserLocationScope } from "./shared";
+import { syncItemCreate, syncItemUpdate, syncItemDelete } from "../sharepoint-item-sync";
 
 export function registerPhysicianRoutes(app: Express) {
   app.get("/api/physicians/paginated", requireAuth, async (req, res) => {
@@ -334,6 +335,7 @@ export function registerPhysicianRoutes(app: Express) {
       const validated = insertPhysicianSchema.parse(req.body);
       const phys = await storage.createPhysician(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Physician", entityId: phys.id, detailJson: { firstName: phys.firstName, lastName: phys.lastName }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemCreate("physicians", phys.id);
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -356,6 +358,7 @@ export function registerPhysicianRoutes(app: Express) {
       const phys = await storage.updatePhysician(String(req.params.id), validated);
       if (!phys) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Physician", entityId: phys.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemUpdate("physicians", phys.id);
       res.json(phys);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -398,6 +401,7 @@ export function registerPhysicianRoutes(app: Express) {
       const deleted = await storage.softDeletePhysician(String(req.params.id));
       if (!deleted) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "SOFT_DELETE", entity: "Physician", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemDelete("physicians", String(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);
@@ -410,6 +414,7 @@ export function registerPhysicianRoutes(app: Express) {
       const restored = await storage.restorePhysician(String(req.params.id));
       if (!restored) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Physician", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemCreate("physicians", String(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       console.error(err);
