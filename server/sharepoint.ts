@@ -225,177 +225,6 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
   return listId;
 }
 
-async function clearList(client: Client, siteId: string, listId: string) {
-  // Mirror the Retry-After handling from batchCreateItems — clearList
-  // also issues hundreds of inner DELETE requests via $batch and trips
-  // SharePoint's rate limit when wiping a 3000+ row list. Without this,
-  // a 429 in the delete batch would either get silently dropped or
-  // bubble up as 'The request has been throttled' from syncEntity.
-  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-  const readRetryAfter = (headers: any): number => {
-    const v = headers?.['Retry-After'] ?? headers?.['retry-after'] ?? '5';
-    const n = parseInt(String(v), 10);
-    return Number.isFinite(n) ? n : 5;
-  };
-  const INTER_BATCH_PAUSE_MS = 100;
-  const MAX_RETRY_WAIT_SEC = 60;
-  const MAX_ATTEMPTS_PER_ITEM = 4;
-
-  let hasMore = true;
-  while (hasMore) {
-    const page = await client.api(`/sites/${siteId}/lists/${listId}/items`).select('id').top(100).get();
-    const batch = (page.value as any[]) || [];
-    if (batch.length === 0) { hasMore = false; break; }
-
-    // Track pending IDs across retry attempts. Each pass deletes what it
-    // can, throttled IDs go back into pending for the next pass.
-    let pending = batch.map((item: any) => item.id as string);
-    let attempt = 1;
-
-    while (pending.length > 0 && attempt <= MAX_ATTEMPTS_PER_ITEM) {
-      const stillThrottled: string[] = [];
-      let maxRetryAfter = 0;
-
-      for (let i = 0; i < pending.length; i += 20) {
-        const chunkIds = pending.slice(i, i + 20);
-        const batchReqs = chunkIds.map((id, idx) => ({
-          id: `${idx}`,
-          method: 'DELETE',
-          url: `/sites/${siteId}/lists/${listId}/items/${id}`,
-        }));
-        try {
-          const result = await client.api('/$batch').post({ requests: batchReqs });
-          for (const resp of result.responses || []) {
-            const reqIdx = parseInt(resp.id, 10);
-            const itemId = chunkIds[reqIdx];
-            if ((resp.status >= 200 && resp.status < 300) || resp.status === 404) {
-              // success or already gone — both fine
-            } else if (resp.status === 429 || resp.status === 503) {
-              stillThrottled.push(itemId);
-              const retry = readRetryAfter(resp.headers);
-              if (retry > maxRetryAfter) maxRetryAfter = retry;
-            }
-            // other errors: drop the item, will get caught next sync if it sticks around
-          }
-        } catch (err: any) {
-          console.warn('Batch delete error, treating chunk as throttled:', err?.message);
-          for (const id of chunkIds) stillThrottled.push(id);
-          if (maxRetryAfter < 5) maxRetryAfter = 5;
-        }
-
-        if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
-      }
-
-      pending = stillThrottled;
-      if (pending.length > 0 && attempt < MAX_ATTEMPTS_PER_ITEM) {
-        const waitSec = Math.min(Math.max(maxRetryAfter, 5), MAX_RETRY_WAIT_SEC);
-        console.log(`clearList: ${pending.length} delete(s) throttled, waiting ${waitSec}s...`);
-        await sleep(waitSec * 1000);
-      }
-      attempt++;
-    }
-  }
-}
-
-async function batchCreateItems(
-  client: Client,
-  siteId: string,
-  listId: string,
-  items: any[],
-): Promise<{ created: number; failed: number }> {
-  // Microsoft Graph $batch returns 200 overall but individual sub-requests
-  // can come back 429 (throttled) when SharePoint's per-app/per-tenant rate
-  // limit is hit (~1200 reqs/min). Previous version logged "throttled" and
-  // dropped those items — sync of 3867 physicians lost ~half. Now we:
-  //   1. Collect items that came back 429 (or 503).
-  //   2. Read their Retry-After hint from response headers.
-  //   3. After the pass finishes, sleep that long.
-  //   4. Retry the throttled subset. Up to MAX_ATTEMPTS rounds.
-  // Plus a small inter-batch pause to stay below the rate limit proactively.
-  const MAX_ATTEMPTS = 4;
-  const INTER_BATCH_PAUSE_MS = 100;
-  const MAX_RETRY_WAIT_SEC = 60;
-
-  let created = 0;
-  let failed = 0;
-  let pending: any[] = items.slice();
-  let attempt = 1;
-
-  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
-  const readRetryAfter = (headers: any): number => {
-    const v = headers?.['Retry-After'] ?? headers?.['retry-after'] ?? '5';
-    const n = parseInt(String(v), 10);
-    return Number.isFinite(n) ? n : 5;
-  };
-
-  while (pending.length > 0 && attempt <= MAX_ATTEMPTS) {
-    if (attempt > 1) {
-      console.log(`Retry pass ${attempt}: ${pending.length} items remaining`);
-    }
-
-    const stillThrottled: any[] = [];
-    let maxRetryAfter = 0;
-    let processed = 0;
-    const total = pending.length;
-
-    for (let i = 0; i < pending.length; i += 20) {
-      const chunk = pending.slice(i, i + 20);
-      const batchReqs = chunk.map((fields: any, idx: number) => ({
-        id: `${idx}`,
-        method: 'POST',
-        url: `/sites/${siteId}/lists/${listId}/items`,
-        headers: { 'Content-Type': 'application/json' },
-        body: { fields },
-      }));
-
-      try {
-        const result = await client.api('/$batch').post({ requests: batchReqs });
-        for (const resp of result.responses || []) {
-          const reqIdx = parseInt(resp.id, 10);
-          const item = chunk[reqIdx];
-          if (resp.status >= 200 && resp.status < 300) {
-            created++;
-          } else if (resp.status === 429 || resp.status === 503) {
-            stillThrottled.push(item);
-            const retry = readRetryAfter(resp.headers);
-            if (retry > maxRetryAfter) maxRetryAfter = retry;
-          } else {
-            failed++;
-            console.warn(`Item create failed (${resp.status}):`, resp.body?.error?.message);
-          }
-        }
-      } catch (err: any) {
-        // Whole $batch call exploded — treat as throttle and retry whole chunk
-        console.warn('Batch create error, retrying chunk later:', err?.message);
-        for (const fields of chunk) stillThrottled.push(fields);
-        if (maxRetryAfter < 5) maxRetryAfter = 5;
-      }
-
-      processed += chunk.length;
-      if (processed % 200 === 0 || i + 20 >= pending.length) {
-        console.log(`  Progress: ${processed}/${total} items processed (attempt ${attempt})`);
-      }
-
-      if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
-    }
-
-    pending = stillThrottled;
-
-    if (pending.length > 0 && attempt < MAX_ATTEMPTS) {
-      const waitSec = Math.min(Math.max(maxRetryAfter, 5), MAX_RETRY_WAIT_SEC);
-      console.log(`Throttled ${pending.length} items, waiting ${waitSec}s before retry...`);
-      await sleep(waitSec * 1000);
-    }
-
-    attempt++;
-  }
-
-  failed += pending.length;
-  if (pending.length > 0) {
-    console.warn(`Gave up on ${pending.length} items after ${MAX_ATTEMPTS} attempts`);
-  }
-  return { created, failed };
-}
 
 async function updateSyncStatus(entity: string, update: Partial<{ siteId: string; listId: string; lastSyncAt: Date; itemsSynced: number; itemsFailed: number; status: string; errorMessage: string | null }>) {
   const [existing] = await db.select().from(sharepointSyncStatus).where(eq(sharepointSyncStatus.entity, entity));
@@ -410,6 +239,242 @@ export async function getSyncStatuses() {
   return db.select().from(sharepointSyncStatus);
 }
 
+/**
+ * Fetch all existing items from a SharePoint list, indexed by their
+ * ExternalId field value. Used by syncEntity to decide whether each
+ * incoming row should be POSTed (new) or PATCHed (existing).
+ *
+ * Paginates via @odata.nextLink — SharePoint returns at most ~5000 per
+ * page. Items without an ExternalId field (e.g., manually-created rows
+ * in SharePoint that don't correspond to anything in our DB) are
+ * skipped — we don't try to manage them.
+ */
+async function fetchExistingItemMap(
+  client: Client,
+  siteId: string,
+  listId: string,
+): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  let nextLink: string | null = `/sites/${siteId}/lists/${listId}/items?$expand=fields($select=ExternalId)&$top=5000`;
+
+  while (nextLink) {
+    const page: any = await client.api(nextLink).get();
+    for (const item of page.value || []) {
+      const externalId = item.fields?.ExternalId;
+      if (typeof externalId === 'string' && externalId.length > 0) {
+        map.set(externalId, item.id);
+      }
+    }
+    // Graph returns full URL; the SDK accepts it directly on subsequent calls
+    nextLink = page['@odata.nextLink'] || null;
+  }
+
+  return map;
+}
+
+/**
+ * Upsert N items into a SharePoint list. For each fields object:
+ *   - If existingByExternalId has the row's ExternalId → PATCH the
+ *     existing item's fields (overwrites all our managed columns).
+ *   - Else → POST a new item.
+ *
+ * Same Retry-After + 4-attempt retry pattern as the old batchCreateItems.
+ * Halves the API calls in steady state vs the old wipe-and-recreate flow.
+ */
+async function batchUpsertItems(
+  client: Client,
+  siteId: string,
+  listId: string,
+  items: any[],
+  existingByExternalId: Map<string, string>,
+): Promise<{ created: number; updated: number; failed: number }> {
+  const MAX_ATTEMPTS = 4;
+  const INTER_BATCH_PAUSE_MS = 100;
+  const MAX_RETRY_WAIT_SEC = 60;
+
+  let created = 0;
+  let updated = 0;
+  let failed = 0;
+  let pending = items.slice();
+  let attempt = 1;
+
+  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+  const readRetryAfter = (headers: any): number => {
+    const v = headers?.['Retry-After'] ?? headers?.['retry-after'] ?? '5';
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : 5;
+  };
+
+  while (pending.length > 0 && attempt <= MAX_ATTEMPTS) {
+    if (attempt > 1) console.log(`Upsert retry pass ${attempt}: ${pending.length} items remaining`);
+
+    const stillThrottled: any[] = [];
+    let maxRetryAfter = 0;
+    let processed = 0;
+    const total = pending.length;
+
+    for (let i = 0; i < pending.length; i += 20) {
+      const chunk = pending.slice(i, i + 20);
+      const batchReqs = chunk.map((fields: any, idx: number) => {
+        const existingItemId = existingByExternalId.get(fields.ExternalId);
+        if (existingItemId) {
+          return {
+            id: `${idx}`,
+            method: 'PATCH',
+            url: `/sites/${siteId}/lists/${listId}/items/${existingItemId}/fields`,
+            headers: { 'Content-Type': 'application/json' },
+            body: fields,
+          };
+        }
+        return {
+          id: `${idx}`,
+          method: 'POST',
+          url: `/sites/${siteId}/lists/${listId}/items`,
+          headers: { 'Content-Type': 'application/json' },
+          body: { fields },
+        };
+      });
+
+      try {
+        const result = await client.api('/$batch').post({ requests: batchReqs });
+        for (const resp of result.responses || []) {
+          const reqIdx = parseInt(resp.id, 10);
+          const item = chunk[reqIdx];
+          const wasUpdate = existingByExternalId.has(item.ExternalId);
+          if (resp.status >= 200 && resp.status < 300) {
+            if (wasUpdate) updated++;
+            else {
+              created++;
+              // POST response body has the new item id; record it so a
+              // follow-up upsert in the same sync (unlikely, but possible)
+              // would see it as existing.
+              if (resp.body?.id) existingByExternalId.set(item.ExternalId, resp.body.id);
+            }
+          } else if (resp.status === 429 || resp.status === 503) {
+            stillThrottled.push(item);
+            const retry = readRetryAfter(resp.headers);
+            if (retry > maxRetryAfter) maxRetryAfter = retry;
+          } else {
+            failed++;
+            console.warn(`Item upsert failed (${resp.status}, ${wasUpdate ? 'PATCH' : 'POST'}):`, resp.body?.error?.message);
+          }
+        }
+      } catch (err: any) {
+        console.warn('Batch upsert error, retrying chunk later:', err?.message);
+        for (const fields of chunk) stillThrottled.push(fields);
+        if (maxRetryAfter < 5) maxRetryAfter = 5;
+      }
+
+      processed += chunk.length;
+      if (processed % 200 === 0 || i + 20 >= pending.length) {
+        console.log(`  Upsert progress: ${processed}/${total} items processed (attempt ${attempt})`);
+      }
+
+      if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
+    }
+
+    pending = stillThrottled;
+    if (pending.length > 0 && attempt < MAX_ATTEMPTS) {
+      const waitSec = Math.min(Math.max(maxRetryAfter, 5), MAX_RETRY_WAIT_SEC);
+      console.log(`Throttled ${pending.length} items, waiting ${waitSec}s before retry...`);
+      await sleep(waitSec * 1000);
+    }
+    attempt++;
+  }
+
+  failed += pending.length;
+  if (pending.length > 0) console.warn(`Gave up on ${pending.length} upsert items after ${MAX_ATTEMPTS} attempts`);
+  return { created, updated, failed };
+}
+
+/**
+ * Delete SharePoint items whose ExternalId is no longer present in the
+ * source DB (i.e. rows that were deleted from the CRM since the last
+ * sync). Mirrors the Retry-After / 4-attempt pattern from clearList.
+ *
+ * Safer than wipe-and-recreate: only touches items that actually need
+ * to disappear. For a sync where nothing's been deleted in the CRM,
+ * this is a no-op after the existing-item lookup.
+ */
+async function deleteOrphans(
+  client: Client,
+  siteId: string,
+  listId: string,
+  currentExternalIds: Set<string>,
+  existingByExternalId: Map<string, string>,
+): Promise<{ deleted: number; failed: number }> {
+  const orphanItemIds: string[] = [];
+  // Array.from(...) sidesteps the tsconfig downlevelIteration constraint
+  // that bites direct iteration of Map under our compile target.
+  for (const [externalId, itemId] of Array.from(existingByExternalId.entries())) {
+    if (!currentExternalIds.has(externalId)) orphanItemIds.push(itemId);
+  }
+  if (orphanItemIds.length === 0) return { deleted: 0, failed: 0 };
+
+  console.log(`Deleting ${orphanItemIds.length} orphan items from SharePoint...`);
+
+  const MAX_ATTEMPTS = 4;
+  const INTER_BATCH_PAUSE_MS = 100;
+  const MAX_RETRY_WAIT_SEC = 60;
+  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+  const readRetryAfter = (headers: any): number => {
+    const v = headers?.['Retry-After'] ?? headers?.['retry-after'] ?? '5';
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : 5;
+  };
+
+  let pending = orphanItemIds.slice();
+  let attempt = 1;
+  let deleted = 0;
+  let failed = 0;
+
+  while (pending.length > 0 && attempt <= MAX_ATTEMPTS) {
+    const stillThrottled: string[] = [];
+    let maxRetryAfter = 0;
+
+    for (let i = 0; i < pending.length; i += 20) {
+      const chunkIds = pending.slice(i, i + 20);
+      const batchReqs = chunkIds.map((id, idx) => ({
+        id: `${idx}`,
+        method: 'DELETE',
+        url: `/sites/${siteId}/lists/${listId}/items/${id}`,
+      }));
+      try {
+        const result = await client.api('/$batch').post({ requests: batchReqs });
+        for (const resp of result.responses || []) {
+          const reqIdx = parseInt(resp.id, 10);
+          const itemId = chunkIds[reqIdx];
+          if ((resp.status >= 200 && resp.status < 300) || resp.status === 404) {
+            deleted++;
+          } else if (resp.status === 429 || resp.status === 503) {
+            stillThrottled.push(itemId);
+            const retry = readRetryAfter(resp.headers);
+            if (retry > maxRetryAfter) maxRetryAfter = retry;
+          } else {
+            failed++;
+          }
+        }
+      } catch (err: any) {
+        for (const id of chunkIds) stillThrottled.push(id);
+        if (maxRetryAfter < 5) maxRetryAfter = 5;
+      }
+
+      if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
+    }
+
+    pending = stillThrottled;
+    if (pending.length > 0 && attempt < MAX_ATTEMPTS) {
+      const waitSec = Math.min(Math.max(maxRetryAfter, 5), MAX_RETRY_WAIT_SEC);
+      console.log(`deleteOrphans: ${pending.length} delete(s) throttled, waiting ${waitSec}s...`);
+      await sleep(waitSec * 1000);
+    }
+    attempt++;
+  }
+
+  failed += pending.length;
+  return { deleted, failed };
+}
+
 export async function syncEntity(entity: string): Promise<{ created: number; failed: number }> {
   const siteId = await getSiteId();
   if (!siteId) throw new Error('SharePoint site not configured. Please set a site first.');
@@ -421,25 +486,36 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     const listId = await ensureList(client, siteId, entity);
     await updateSyncStatus(entity, { listId });
 
-    console.log(`Clearing existing items from ${entity} list...`);
-    await clearList(client, siteId, listId);
+    // Upsert flow: fetch what's already in SharePoint indexed by
+    // ExternalId, decide POST vs PATCH per row, then delete only the
+    // orphans. Roughly half the API calls of the old wipe-and-recreate
+    // and avoids the throttle storms that flow caused.
+    console.log(`Fetching existing ${entity} items from SharePoint for upsert...`);
+    const existing = await fetchExistingItemMap(client, siteId, listId);
+    console.log(`  Found ${existing.size} existing items in SharePoint`);
 
     console.log(`Fetching ${entity} data from database...`);
     const items = await getEntityData(entity);
-    console.log(`Syncing ${items.length} ${entity} items to SharePoint...`);
+    console.log(`Upserting ${items.length} ${entity} items to SharePoint...`);
 
-    const result = await batchCreateItems(client, siteId, listId, items);
+    const upsertResult = await batchUpsertItems(client, siteId, listId, items, existing);
+
+    const currentExternalIds = new Set<string>(items.map((i: any) => i.ExternalId).filter(Boolean));
+    const orphanResult = await deleteOrphans(client, siteId, listId, currentExternalIds, existing);
+
+    const totalSynced = upsertResult.created + upsertResult.updated;
+    const totalFailed = upsertResult.failed + orphanResult.failed;
 
     await updateSyncStatus(entity, {
       status: 'COMPLETE',
       lastSyncAt: new Date(),
-      itemsSynced: result.created,
-      itemsFailed: result.failed,
-      errorMessage: result.failed > 0 ? `${result.failed} items failed` : null,
+      itemsSynced: totalSynced,
+      itemsFailed: totalFailed,
+      errorMessage: totalFailed > 0 ? `${totalFailed} items failed` : null,
     });
 
-    console.log(`Sync complete for ${entity}: ${result.created} created, ${result.failed} failed`);
-    return result;
+    console.log(`Sync complete for ${entity}: ${upsertResult.created} created, ${upsertResult.updated} updated, ${orphanResult.deleted} deleted, ${totalFailed} failed`);
+    return { created: totalSynced, failed: totalFailed };
   } catch (err: any) {
     logGraphErr(`Sync failed for ${entity}:`, err);
     await updateSyncStatus(entity, { status: 'ERROR', errorMessage: err.message });
