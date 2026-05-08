@@ -20,6 +20,7 @@ interface SyncStatus {
   itemsFailed: number | null;
   status: string | null;
   errorMessage: string | null;
+  updatedAt: string | null;
 }
 
 interface SPSite {
