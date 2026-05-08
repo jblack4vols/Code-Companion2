@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,11 @@ import tristarLogo from "@assets/tristar-logo-transparent.png";
 
 type View = "login" | "register" | "forgot" | "register-success" | "forgot-success";
 
+const SSO_ERROR_MESSAGES: Record<string, string> = {
+  oauth_failed: "Microsoft sign-in failed. Please try again or use email/password.",
+  oauth_denied: "Microsoft sign-in was cancelled.",
+};
+
 export default function LoginPage() {
   const { login } = useAuth();
   const [view, setView] = useState<View>("login");
@@ -20,6 +25,19 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [isLocked, setIsLocked] = useState(false);
+
+  // Surface SSO callback redirect params (?error=oauth_failed, ?pending=true, ?rejected=true)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const errKey = params.get("error");
+    if (errKey && SSO_ERROR_MESSAGES[errKey]) {
+      setError(SSO_ERROR_MESSAGES[errKey]);
+    } else if (params.get("pending") === "true") {
+      setError("Your account is pending admin approval. You'll receive an email when access is granted.");
+    } else if (params.get("rejected") === "true") {
+      setError("Your account access was not granted. Please contact your administrator.");
+    }
+  }, []);
 
   const resetForm = () => {
     setEmail("");
@@ -128,6 +146,31 @@ export default function LoginPage() {
 
                 <Button type="submit" className="w-full" disabled={loading} data-testid="button-login">
                   {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Sign in"}
+                </Button>
+
+                <div className="relative my-2">
+                  <div className="absolute inset-0 flex items-center">
+                    <span className="w-full border-t border-border" />
+                  </div>
+                  <div className="relative flex justify-center text-xs uppercase">
+                    <span className="bg-card px-2 text-muted-foreground">or</span>
+                  </div>
+                </div>
+
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="w-full"
+                  onClick={() => { window.location.href = "/api/auth/microsoft"; }}
+                  data-testid="button-login-microsoft"
+                >
+                  <svg className="w-4 h-4 mr-2" viewBox="0 0 23 23" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <rect x="1" y="1" width="10" height="10" fill="#f25022" />
+                    <rect x="12" y="1" width="10" height="10" fill="#7fba00" />
+                    <rect x="1" y="12" width="10" height="10" fill="#00a4ef" />
+                    <rect x="12" y="12" width="10" height="10" fill="#ffb900" />
+                  </svg>
+                  Sign in with Microsoft
                 </Button>
 
                 <div className="text-center pt-2">
