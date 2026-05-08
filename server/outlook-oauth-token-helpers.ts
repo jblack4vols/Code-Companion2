@@ -28,6 +28,7 @@ export const SCOPES = [
   "Calendars.ReadWrite",
   "User.Read",
   "Sites.ReadWrite.All",
+  "Sites.Manage.All",
   "Files.ReadWrite.All",
   "offline_access",
 ];
