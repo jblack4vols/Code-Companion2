@@ -56,6 +56,12 @@ export async function getPhysiciansPaginated(filters: PhysicianFilters): Promise
   const pageSize = filters.pageSize || 50;
   const conditions: any[] = [isNull(physicians.deletedAt)];
 
+  // Referral count is YTD — recompute the year boundary on every call so
+  // the cutoff doesn't get frozen at deploy time. Previous code had
+  // '2025-01-01' / '2026-01-31' literally hardcoded, so by May 2026 every
+  // physician's count was capped at end of January 2026.
+  const currentYearStart = `${new Date().getFullYear()}-01-01`;
+
   if (filters.status && filters.status !== "all") conditions.push(eq(physicians.status, filters.status as any));
   if (filters.stage && filters.stage !== "all") conditions.push(eq(physicians.relationshipStage, filters.stage as any));
   if (filters.priority && filters.priority !== "all") conditions.push(eq(physicians.priority, filters.priority as any));
@@ -110,8 +116,7 @@ export async function getPhysiciansPaginated(filters: PhysicianFilters): Promise
     .leftJoin(referrals, and(
       eq(referrals.physicianId, physicians.id),
       isNull(referrals.deletedAt),
-      sql`${referrals.referralDate} >= '2025-01-01'`,
-      sql`${referrals.referralDate} <= '2026-01-31'`,
+      sql`${referrals.referralDate} >= ${currentYearStart}`,
     ))
     .where(where)
     .groupBy(physicians.id)
