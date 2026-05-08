@@ -30,8 +30,9 @@ httpServer.listen(
         appReady = true;
         log("Application fully initialized");
 
-        const { ensureSearchIndexes } = await import("./db");
+        const { ensureSearchIndexes, ensureRuntimeColumns } = await import("./db");
         await ensureSearchIndexes().catch(err => console.error("Index error:", err));
+        await ensureRuntimeColumns().catch(err => console.error("Runtime columns error:", err));
 
         const { seed, seedReferringProvidersRoster, seedReferralsRoster, seedProviderDeclineAlerts, backfillNullRelationshipStages } = await import("./seed");
         await seed().catch(err => console.error("Seed error:", err));
