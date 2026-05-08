@@ -7,7 +7,7 @@
  */
 import type { Express } from "express";
 import { requireAuth } from "./shared";
-import { registerOutlookRoutes, getOutlookAccessToken } from "./integrations-outlook";
+import { registerOutlookRoutes } from "./integrations-outlook";
 import { registerSharePointRoutes } from "./integrations-sharepoint";
 import { registerCustomApiRoutes } from "./integrations-custom-api";
 
