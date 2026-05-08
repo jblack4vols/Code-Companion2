@@ -1,41 +1,33 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { db } from './db';
-import { sharepointSyncStatus, appSettings, physicians, referrals, interactions, tasks, locations } from '@shared/schema';
-import { eq, sql } from 'drizzle-orm';
+import { sharepointSyncStatus, appSettings, physicians, referrals, interactions, tasks, locations, userOauthTokens, users } from '@shared/schema';
+import { eq, sql, desc } from 'drizzle-orm';
+import { getValidAccessToken } from './outlook-oauth-token-helpers';
 
-let connectionSettings: any;
+/**
+ * SharePoint Graph access uses the most recently authenticated OWNER's
+ * delegated token (the same row written by the SSO / Outlook OAuth flow).
+ * Required scopes — Sites.ReadWrite.All and Files.ReadWrite.All — are
+ * granted by `SCOPES` in outlook-oauth-token-helpers.ts. If an OWNER
+ * connected Outlook before that scope list was extended, they must
+ * disconnect and reconnect once to upgrade the token.
+ */
+async function getServiceUserId(): Promise<string> {
+  const [row] = await db
+    .select({ userId: userOauthTokens.userId })
+    .from(userOauthTokens)
+    .innerJoin(users, eq(users.id, userOauthTokens.userId))
+    .where(eq(users.role, 'OWNER'))
+    .orderBy(desc(userOauthTokens.updatedAt))
+    .limit(1);
+  if (!row) {
+    throw new Error('SharePoint not connected — an OWNER must connect Microsoft 365 first via /calendar');
+  }
+  return row.userId;
+}
 
 async function getAccessToken() {
-  if (connectionSettings && connectionSettings.settings?.expires_at && new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-    return connectionSettings.settings.access_token;
-  }
-
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X-Replit-Token not found');
-  }
-
-  connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=sharepoint',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X-Replit-Token': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  const accessToken = connectionSettings?.settings?.access_token || connectionSettings?.settings?.oauth?.credentials?.access_token;
-  if (!connectionSettings || !accessToken) {
-    throw new Error('SharePoint not connected');
-  }
-  return accessToken;
+  return getValidAccessToken(await getServiceUserId());
 }
 
 async function getClient() {

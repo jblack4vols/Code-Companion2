@@ -1,6 +1,6 @@
-// Email sending via SMTP (Microsoft 365) with Outlook connector fallback
+// Server-side email sending via Microsoft 365 SMTP.
+// Configure via SMTP_USER, SMTP_HOST, SMTP_PORT, SMTP_PASSWORD env vars.
 import nodemailer from 'nodemailer';
-import { Client } from '@microsoft/microsoft-graph-client';
 
 const SMTP_USER = process.env.SMTP_USER || 'jblack@tristarpt.com';
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.office365.com';
@@ -18,128 +18,6 @@ function getSmtpTransporter() {
   });
 }
 
-async function sendViaSMTP(options: {
-  to: string;
-  toName?: string;
-  subject: string;
-  html: string;
-  attachments?: Array<{ filename: string; content: string; encoding: string; contentType: string }>;
-}): Promise<boolean> {
-  const transporter = getSmtpTransporter();
-  if (!transporter) return false;
-  try {
-    await transporter.sendMail({
-      from: `"Tristar 360°" <${SMTP_USER}>`,
-      to: options.toName ? `"${options.toName}" <${options.to}>` : options.to,
-      subject: options.subject,
-      html: options.html,
-      attachments: options.attachments?.map(a => ({
-        filename: a.filename,
-        content: a.content,
-        encoding: a.encoding as BufferEncoding,
-        contentType: a.contentType,
-      })),
-    });
-    console.log(`[SMTP] Email sent to ${options.to}: ${options.subject}`);
-    return true;
-  } catch (err: any) {
-    console.error(`[SMTP] Failed: ${err.message}`);
-    return false;
-  }
-}
-
-let cachedAccessToken: string | null = null;
-let cachedTokenExpiry: number = 0;
-
-async function getAccessToken() {
-  if (cachedAccessToken && cachedTokenExpiry > Date.now() + 60000) {
-    return cachedAccessToken;
-  }
-
-  const hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-  const xReplitToken = process.env.REPL_IDENTITY
-    ? 'repl ' + process.env.REPL_IDENTITY
-    : process.env.WEB_REPL_RENEWAL
-    ? 'depl ' + process.env.WEB_REPL_RENEWAL
-    : null;
-
-  if (!xReplitToken) {
-    throw new Error('X-Replit-Token not found for repl/depl');
-  }
-
-  const connectionSettings = await fetch(
-    'https://' + hostname + '/api/v2/connection?include_secrets=true&connector_names=outlook',
-    {
-      headers: {
-        'Accept': 'application/json',
-        'X-Replit-Token': xReplitToken
-      }
-    }
-  ).then(res => res.json()).then(data => data.items?.[0]);
-
-  if (!connectionSettings) {
-    throw new Error('Outlook not connected');
-  }
-
-  const oauthCreds = connectionSettings.settings?.oauth?.credentials;
-  const expiresAt = oauthCreds?.expires_at ? new Date(oauthCreds.expires_at).getTime() : 0;
-
-  if (expiresAt > Date.now() + 60000) {
-    const token = connectionSettings.settings?.access_token || oauthCreds?.access_token;
-    if (token) {
-      cachedAccessToken = token;
-      cachedTokenExpiry = expiresAt;
-      return token;
-    }
-  }
-
-  const fallbackToken = connectionSettings.settings?.access_token || oauthCreds?.access_token;
-  if (!fallbackToken) {
-    throw new Error('Outlook not connected - no access token available');
-  }
-  return fallbackToken;
-}
-
-export async function getUncachableOutlookClient() {
-  const accessToken = await getAccessToken();
-  return Client.initWithMiddleware({
-    authProvider: {
-      getAccessToken: async () => accessToken
-    }
-  });
-}
-
-async function sendViaGraph(options: {
-  to: string;
-  toName?: string;
-  subject: string;
-  html: string;
-  attachments?: Array<{ filename: string; content: string; encoding: string; contentType: string }>;
-}): Promise<boolean> {
-  try {
-    const client = await getUncachableOutlookClient();
-    const message: any = {
-      subject: options.subject,
-      body: { contentType: "HTML", content: options.html },
-      toRecipients: [{ emailAddress: { address: options.to, name: options.toName || options.to } }],
-    };
-    if (options.attachments?.length) {
-      message.attachments = options.attachments.map(a => ({
-        "@odata.type": "#microsoft.graph.fileAttachment",
-        name: a.filename,
-        contentType: a.contentType,
-        contentBytes: a.content,
-      }));
-    }
-    await client.api('/me/sendMail').post({ message, saveToSentItems: true });
-    console.log(`[Graph] Email sent to ${options.to}: ${options.subject}`);
-    return true;
-  } catch (err: any) {
-    console.error(`[Graph] Failed: ${err.message}`);
-    return false;
-  }
-}
-
 async function sendEmail(options: {
   to: string;
   toName?: string;
@@ -147,13 +25,23 @@ async function sendEmail(options: {
   html: string;
   attachments?: Array<{ filename: string; content: string; encoding: string; contentType: string }>;
 }): Promise<void> {
-  const smtpOk = await sendViaSMTP(options);
-  if (smtpOk) return;
-
-  const graphOk = await sendViaGraph(options);
-  if (graphOk) return;
-
-  throw new Error(`Failed to send email to ${options.to} via both SMTP and Graph API`);
+  const transporter = getSmtpTransporter();
+  if (!transporter) {
+    throw new Error('SMTP_PASSWORD not configured — cannot send email');
+  }
+  await transporter.sendMail({
+    from: `"Tristar 360°" <${SMTP_USER}>`,
+    to: options.toName ? `"${options.toName}" <${options.to}>` : options.to,
+    subject: options.subject,
+    html: options.html,
+    attachments: options.attachments?.map(a => ({
+      filename: a.filename,
+      content: a.content,
+      encoding: a.encoding as BufferEncoding,
+      contentType: a.contentType,
+    })),
+  });
+  console.log(`[SMTP] Email sent to ${options.to}: ${options.subject}`);
 }
 
 export async function sendWelcomeEmail(
