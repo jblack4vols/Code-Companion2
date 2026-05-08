@@ -15,13 +15,24 @@ import {
 import { requireRole } from "./shared";
 import { qstr } from "./shared";
 
+function logGraphErr(prefix: string, err: any) {
+  // Microsoft Graph errors carry rich metadata; .message alone strips it.
+  console.error(prefix, {
+    message: err?.message,
+    statusCode: err?.statusCode,
+    code: err?.code,
+    requestId: err?.requestId,
+    body: err?.body,
+  });
+}
+
 export function registerSharePointRoutes(app: Express) {
   app.get("/api/sharepoint/sites", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     try {
       const sites = await searchSPSites(qstr(req.query.q as string | string[] | undefined) || "*");
       res.json(sites);
     } catch (err: any) {
-      console.error(err);
+      logGraphErr("[SharePoint] /sites failed:", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -31,7 +42,7 @@ export function registerSharePointRoutes(app: Express) {
       const siteId = await getSPSiteId();
       res.json({ siteId });
     } catch (err: any) {
-      console.error(err);
+      logGraphErr("[SharePoint] /site failed:", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -52,7 +63,7 @@ export function registerSharePointRoutes(app: Express) {
           const { getSiteByUrl: getSPSiteByUrl } = await import("../sharepoint");
           resolvedSite = await getSPSiteByUrl(hostname, sitePath);
         } catch (urlErr: any) {
-          console.error("SharePoint URL resolution error:", urlErr.message);
+          logGraphErr("[SharePoint] URL resolution error:", urlErr);
           return res.status(400).json({ message: `Could not resolve SharePoint site from URL: ${urlErr.message}` });
         }
       } else if (siteId) {
@@ -67,7 +78,7 @@ export function registerSharePointRoutes(app: Express) {
         site: { id: resolvedSite.id, displayName: resolvedSite.displayName, webUrl: resolvedSite.webUrl },
       });
     } catch (err: any) {
-      console.error(err);
+      logGraphErr("[SharePoint] POST /site failed:", err);
       res.status(500).json({ message: err.message || "Internal server error" });
     }
   });
@@ -78,7 +89,7 @@ export function registerSharePointRoutes(app: Express) {
       const siteId = await getSPSiteId();
       res.json({ siteId, statuses });
     } catch (err: any) {
-      console.error(err);
+      logGraphErr("[SharePoint] /status failed:", err);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -92,13 +103,13 @@ export function registerSharePointRoutes(app: Express) {
     res.json({ message: `Sync started for ${entity}` });
     syncSPEntity(entity)
       .then(result => console.log(`SharePoint sync complete for ${entity}: ${result.created} created, ${result.failed} failed`))
-      .catch(err => console.error(`SharePoint sync failed for ${entity}:`, err.message));
+      .catch(err => logGraphErr(`[SharePoint] sync failed for ${entity}:`, err));
   });
 
   app.post("/api/sharepoint/sync-all", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     res.json({ message: "Sync started for all entities" });
     syncSPAll()
       .then(results => console.log("SharePoint sync all complete:", results))
-      .catch(err => console.error("SharePoint sync all failed:", err.message));
+      .catch(err => logGraphErr("[SharePoint] sync-all failed:", err));
   });
 }
