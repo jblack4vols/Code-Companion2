@@ -64,6 +64,17 @@ export async function initializeApp() {
   if (initialized) return;
   initialized = true;
 
+  // Run idempotent runtime migrations. server/index.ts (the Railway entry)
+  // does this on boot; on Vercel the entry is server/app.ts via api/index.mjs,
+  // so we run them here on first cold-start request. ALTER TABLE … IF NOT
+  // EXISTS makes this a no-op once the columns are present.
+  try {
+    const { ensureRuntimeColumns } = await import("./db");
+    await ensureRuntimeColumns();
+  } catch (err) {
+    console.error("[App init] Runtime migration error:", err);
+  }
+
   await registerRoutes(httpServer, app);
   if (sentryEnabled) {
     Sentry.setupExpressErrorHandler(app);
