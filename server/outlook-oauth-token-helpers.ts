@@ -24,7 +24,13 @@ export const SSO_REDIRECT_URI = IS_DEV
   ? "http://localhost:5000/api/auth/microsoft/callback"
   : "https://crm.tristarpt.com/api/auth/microsoft/callback";
 
-export const SCOPES = ["Calendars.ReadWrite", "User.Read", "offline_access"];
+export const SCOPES = [
+  "Calendars.ReadWrite",
+  "User.Read",
+  "Sites.ReadWrite.All",
+  "Files.ReadWrite.All",
+  "offline_access",
+];
 
 export function getAuthUrl() {
   return `https://login.microsoftonline.com/${getAzureConfig().tenantId}/oauth2/v2.0/authorize`;
