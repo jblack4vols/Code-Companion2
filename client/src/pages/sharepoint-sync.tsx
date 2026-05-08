@@ -256,7 +256,15 @@ export default function SharePointSyncPage() {
             {Object.entries(ENTITY_META).map(([entity, meta]) => {
               const status = statuses.find(s => s.entity === entity);
               const Icon = meta.icon;
-              const isSyncing = status?.status === "SYNCING";
+              // Treat any SYNCING row that hasn't been touched in the last
+              // 2 minutes as stuck (Vercel killed the fire-and-forget worker).
+              // Without this guard the Sync button stays disabled forever
+              // and the user can't retry — UI deadlock.
+              const STALE_MS = 2 * 60 * 1000;
+              const updatedAtMs = status?.updatedAt ? new Date(status.updatedAt).getTime() : 0;
+              const isFresh = updatedAtMs > Date.now() - STALE_MS;
+              const isSyncing = status?.status === "SYNCING" && isFresh;
+              const isStuck = status?.status === "SYNCING" && !isFresh;
 
               return (
                 <Card key={entity} data-testid={`card-sync-${entity}`}>
@@ -267,7 +275,7 @@ export default function SharePointSyncPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <span className="text-sm font-medium" data-testid={`text-entity-label-${entity}`}>{meta.label}</span>
-                        <SyncStatusBadge status={status?.status} />
+                        <SyncStatusBadge status={status?.status} isStuck={isStuck} />
                       </div>
                       <p className="text-xs text-muted-foreground">{meta.description}</p>
                       {status?.lastSyncAt && (
@@ -312,11 +320,14 @@ export default function SharePointSyncPage() {
   );
 }
 
-function SyncStatusBadge({ status }: { status?: string | null }) {
+function SyncStatusBadge({ status, isStuck }: { status?: string | null; isStuck?: boolean }) {
   if (!status) return <Badge variant="outline" className="text-xs">Never synced</Badge>;
 
   switch (status) {
     case "SYNCING":
+      if (isStuck) {
+        return <Badge variant="outline" className="bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30 text-xs"><AlertTriangle className="w-3 h-3 mr-1" /> Stuck — click Sync to retry</Badge>;
+      }
       return <Badge variant="outline" className="bg-chart-4/10 text-chart-4 border-chart-4/30 text-xs"><Loader2 className="w-3 h-3 animate-spin mr-1" /> Syncing</Badge>;
     case "COMPLETE":
       return <Badge variant="outline" className="bg-chart-2/10 text-chart-2 border-chart-2/30 text-xs"><CheckCircle className="w-3 h-3 mr-1" /> Complete</Badge>;
