@@ -80,41 +80,52 @@ export default function ReferralIntelligencePage() {
 
   if (isLoading) return <LoadingSkeleton />;
 
-  const yoyLabel = !summary ? "" :
-    summary.yoy_pct > 0 ? `+${summary.yoy_pct}% vs prior year` :
-    summary.yoy_pct < 0 ? `${summary.yoy_pct}% vs prior year` : "Flat vs prior year";
+  // Defensive ?? 0 across numeric summary fields — the API can omit any of
+  // these when the underlying query returns no rows (e.g. fresh tenant, all
+  // referrals soft-deleted), and an undefined here crashes the page on
+  // toLocaleString / String interpolation / arithmetic.
+  const activeReferrers = summary?.active_referrers ?? 0;
+  const casesYtd = summary?.cases_ytd ?? 0;
+  const yoyPct = summary?.yoy_pct ?? 0;
+  const tierAPct = summary?.tier_a_pct ?? 0;
+  const tierAPctPrior = summary?.tier_a_pct_prior_year ?? 0;
+  const goneDarkCount = summary?.gone_dark_count ?? 0;
 
-  const tierDelta = summary ? summary.tier_a_pct - summary.tier_a_pct_prior_year : 0;
+  const yoyLabel = !summary ? "" :
+    yoyPct > 0 ? `+${yoyPct}% vs prior year` :
+    yoyPct < 0 ? `${yoyPct}% vs prior year` : "Flat vs prior year";
+
+  const tierDelta = summary ? tierAPct - tierAPctPrior : 0;
   const tierLabel = tierDelta > 0 ? `+${tierDelta}pts vs prior year` :
     tierDelta < 0 ? `${tierDelta}pts vs prior year` : "Same as prior year";
 
   const statCards = summary ? [
     {
       label: "Active Referrers",
-      value: String(summary.active_referrers),
-      sub: `${summary.active_referrers >= 43 ? "+" : ""}${summary.active_referrers - 43} vs prior period`,
-      subPositive: summary.active_referrers >= 43,
+      value: String(activeReferrers),
+      sub: `${activeReferrers >= 43 ? "+" : ""}${activeReferrers - 43} vs prior period`,
+      subPositive: activeReferrers >= 43,
       icon: Users,
     },
     {
       label: "Cases YTD",
-      value: summary.cases_ytd.toLocaleString(),
+      value: casesYtd.toLocaleString(),
       sub: yoyLabel,
-      subPositive: summary.yoy_pct >= 0,
+      subPositive: yoyPct >= 0,
       icon: FileText,
     },
     {
       label: "Tier A %",
-      value: `${summary.tier_a_pct}%`,
+      value: `${tierAPct}%`,
       sub: tierLabel,
       subPositive: tierDelta >= 0,
       icon: Star,
     },
     {
       label: "Gone Dark",
-      value: String(summary.gone_dark_count),
-      sub: summary.gone_dark_count > 0 ? "Needs outreach" : "All sources active",
-      subPositive: summary.gone_dark_count === 0,
+      value: String(goneDarkCount),
+      sub: goneDarkCount > 0 ? "Needs outreach" : "All sources active",
+      subPositive: goneDarkCount === 0,
       icon: MoonStar,
     },
   ] : [];
