@@ -2,6 +2,11 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertCalendarEventSchema } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, qstr } from "./shared";
+import {
+  pushEventToOutlook,
+  updateEventInOutlook,
+  deleteEventFromOutlook,
+} from "../outlook-event-sync";
 
 export function registerCalendarRoutes(app: Express) {
   app.get("/api/calendar-events", requireAuth, async (req, res) => {
@@ -35,8 +40,17 @@ export function registerCalendarRoutes(app: Express) {
       if (typeof body.endAt === "string") body.endAt = new Date(body.endAt);
       const validated = insertCalendarEventSchema.parse(body);
       const event = await storage.createCalendarEvent(validated);
-      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "CalendarEvent", entityId: event.id, detailJson: { title: event.title }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
-      res.json(event);
+
+      // Best-effort push to Outlook for the organizer. Failures are logged
+      // but don't break event creation — the local event is the source of truth.
+      const organizerId = event.organizerUserId ?? req.session.userId!;
+      const outlookEventId = await pushEventToOutlook(organizerId, event);
+      const persistedEvent = outlookEventId
+        ? (await storage.updateCalendarEvent(event.id, { outlookEventId })) ?? event
+        : event;
+
+      await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "CalendarEvent", entityId: event.id, detailJson: { title: event.title, outlookSynced: !!outlookEventId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      res.json(persistedEvent);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
@@ -56,8 +70,23 @@ export function registerCalendarRoutes(app: Express) {
       const validated = insertCalendarEventSchema.partial().parse(body);
       const event = await storage.updateCalendarEvent(String(req.params.id), validated);
       if (!event) return res.status(404).json({ message: "Not found" });
+
+      // Best-effort mirror to Outlook. If we have a Graph id, PATCH it; if
+      // we don't (e.g. event was created before auto-sync existed, or a
+      // previous push failed), POST and back-fill the id.
+      const organizerId = event.organizerUserId ?? req.session.userId!;
+      let persistedEvent = event;
+      if (event.outlookEventId) {
+        await updateEventInOutlook(organizerId, event.outlookEventId, event);
+      } else {
+        const newOutlookId = await pushEventToOutlook(organizerId, event);
+        if (newOutlookId) {
+          persistedEvent = (await storage.updateCalendarEvent(event.id, { outlookEventId: newOutlookId })) ?? event;
+        }
+      }
+
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "CalendarEvent", entityId: event.id, detailJson: req.body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
-      res.json(event);
+      res.json(persistedEvent);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
     }
@@ -71,6 +100,13 @@ export function registerCalendarRoutes(app: Express) {
       if (user && user.role !== "OWNER" && user.role !== "DIRECTOR" && existing.organizerUserId !== req.session.userId) {
         return res.status(403).json({ message: "Forbidden: you can only delete events you organized" });
       }
+
+      // Best-effort cleanup in Outlook before removing locally.
+      if (existing.outlookEventId) {
+        const organizerId = existing.organizerUserId ?? req.session.userId!;
+        await deleteEventFromOutlook(organizerId, existing.outlookEventId);
+      }
+
       await storage.deleteCalendarEvent(String(req.params.id));
       await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "CalendarEvent", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
       res.json({ success: true });
