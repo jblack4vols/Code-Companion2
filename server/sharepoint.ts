@@ -226,29 +226,73 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
 }
 
 async function clearList(client: Client, siteId: string, listId: string) {
+  // Mirror the Retry-After handling from batchCreateItems — clearList
+  // also issues hundreds of inner DELETE requests via $batch and trips
+  // SharePoint's rate limit when wiping a 3000+ row list. Without this,
+  // a 429 in the delete batch would either get silently dropped or
+  // bubble up as 'The request has been throttled' from syncEntity.
+  const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
+  const readRetryAfter = (headers: any): number => {
+    const v = headers?.['Retry-After'] ?? headers?.['retry-after'] ?? '5';
+    const n = parseInt(String(v), 10);
+    return Number.isFinite(n) ? n : 5;
+  };
+  const INTER_BATCH_PAUSE_MS = 100;
+  const MAX_RETRY_WAIT_SEC = 60;
+  const MAX_ATTEMPTS_PER_ITEM = 4;
+
   let hasMore = true;
   while (hasMore) {
-    const items = await client.api(`/sites/${siteId}/lists/${listId}/items`).select('id').top(100).get();
-    const batch = items.value || [];
+    const page = await client.api(`/sites/${siteId}/lists/${listId}/items`).select('id').top(100).get();
+    const batch = (page.value as any[]) || [];
     if (batch.length === 0) { hasMore = false; break; }
 
-    for (let i = 0; i < batch.length; i += 20) {
-      const chunk = batch.slice(i, i + 20);
-      const batchReqs = chunk.map((item: any, idx: number) => ({
-        id: `${idx}`,
-        method: "DELETE",
-        url: `/sites/${siteId}/lists/${listId}/items/${item.id}`
-      }));
-      try {
-        await client.api('/$batch').post({ requests: batchReqs });
-      } catch (err: any) {
-        console.warn('Batch delete error:', err.message);
-        for (const item of chunk) {
-          try {
-            await client.api(`/sites/${siteId}/lists/${listId}/items/${item.id}`).delete();
-          } catch {}
+    // Track pending IDs across retry attempts. Each pass deletes what it
+    // can, throttled IDs go back into pending for the next pass.
+    let pending = batch.map((item: any) => item.id as string);
+    let attempt = 1;
+
+    while (pending.length > 0 && attempt <= MAX_ATTEMPTS_PER_ITEM) {
+      const stillThrottled: string[] = [];
+      let maxRetryAfter = 0;
+
+      for (let i = 0; i < pending.length; i += 20) {
+        const chunkIds = pending.slice(i, i + 20);
+        const batchReqs = chunkIds.map((id, idx) => ({
+          id: `${idx}`,
+          method: 'DELETE',
+          url: `/sites/${siteId}/lists/${listId}/items/${id}`,
+        }));
+        try {
+          const result = await client.api('/$batch').post({ requests: batchReqs });
+          for (const resp of result.responses || []) {
+            const reqIdx = parseInt(resp.id, 10);
+            const itemId = chunkIds[reqIdx];
+            if ((resp.status >= 200 && resp.status < 300) || resp.status === 404) {
+              // success or already gone — both fine
+            } else if (resp.status === 429 || resp.status === 503) {
+              stillThrottled.push(itemId);
+              const retry = readRetryAfter(resp.headers);
+              if (retry > maxRetryAfter) maxRetryAfter = retry;
+            }
+            // other errors: drop the item, will get caught next sync if it sticks around
+          }
+        } catch (err: any) {
+          console.warn('Batch delete error, treating chunk as throttled:', err?.message);
+          for (const id of chunkIds) stillThrottled.push(id);
+          if (maxRetryAfter < 5) maxRetryAfter = 5;
         }
+
+        if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
       }
+
+      pending = stillThrottled;
+      if (pending.length > 0 && attempt < MAX_ATTEMPTS_PER_ITEM) {
+        const waitSec = Math.min(Math.max(maxRetryAfter, 5), MAX_RETRY_WAIT_SEC);
+        console.log(`clearList: ${pending.length} delete(s) throttled, waiting ${waitSec}s...`);
+        await sleep(waitSec * 1000);
+      }
+      attempt++;
     }
   }
 }
