@@ -4,6 +4,7 @@ import { z } from "zod";
 import { insertTaskSchema } from "@shared/schema";
 import { requireAuth, requireRole } from "./shared";
 import { sendTaskAssignmentEmail } from "../outlook";
+import { syncItemCreate, syncItemUpdate } from "../sharepoint-item-sync";
 
 export function registerTaskRoutes(app: Express) {
   app.get("/api/tasks", requireAuth, async (req, res) => {
@@ -41,6 +42,7 @@ export function registerTaskRoutes(app: Express) {
         }
       }
 
+      await syncItemCreate("tasks", task.id);
       res.json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -60,6 +62,7 @@ export function registerTaskRoutes(app: Express) {
       const validated = insertTaskSchema.partial().extend({ status: z.enum(["OPEN", "DONE"]).optional() }).parse(body);
       const task = await storage.updateTask(String(req.params.id), validated);
       if (!task) return res.status(404).json({ message: "Not found" });
+      await syncItemUpdate("tasks", task.id);
       res.json(task);
     } catch (err: any) {
       res.status(400).json({ message: err.message });

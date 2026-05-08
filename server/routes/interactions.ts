@@ -2,6 +2,7 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import { insertInteractionSchema } from "@shared/schema";
 import { requireAuth, requireRole, getClientIp, getUserLocationScope, qstr, qstrReq } from "./shared";
+import { syncItemCreate, syncItemUpdate, syncItemDelete } from "../sharepoint-item-sync";
 
 export function registerInteractionRoutes(app: Express) {
   app.get("/api/interactions", requireAuth, async (req, res) => {
@@ -26,9 +27,10 @@ export function registerInteractionRoutes(app: Express) {
       const inter = await storage.createInteraction(validated);
       await storage.createAuditLog({ userId: req.session.userId!, action: "CREATE", entity: "Interaction", entityId: inter.id, detailJson: { type: inter.type, physicianId: inter.physicianId }, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
 
+      let autoTaskId: string | null = null;
       if (inter.followUpDueAt && !skipAutoTask) {
         try {
-          await storage.createTask({
+          const task = await storage.createTask({
             description: `Follow up on ${inter.type?.toLowerCase() || 'interaction'}: ${inter.summary || 'No details'}`,
             physicianId: inter.physicianId,
             assignedToUserId: req.session.userId!,
@@ -36,11 +38,14 @@ export function registerInteractionRoutes(app: Express) {
             status: "OPEN",
             priority: "MEDIUM",
           });
+          autoTaskId = task.id;
         } catch (taskErr: any) {
           console.error("[Interactions] Auto-task creation failed:", taskErr.message);
         }
       }
 
+      await syncItemCreate("interactions", inter.id);
+      if (autoTaskId) await syncItemCreate("tasks", autoTaskId);
       res.json(inter);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -81,6 +86,7 @@ export function registerInteractionRoutes(app: Express) {
       const updated = await storage.updateInteraction(String(req.params.id), body);
       if (!updated) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "UPDATE", entity: "Interaction", entityId: String(req.params.id), detailJson: body, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemUpdate("interactions", updated.id);
       res.json(updated);
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -98,6 +104,7 @@ export function registerInteractionRoutes(app: Express) {
       const success = await storage.softDeleteInteraction(String(req.params.id));
       if (!success) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "DELETE", entity: "Interaction", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemDelete("interactions", String(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
@@ -115,6 +122,7 @@ export function registerInteractionRoutes(app: Express) {
       const success = await storage.restoreInteraction(String(req.params.id));
       if (!success) return res.status(404).json({ message: "Not found" });
       await storage.createAuditLog({ userId: req.session.userId!, action: "RESTORE", entity: "Interaction", entityId: String(req.params.id), detailJson: {}, ipAddress: getClientIp(req), userAgent: req.headers["user-agent"] || null });
+      await syncItemCreate("interactions", String(req.params.id));
       res.json({ success: true });
     } catch (err: any) {
       res.status(400).json({ message: err.message });
