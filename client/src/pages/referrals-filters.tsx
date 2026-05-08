@@ -87,6 +87,7 @@ export function ReferralsFilters({
         </SelectTrigger>
         <SelectContent>
           <SelectItem value="all">All Status</SelectItem>
+          <SelectItem value="active">Active (open cases)</SelectItem>
           <SelectItem value="RECEIVED">Received</SelectItem>
           <SelectItem value="SCHEDULED">Scheduled</SelectItem>
           <SelectItem value="EVAL_COMPLETED">Eval Completed</SelectItem>
