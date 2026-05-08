@@ -12,6 +12,18 @@ import { getValidAccessToken } from './outlook-oauth-token-helpers';
  * connected Outlook before that scope list was extended, they must
  * disconnect and reconnect once to upgrade the token.
  */
+function logGraphErr(prefix: string, err: any) {
+  // Microsoft Graph errors carry rich metadata (statusCode/code/body);
+  // err.message alone strips the diagnostic info we need.
+  console.error(prefix, {
+    message: err?.message,
+    statusCode: err?.statusCode,
+    code: err?.code,
+    requestId: err?.requestId,
+    body: err?.body,
+  });
+}
+
 async function getServiceUserId(): Promise<string> {
   const [row] = await db
     .select({ userId: userOauthTokens.userId })
@@ -53,7 +65,7 @@ export async function searchSites(query: string) {
     const result = await client.api(`/sites?search=${encodeURIComponent(query)}`).get();
     return result.value || [];
   } catch (err: any) {
-    console.error('SharePoint site search error:', err.message);
+    logGraphErr('SharePoint site search error:', err);
     return [];
   }
 }
@@ -308,7 +320,7 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     console.log(`Sync complete for ${entity}: ${result.created} created, ${result.failed} failed`);
     return result;
   } catch (err: any) {
-    console.error(`Sync failed for ${entity}:`, err.message);
+    logGraphErr(`Sync failed for ${entity}:`, err);
     await updateSyncStatus(entity, { status: 'ERROR', errorMessage: err.message });
     throw err;
   }
