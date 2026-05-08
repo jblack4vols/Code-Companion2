@@ -3,7 +3,7 @@
  * Extracted from storage.ts to keep files under 200 lines.
  */
 import { db } from "./db";
-import { eq, desc, asc, and, or, ilike, isNull, isNotNull, gte, lte, inArray, sql } from "drizzle-orm";
+import { eq, desc, asc, and, or, ilike, isNull, isNotNull, gte, lte, inArray, notInArray, sql } from "drizzle-orm";
 import {
   referrals, physicians, locations,
   type Referral, type InsertReferral,
@@ -22,7 +22,11 @@ export async function getReferralsPaginated(filters: ReferralFilters): Promise<P
   const pageSize = filters.pageSize || 50;
   const conditions: any[] = [isNull(referrals.deletedAt)];
 
-  if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
+  // 'active' is a roll-up filter meaning "not discharged and not lost" —
+  // i.e. RECEIVED + SCHEDULED + EVAL_COMPLETED. Distinguished from a
+  // specific status value before the eq() branch.
+  if (filters.status === "active") conditions.push(notInArray(referrals.status, ["DISCHARGED", "LOST"] as any));
+  else if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
   if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
   if (filters.locationIds && filters.locationIds.length > 0) conditions.push(inArray(referrals.locationId, filters.locationIds));
   if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
@@ -254,7 +258,8 @@ export async function categorizeReferralAsSelfReferral(referralId: string): Prom
 
 export async function exportReferralsCsv(filters: ReferralFilters): Promise<any[]> {
   const conditions: any[] = [isNull(referrals.deletedAt)];
-  if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
+  if (filters.status === "active") conditions.push(notInArray(referrals.status, ["DISCHARGED", "LOST"] as any));
+  else if (filters.status && filters.status !== "all") conditions.push(eq(referrals.status, filters.status as any));
   if (filters.locationId && filters.locationId !== "all") conditions.push(eq(referrals.locationId, filters.locationId));
   if (filters.discipline && filters.discipline !== "all") conditions.push(eq(referrals.discipline, filters.discipline));
   if (filters.physicianId) conditions.push(eq(referrals.physicianId, filters.physicianId));
