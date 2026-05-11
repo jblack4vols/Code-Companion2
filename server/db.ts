@@ -101,6 +101,7 @@ export async function ensureRuntimeColumns() {
   try {
     await db.execute(sql`ALTER TABLE locations ADD COLUMN IF NOT EXISTS zip text`);
     await db.execute(sql`ALTER TABLE locations ADD COLUMN IF NOT EXISTS fax text`);
+    await db.execute(sql`ALTER TABLE calendar_events ADD COLUMN IF NOT EXISTS outlook_sync_disabled boolean NOT NULL DEFAULT false`);
     console.log("[DB] Runtime columns ensured");
   } catch (err) {
     console.warn("[DB] Could not ensure runtime columns:", err);

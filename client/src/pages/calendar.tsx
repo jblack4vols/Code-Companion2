@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
-import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, ChevronsUpDown, Check, Building2, User, X, CheckCircle2, Circle, Pencil } from "lucide-react";
+import { ChevronLeft, ChevronRight, Plus, Calendar as CalendarIcon, List, Trash2, ExternalLink, Unlink, ChevronsUpDown, Check, Building2, User, X, CheckCircle2, Circle, Pencil } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -257,6 +257,18 @@ export default function CalendarPage() {
       toast({ title: "Synced to Outlook" });
     },
     onError: (err: Error) => toast({ title: "Sync failed", description: err.message, variant: "destructive" }),
+  });
+
+  const unsyncOutlookMutation = useMutation({
+    mutationFn: async (eventId: string) => {
+      const res = await apiRequest("POST", "/api/integrations/outlook/unsync-event", { eventId });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/calendar-events"] });
+      toast({ title: "Removed from Outlook", description: "Event will not auto-sync on future edits." });
+    },
+    onError: (err: Error) => toast({ title: "Unsync failed", description: err.message, variant: "destructive" }),
   });
 
   const toggleCompleteMutation = useMutation({
@@ -882,19 +894,35 @@ export default function CalendarPage() {
                       >
                         <Pencil className="w-4 h-4" />
                       </Button>
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        aria-label="Sync to Outlook"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          syncOutlookMutation.mutate(evt.id);
-                        }}
-                        data-testid={`button-sync-outlook-${evt.id}`}
-                        title="Sync to Outlook"
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
+                      {evt.outlookEventId ? (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label="Remove from Outlook"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            unsyncOutlookMutation.mutate(evt.id);
+                          }}
+                          data-testid={`button-unsync-outlook-${evt.id}`}
+                          title="Remove from Outlook"
+                        >
+                          <Unlink className="w-4 h-4" />
+                        </Button>
+                      ) : (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          aria-label="Sync to Outlook"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            syncOutlookMutation.mutate(evt.id);
+                          }}
+                          data-testid={`button-sync-outlook-${evt.id}`}
+                          title="Sync to Outlook"
+                        >
+                          <ExternalLink className="w-4 h-4" />
+                        </Button>
+                      )}
                     </div>
                   </CardContent>
                 </Card>
@@ -1206,17 +1234,31 @@ export default function CalendarPage() {
                       <Trash2 className="w-4 h-4 mr-1" />
                       {deleteMutation.isPending ? "Deleting..." : "Delete"}
                     </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => syncOutlookMutation.mutate(editingEvent.id)}
-                      disabled={syncOutlookMutation.isPending}
-                      data-testid="button-sync-outlook"
-                    >
-                      <ExternalLink className="w-4 h-4 mr-1" />
-                      {syncOutlookMutation.isPending ? "Syncing..." : "Sync to Outlook"}
-                    </Button>
+                    {editingEvent.outlookEventId ? (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => unsyncOutlookMutation.mutate(editingEvent.id)}
+                        disabled={unsyncOutlookMutation.isPending}
+                        data-testid="button-unsync-outlook"
+                      >
+                        <Unlink className="w-4 h-4 mr-1" />
+                        {unsyncOutlookMutation.isPending ? "Removing..." : "Remove from Outlook"}
+                      </Button>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => syncOutlookMutation.mutate(editingEvent.id)}
+                        disabled={syncOutlookMutation.isPending}
+                        data-testid="button-sync-outlook"
+                      >
+                        <ExternalLink className="w-4 h-4 mr-1" />
+                        {syncOutlookMutation.isPending ? "Syncing..." : "Sync to Outlook"}
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
