@@ -9,6 +9,17 @@ import {
   type CalendarEvent, type InsertCalendarEvent,
 } from "@shared/schema";
 
+/**
+ * Returns the UTC end-of-day Date for a 'YYYY-MM-DD' string.
+ * Plain `new Date("YYYY-MM-DD")` parses as midnight UTC; this version
+ * snaps to 23:59:59.999 UTC so filters using <= include the full day.
+ */
+function getRangeEndOfDay(yyyyMmDd: string): Date {
+  const d = new Date(yyyyMmDd);
+  d.setUTCHours(23, 59, 59, 999);
+  return d;
+}
+
 export async function getCalendarEvents(filters?: {
   startDate?: string;
   endDate?: string;
@@ -19,8 +30,22 @@ export async function getCalendarEvents(filters?: {
   userIds?: string[];
 }): Promise<CalendarEvent[]> {
   const conditions = [];
-  if (filters?.startDate) conditions.push(gte(calendarEvents.startAt, new Date(filters.startDate)));
-  if (filters?.endDate) conditions.push(lte(calendarEvents.endAt, new Date(filters.endDate)));
+  // Two bugs fixed here at once:
+  //   1. 'YYYY-MM-DD' parses as UTC midnight. The day-view client sends
+  //      same startDate=endDate for the displayed day, so endAt <= midnight
+  //      excludes virtually every event. Snap endDate to end-of-day UTC.
+  //   2. The old condition was 'startAt >= start AND endAt <= end' which
+  //      is fully-contained semantics — a multi-day event spanning the
+  //      window's edges wouldn't appear. Switch to overlap semantics:
+  //      startAt <= rangeEnd AND endAt >= rangeStart. Now any event that
+  //      touches the day shows up on that day's view.
+  if (filters?.startDate) {
+    const start = new Date(filters.startDate);
+    conditions.push(lte(calendarEvents.startAt, getRangeEndOfDay(filters.endDate ?? filters.startDate)));
+    conditions.push(gte(calendarEvents.endAt, start));
+  } else if (filters?.endDate) {
+    conditions.push(lte(calendarEvents.startAt, getRangeEndOfDay(filters.endDate)));
+  }
   if (filters?.locationId) conditions.push(eq(calendarEvents.locationId, filters.locationId));
   if (filters?.physicianId) conditions.push(eq(calendarEvents.physicianId, filters.physicianId));
   if (filters?.practiceName) conditions.push(eq(calendarEvents.practiceName, filters.practiceName));
