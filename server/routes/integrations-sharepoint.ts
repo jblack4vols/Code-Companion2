@@ -100,19 +100,22 @@ export function registerSharePointRoutes(app: Express) {
     if (!validEntities.includes(entity)) {
       return res.status(400).json({ message: `Invalid entity: ${entity}` });
     }
-    // Await inline (instead of fire-and-forget) so Vercel keeps the function
-    // alive until sync completes — fire-and-forget gets killed when res.json()
-    // returns, leaving sync_status rows stuck at 'SYNCING' forever. If the
-    // entity exceeds Vercel's 30s budget we'll get a 504, but at least the
-    // syncEntity catch block runs and sets status to ERROR.
-    try {
-      const result = await syncSPEntity(entity);
-      console.log(`SharePoint sync complete for ${entity}: ${result.created} created, ${result.failed} failed`);
-      res.json({ message: `Sync complete for ${entity}`, created: result.created, failed: result.failed });
-    } catch (err: any) {
-      logGraphErr(`[SharePoint] sync failed for ${entity}:`, err);
-      res.status(500).json({ message: err?.message || `Sync failed for ${entity}` });
-    }
+    // Return immediately so the browser doesn't time out the request — the
+    // upsert flow + retry-on-throttle for 3000+ rows can run several minutes,
+    // longer than browsers' fetch timeout. Sync runs in the background.
+    //
+    // Vercel may kill the function after the response. That's OK because
+    // the upsert flow (PR #50) is idempotent: items keyed by ExternalId
+    // get PATCHed on retry, not duplicated. So if Vercel kills mid-flight
+    // the user just clicks Sync again and the next pass picks up where it
+    // left off (insert-only items already in the SP list won't reinsert).
+    //
+    // The 2-min stuck-detection in the UI (PR #46) flips a stuck SYNCING
+    // row's badge to 'Stuck — click Sync to retry' so the user knows.
+    res.json({ message: `Sync started for ${entity}` });
+    syncSPEntity(entity)
+      .then(result => console.log(`SharePoint sync complete for ${entity}: ${result.created} synced, ${result.failed} failed`))
+      .catch(err => logGraphErr(`[SharePoint] sync failed for ${entity}:`, err));
   });
 
   app.post("/api/sharepoint/sync-all", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
