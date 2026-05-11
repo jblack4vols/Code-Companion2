@@ -19,6 +19,7 @@ import { IdleTimeout } from "@/components/idle-timeout";
 import { ForcePasswordChange } from "@/components/force-password-change";
 import { GlobalSearch } from "@/components/global-search";
 import { MobileQuickActions } from "@/components/mobile-quick-actions";
+import { CalendarQuickLink } from "@/components/calendar-quicklink";
 import { Loader2 } from "lucide-react";
 
 const DashboardPage = lazy(() => import("@/pages/dashboard"));
@@ -236,6 +237,7 @@ function AppLayout() {
             <AuthenticatedRouter />
           </main>
           <MobileQuickActions />
+          <CalendarQuickLink />
         </div>
       </div>
       <ForcePasswordChange open={showForcePasswordChange} onPasswordChanged={handlePasswordChanged} />
