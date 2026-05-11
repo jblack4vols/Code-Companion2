@@ -43,8 +43,10 @@ export function registerCalendarRoutes(app: Express) {
 
       // Best-effort push to Outlook for the organizer. Failures are logged
       // but don't break event creation — the local event is the source of truth.
+      // Skip entirely if the user explicitly disabled Outlook sync on this
+      // event via /api/integrations/outlook/unsync-event.
       const organizerId = event.organizerUserId ?? req.session.userId!;
-      const outlookEventId = await pushEventToOutlook(organizerId, event);
+      const outlookEventId = event.outlookSyncDisabled ? null : await pushEventToOutlook(organizerId, event);
       const persistedEvent = outlookEventId
         ? (await storage.updateCalendarEvent(event.id, { outlookEventId })) ?? event
         : event;
@@ -73,10 +75,13 @@ export function registerCalendarRoutes(app: Express) {
 
       // Best-effort mirror to Outlook. If we have a Graph id, PATCH it; if
       // we don't (e.g. event was created before auto-sync existed, or a
-      // previous push failed), POST and back-fill the id.
+      // previous push failed), POST and back-fill the id. If the user
+      // explicitly unsynced this event, do nothing.
       const organizerId = event.organizerUserId ?? req.session.userId!;
       let persistedEvent = event;
-      if (event.outlookEventId) {
+      if (event.outlookSyncDisabled) {
+        // user opted out of Outlook for this event — skip silently
+      } else if (event.outlookEventId) {
         await updateEventInOutlook(organizerId, event.outlookEventId, event);
       } else {
         const newOutlookId = await pushEventToOutlook(organizerId, event);

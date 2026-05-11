@@ -226,6 +226,10 @@ export const calendarEvents = pgTable("calendar_events", {
   practiceName: text("practice_name"),
   organizerUserId: varchar("organizer_user_id", { length: 36 }).notNull().references(() => users.id),
   outlookEventId: text("outlook_event_id"),
+  // When true, auto-sync hooks (calendar.ts POST/PATCH/DELETE) skip the
+  // Outlook mirror call. Set by /api/integrations/outlook/unsync-event so
+  // a user-initiated unsync doesn't get silently re-created on next edit.
+  outlookSyncDisabled: boolean("outlook_sync_disabled").default(false).notNull(),
   meetingUrl: text("meeting_url"),
   allDay: boolean("all_day").default(false).notNull(),
   completed: boolean("completed").default(false).notNull(),
