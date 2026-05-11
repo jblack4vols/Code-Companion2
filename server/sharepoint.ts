@@ -49,10 +49,24 @@ async function getAccessToken() {
   return getValidAccessToken(await getServiceUserId());
 }
 
+/**
+ * Returns a Graph Client whose authProvider calls getValidAccessToken on
+ * every request, so a token that expires mid-sync (Microsoft access tokens
+ * last ~60 min, our sync of 3000+ rows can run 3-10 min) gets refreshed
+ * transparently. getValidAccessToken caches the DB row and only triggers
+ * an actual Graph refresh-token call when the access token is within
+ * 60s of expiry — so per-request overhead is a fast DB SELECT, not a
+ * Microsoft round-trip.
+ *
+ * Previous version snapshotted the access token at client construction
+ * and reused that string for every request — once the snapshot expired,
+ * every batch failed with 'Lifetime validation failed, token is expired'
+ * until the operator manually retried the sync.
+ */
 async function getClient() {
-  const accessToken = await getAccessToken();
+  const serviceUserId = await getServiceUserId();
   return Client.initWithMiddleware({
-    authProvider: { getAccessToken: async () => accessToken }
+    authProvider: { getAccessToken: () => getValidAccessToken(serviceUserId) }
   });
 }
 
