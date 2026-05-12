@@ -3,6 +3,9 @@
  * Registered by integrations.ts barrel.
  */
 import type { Express } from "express";
+import { eq } from "drizzle-orm";
+import { db } from "../db";
+import { sharepointSyncStatus } from "@shared/schema";
 import {
   searchSites as searchSPSites,
   getSiteId as getSPSiteId,
@@ -100,6 +103,30 @@ export function registerSharePointRoutes(app: Express) {
     if (!validEntities.includes(entity)) {
       return res.status(400).json({ message: `Invalid entity: ${entity}` });
     }
+
+    // Concurrent-sync guard. Multiple clicks while a sync was already running
+    // (caused by the pre-PR-#56 stale-detector false-flagging an active sync
+    // as 'Stuck') spawned duplicate background jobs that competed for the
+    // same Graph rate limit and slowed each other down. Block new starts
+    // when one is already healthy and running. Stale SYNCING rows
+    // (heartbeat older than 3 min) are treated as dead and overridable.
+    const STALE_LOCK_MS = 3 * 60 * 1000;
+    const [existing] = await db
+      .select({ status: sharepointSyncStatus.status, updatedAt: sharepointSyncStatus.updatedAt })
+      .from(sharepointSyncStatus)
+      .where(eq(sharepointSyncStatus.entity, entity));
+
+    if (existing && existing.status === "SYNCING" && existing.updatedAt) {
+      const age = Date.now() - new Date(existing.updatedAt).getTime();
+      if (age < STALE_LOCK_MS) {
+        return res.status(409).json({
+          message: `Sync for ${entity} already in progress. Wait for it to finish or check /api/sharepoint/status for progress.`,
+          startedAgoSeconds: Math.floor(age / 1000),
+        });
+      }
+      console.log(`[SharePoint] Overriding stale SYNCING lock for ${entity} (heartbeat ${Math.floor(age / 1000)}s old)`);
+    }
+
     // Return immediately so the browser doesn't time out the request — the
     // upsert flow + retry-on-throttle for 3000+ rows can run several minutes,
     // longer than browsers' fetch timeout. Sync runs in the background.
