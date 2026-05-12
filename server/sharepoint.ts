@@ -249,8 +249,47 @@ async function updateSyncStatus(entity: string, update: Partial<{ siteId: string
   }
 }
 
+/**
+ * Read all sync_status rows + auto-flip stale SYNCING rows to ERROR.
+ *
+ * Background: Vercel SIGKILLs functions on timeout / OOM without
+ * triggering JS exception handlers. The catch block in syncEntity
+ * therefore can't record an error. Symptom: status stays 'SYNCING'
+ * forever with errorMessage=null. User sees 'Stuck' badge but no
+ * diagnostic info.
+ *
+ * Watchdog: any SYNCING row whose updatedAt is older than 5 minutes is
+ * presumed dead (heartbeats happen every 30s — 5 min = 10 missed
+ * beats, well past any reasonable real pause). Flip to ERROR with a
+ * descriptive message so the admin UI can show what happened.
+ */
+const STALE_SYNC_TIMEOUT_MS = 5 * 60 * 1000;
+
 export async function getSyncStatuses() {
-  return db.select().from(sharepointSyncStatus);
+  const rows = await db.select().from(sharepointSyncStatus);
+  const now = Date.now();
+  const stale = rows.filter(r =>
+    r.status === 'SYNCING' &&
+    r.updatedAt &&
+    (now - new Date(r.updatedAt).getTime()) > STALE_SYNC_TIMEOUT_MS
+  );
+  if (stale.length > 0) {
+    for (const r of stale) {
+      const ageSec = Math.floor((now - new Date(r.updatedAt!).getTime()) / 1000);
+      try {
+        await updateSyncStatus(r.entity, {
+          status: 'ERROR',
+          errorMessage: `Sync timed out — worker stopped writing heartbeats ${ageSec}s ago. Likely killed by Vercel function limit (memory or duration). Click Sync to retry.`,
+        });
+        // Reflect the flip in the returned snapshot so the caller sees it
+        r.status = 'ERROR';
+        r.errorMessage = `Sync timed out after ${ageSec}s`;
+      } catch (err: any) {
+        console.error(`[SharePoint watchdog] could not flag ${r.entity} as ERROR:`, err?.message);
+      }
+    }
+  }
+  return rows;
 }
 
 /**
@@ -504,27 +543,42 @@ async function deleteOrphans(
 }
 
 export async function syncEntity(entity: string): Promise<{ created: number; failed: number }> {
-  const siteId = await getSiteId();
-  if (!siteId) throw new Error('SharePoint site not configured. Please set a site first.');
-
-  const client = await getClient();
-  await updateSyncStatus(entity, { status: 'SYNCING', siteId, errorMessage: null });
-
-  // Time-based heartbeat (independent of batch progress). The batch
-  // callback in batchUpsertItems only fires after ~200 items processed,
-  // which can take longer than the UI's 2-min stuck-window during heavy
-  // Microsoft Graph throttling (we sleep up to 60s between retry passes).
-  // A 30-second timer that writes the latest known counts keeps updatedAt
-  // fresh through those sleeps. Captured-in-closure progress vars are
-  // updated by the batch callbacks.
-  let lastSynced = 0;
-  let lastFailed = 0;
-  const heartbeatInterval = setInterval(() => {
-    updateSyncStatus(entity, { itemsSynced: lastSynced, itemsFailed: lastFailed })
-      .catch(err => console.warn(`[SharePoint heartbeat] ${entity}:`, err?.message));
-  }, 30_000);
-
+  // Outermost try/catch wraps everything so initialization failures
+  // (getSiteId / getClient / first updateSyncStatus) also get recorded
+  // as ERROR. Previously these threw before the inner try block and
+  // left the status row at a misleading SYNCING or COMPLETE from a
+  // prior run.
+  let heartbeatInterval: ReturnType<typeof setInterval> | null = null;
   try {
+    const siteId = await getSiteId();
+    if (!siteId) throw new Error('SharePoint site not configured. Please set a site first.');
+
+    const client = await getClient();
+    await updateSyncStatus(entity, { status: 'SYNCING', siteId, errorMessage: null, itemsSynced: 0, itemsFailed: 0 });
+
+    // Time-based heartbeat (independent of batch progress). The batch
+    // callback in batchUpsertItems only fires after ~200 items processed,
+    // which can take longer than the UI's 2-min stuck-window during heavy
+    // Microsoft Graph throttling (we sleep up to 60s between retry passes).
+    // A 30-second timer that writes the latest known counts keeps updatedAt
+    // fresh through those sleeps. Captured-in-closure progress vars are
+    // updated by the batch callbacks.
+    //
+    // The callback wraps updateSyncStatus in try/catch even though
+    // updateSyncStatus returns a promise — defends against synchronous
+    // throws (e.g. drizzle config errors) that would otherwise crash
+    // the worker process via unhandled-rejection.
+    let lastSynced = 0;
+    let lastFailed = 0;
+    heartbeatInterval = setInterval(() => {
+      try {
+        updateSyncStatus(entity, { itemsSynced: lastSynced, itemsFailed: lastFailed })
+          .catch(err => console.warn(`[SharePoint heartbeat] ${entity}:`, err?.message));
+      } catch (err: any) {
+        console.warn(`[SharePoint heartbeat sync-throw] ${entity}:`, err?.message);
+      }
+    }, 30_000);
+
     const listId = await ensureList(client, siteId, entity);
     await updateSyncStatus(entity, { listId });
 
@@ -576,10 +630,16 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     return { created: totalSynced, failed: totalFailed };
   } catch (err: any) {
     logGraphErr(`Sync failed for ${entity}:`, err);
-    await updateSyncStatus(entity, { status: 'ERROR', errorMessage: err.message });
+    // Best-effort error recording: even this can throw (DB outage, etc),
+    // so wrap to avoid masking the original error.
+    try {
+      await updateSyncStatus(entity, { status: 'ERROR', errorMessage: err?.message ?? String(err) });
+    } catch (writeErr: any) {
+      console.error(`[SharePoint] FAILED to record ERROR status for ${entity}:`, writeErr?.message);
+    }
     throw err;
   } finally {
-    clearInterval(heartbeatInterval);
+    if (heartbeatInterval) clearInterval(heartbeatInterval);
   }
 }
 
