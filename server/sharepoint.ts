@@ -510,6 +510,20 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
   const client = await getClient();
   await updateSyncStatus(entity, { status: 'SYNCING', siteId, errorMessage: null });
 
+  // Time-based heartbeat (independent of batch progress). The batch
+  // callback in batchUpsertItems only fires after ~200 items processed,
+  // which can take longer than the UI's 2-min stuck-window during heavy
+  // Microsoft Graph throttling (we sleep up to 60s between retry passes).
+  // A 30-second timer that writes the latest known counts keeps updatedAt
+  // fresh through those sleeps. Captured-in-closure progress vars are
+  // updated by the batch callbacks.
+  let lastSynced = 0;
+  let lastFailed = 0;
+  const heartbeatInterval = setInterval(() => {
+    updateSyncStatus(entity, { itemsSynced: lastSynced, itemsFailed: lastFailed })
+      .catch(err => console.warn(`[SharePoint heartbeat] ${entity}:`, err?.message));
+  }, 30_000);
+
   try {
     const listId = await ensureList(client, siteId, entity);
     await updateSyncStatus(entity, { listId });
@@ -526,10 +540,13 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     const items = await getEntityData(entity);
     console.log(`Upserting ${items.length} ${entity} items to SharePoint...`);
 
-    // Progress heartbeat: every ~200 items the batchers call this with
-    // running totals so the UI's 2-min stuck-detector doesn't flag a
-    // legitimate long-running sync, and the user sees live counts climb.
+    // Per-batch progress writes: fine-grained itemsSynced updates as
+    // each ~200 items finish. Combined with the 30s timer above, the
+    // UI now sees movement either every 200 items OR every 30s,
+    // whichever comes first.
     const writeProgress = async (synced: number, failed: number) => {
+      lastSynced = synced;
+      lastFailed = failed;
       await updateSyncStatus(entity, { itemsSynced: synced, itemsFailed: failed });
     };
 
@@ -561,6 +578,8 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     logGraphErr(`Sync failed for ${entity}:`, err);
     await updateSyncStatus(entity, { status: 'ERROR', errorMessage: err.message });
     throw err;
+  } finally {
+    clearInterval(heartbeatInterval);
   }
 }
 
