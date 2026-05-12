@@ -19,6 +19,34 @@ import {
  * connected Outlook before that scope list was extended, they must
  * disconnect and reconnect once to upgrade the token.
  */
+/**
+ * Race a Graph call against a timeout. If the promise hasn't resolved
+ * in `ms` milliseconds, reject with a descriptive error so syncEntity's
+ * outer try/catch can record the failure as status=ERROR.
+ *
+ * Required because Microsoft Graph API calls can hang indefinitely
+ * (observed in prod: worker stops heartbeating mid-sync, lock held but
+ * no progress). Diagnosis showed an outbound Graph call with no timeout
+ * waiting forever; this forces a hard upper bound per call.
+ *
+ * 60s is generous — typical Graph responses are <500ms, throttled ones
+ * include Retry-After hints we honor separately. Anything taking 60s
+ * is genuinely stuck and should be killed and retried.
+ */
+function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      reject(new Error(`[SharePoint timeout] ${label} did not complete within ${ms}ms`));
+    }, ms);
+    promise.then(
+      (value) => { clearTimeout(timer); resolve(value); },
+      (err) => { clearTimeout(timer); reject(err); },
+    );
+  });
+}
+
+const GRAPH_TIMEOUT_MS = 60_000;
+
 function logGraphErr(prefix: string, err: any) {
   // Microsoft Graph errors carry rich metadata (statusCode/code/body);
   // err.message alone strips the diagnostic info we need.
@@ -196,7 +224,11 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
   const def = LIST_DEFINITIONS[entity];
   if (!def) throw new Error(`Unknown entity: ${entity}`);
 
-  const existingLists = await client.api(`/sites/${siteId}/lists`).select('id,displayName').get();
+  const existingLists = await withTimeout(
+    client.api(`/sites/${siteId}/lists`).select('id,displayName').get(),
+    GRAPH_TIMEOUT_MS,
+    `ensureList: fetch lists for site ${siteId}`,
+  );
   const existing = existingLists.value?.find((l: any) => l.displayName === def.displayName);
 
   let listId: string;
@@ -207,7 +239,11 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
       displayName: def.displayName,
       list: { template: "genericList" }
     };
-    const created = await client.api(`/sites/${siteId}/lists`).post(listPayload);
+    const created = await withTimeout(
+      client.api(`/sites/${siteId}/lists`).post(listPayload),
+      GRAPH_TIMEOUT_MS,
+      `ensureList: create list ${def.displayName}`,
+    );
     listId = created.id;
   }
 
@@ -217,7 +253,11 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
   // inserts later in the pipeline reference these columns by name, so a
   // missing column here = "Field 'ExternalId' is not recognized" at insert.
   // Idempotent: we fetch the existing column names and skip ones already present.
-  const existingCols = await client.api(`/sites/${siteId}/lists/${listId}/columns`).select('name').get();
+  const existingCols = await withTimeout(
+    client.api(`/sites/${siteId}/lists/${listId}/columns`).select('name').get(),
+    GRAPH_TIMEOUT_MS,
+    `ensureList: fetch columns for list ${listId}`,
+  );
   const presentNames = new Set<string>((existingCols.value ?? []).map((c: any) => c.name));
 
   for (const col of def.columns) {
@@ -230,7 +270,11 @@ async function ensureList(client: Client, siteId: string, entity: string): Promi
     else if (col.boolean) colPayload.boolean = col.boolean;
 
     try {
-      await client.api(`/sites/${siteId}/lists/${listId}/columns`).post(colPayload);
+      await withTimeout(
+        client.api(`/sites/${siteId}/lists/${listId}/columns`).post(colPayload),
+        GRAPH_TIMEOUT_MS,
+        `ensureList: create column ${col.name} on ${def.displayName}`,
+      );
     } catch (err: any) {
       console.warn(`Failed to create column ${col.name} on ${def.displayName}:`, err.message);
     }
@@ -311,7 +355,7 @@ async function fetchExistingItemMap(
   let nextLink: string | null = `/sites/${siteId}/lists/${listId}/items?$expand=fields($select=ExternalId)&$top=5000`;
 
   while (nextLink) {
-    const page: any = await client.api(nextLink).get();
+    const page: any = await withTimeout(client.api(nextLink).get(), GRAPH_TIMEOUT_MS, `fetchExistingItemMap page for list ${listId}`);
     for (const item of page.value || []) {
       const externalId = item.fields?.ExternalId;
       if (typeof externalId === 'string' && externalId.length > 0) {
@@ -390,7 +434,11 @@ async function batchUpsertItems(
       });
 
       try {
-        const result = await client.api('/$batch').post({ requests: batchReqs });
+        const result = await withTimeout(
+          client.api('/$batch').post({ requests: batchReqs }),
+          GRAPH_TIMEOUT_MS,
+          `batchUpsertItems chunk (size ${chunk.length})`,
+        );
         for (const resp of result.responses || []) {
           const reqIdx = parseInt(resp.id, 10);
           const item = chunk[reqIdx];
@@ -501,7 +549,11 @@ async function deleteOrphans(
         url: `/sites/${siteId}/lists/${listId}/items/${id}`,
       }));
       try {
-        const result = await client.api('/$batch').post({ requests: batchReqs });
+        const result = await withTimeout(
+          client.api('/$batch').post({ requests: batchReqs }),
+          GRAPH_TIMEOUT_MS,
+          `deleteOrphans chunk (size ${chunkIds.length})`,
+        );
         for (const resp of result.responses || []) {
           const reqIdx = parseInt(resp.id, 10);
           const itemId = chunkIds[reqIdx];
