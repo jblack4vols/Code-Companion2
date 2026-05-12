@@ -378,6 +378,19 @@ async function fetchExistingItemMap(
  * Same Retry-After + 4-attempt retry pattern as the old batchCreateItems.
  * Halves the API calls in steady state vs the old wipe-and-recreate flow.
  */
+/**
+ * A single failure captured from a $batch sub-response. Combined into
+ * sync_status.errorMessage as a sample and dumped to Vercel logs with
+ * the row's ExternalId so operators can look up the source record.
+ */
+interface UpsertFailure {
+  externalId: string;
+  operation: "POST" | "PATCH";
+  status: number;
+  errorCode: string;
+  errorMessage: string;
+}
+
 async function batchUpsertItems(
   client: Client,
   siteId: string,
@@ -385,13 +398,14 @@ async function batchUpsertItems(
   items: any[],
   existingByExternalId: Map<string, string>,
   onProgress?: (created: number, updated: number, failed: number) => Promise<void>,
-): Promise<{ created: number; updated: number; failed: number }> {
+): Promise<{ created: number; updated: number; failed: number; failures: UpsertFailure[] }> {
   const MAX_ATTEMPTS = 4;
   const INTER_BATCH_PAUSE_MS = 100;
   const MAX_RETRY_WAIT_SEC = 60;
 
   let created = 0;
   let updated = 0;
+  const failures: UpsertFailure[] = [];
   let failed = 0;
   let pending = items.slice();
   let attempt = 1;
@@ -458,7 +472,15 @@ async function batchUpsertItems(
             if (retry > maxRetryAfter) maxRetryAfter = retry;
           } else {
             failed++;
-            console.warn(`Item upsert failed (${resp.status}, ${wasUpdate ? 'PATCH' : 'POST'}):`, resp.body?.error?.message);
+            const failure: UpsertFailure = {
+              externalId: String(item?.ExternalId ?? "unknown"),
+              operation: wasUpdate ? "PATCH" : "POST",
+              status: resp.status,
+              errorCode: String(resp.body?.error?.code ?? "unknown"),
+              errorMessage: String(resp.body?.error?.message ?? "(no message)"),
+            };
+            failures.push(failure);
+            console.warn(`[SharePoint upsert failed] ExternalId=${failure.externalId} ${failure.operation} ${failure.status} ${failure.errorCode}: ${failure.errorMessage}`);
           }
         }
       } catch (err: any) {
@@ -491,8 +513,21 @@ async function batchUpsertItems(
   }
 
   failed += pending.length;
-  if (pending.length > 0) console.warn(`Gave up on ${pending.length} upsert items after ${MAX_ATTEMPTS} attempts`);
-  return { created, updated, failed };
+  if (pending.length > 0) {
+    console.warn(`Gave up on ${pending.length} upsert items after ${MAX_ATTEMPTS} attempts`);
+    // Items that exhausted retry attempts get a generic failure entry so
+    // they're countable in the breakdown even without a Graph response.
+    for (const item of pending) {
+      failures.push({
+        externalId: String(item?.ExternalId ?? "unknown"),
+        operation: existingByExternalId.has(item?.ExternalId) ? "PATCH" : "POST",
+        status: 0,
+        errorCode: "max_attempts_exceeded",
+        errorMessage: `Exhausted ${MAX_ATTEMPTS} retry attempts (likely sustained throttling)`,
+      });
+    }
+  }
+  return { created, updated, failed, failures };
 }
 
 /**
@@ -670,15 +705,39 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     const totalSynced = upsertResult.created + upsertResult.updated;
     const totalFailed = upsertResult.failed + orphanResult.failed;
 
+    // Build an informative errorMessage when there are failures. Group by
+    // errorCode + status so 'Field text exceeds maxLength (10 items)' shows
+    // up clearly instead of a single counter. Plus include 3 sample
+    // ExternalIds per code so the admin can spot-check the source records.
+    let errorMessage: string | null = null;
+    if (totalFailed > 0) {
+      const grouped = new Map<string, { count: number; samples: string[]; message: string }>();
+      for (const f of upsertResult.failures) {
+        const key = `${f.operation}/${f.status}/${f.errorCode}`;
+        const g = grouped.get(key);
+        if (g) {
+          g.count++;
+          if (g.samples.length < 3) g.samples.push(f.externalId);
+        } else {
+          grouped.set(key, { count: 1, samples: [f.externalId], message: f.errorMessage });
+        }
+      }
+      const summary = Array.from(grouped.entries()).map(([key, g]) =>
+        `[${key} × ${g.count}, samples: ${g.samples.join(", ")}] ${g.message}`
+      ).join(" | ");
+      errorMessage = `${totalFailed} items failed: ${summary}`.slice(0, 4000); // safety cap
+    }
+
     await updateSyncStatus(entity, {
       status: 'COMPLETE',
       lastSyncAt: new Date(),
       itemsSynced: totalSynced,
       itemsFailed: totalFailed,
-      errorMessage: totalFailed > 0 ? `${totalFailed} items failed` : null,
+      errorMessage,
     });
 
     console.log(`Sync complete for ${entity}: ${upsertResult.created} created, ${upsertResult.updated} updated, ${orphanResult.deleted} deleted, ${totalFailed} failed`);
+    if (errorMessage) console.warn(`[SharePoint] ${entity} failure breakdown: ${errorMessage}`);
     return { created: totalSynced, failed: totalFailed };
   } catch (err: any) {
     logGraphErr(`Sync failed for ${entity}:`, err);
