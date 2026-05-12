@@ -301,6 +301,7 @@ async function batchUpsertItems(
   listId: string,
   items: any[],
   existingByExternalId: Map<string, string>,
+  onProgress?: (created: number, updated: number, failed: number) => Promise<void>,
 ): Promise<{ created: number; updated: number; failed: number }> {
   const MAX_ATTEMPTS = 4;
   const INTER_BATCH_PAUSE_MS = 100;
@@ -382,6 +383,12 @@ async function batchUpsertItems(
       processed += chunk.length;
       if (processed % 200 === 0 || i + 20 >= pending.length) {
         console.log(`  Upsert progress: ${processed}/${total} items processed (attempt ${attempt})`);
+        // Heartbeat: write progress to sync_status so the UI's 2-min stale
+        // detector doesn't falsely flag a long-running sync as stuck, and
+        // so the user can see live itemsSynced numbers tick up.
+        if (onProgress) {
+          await onProgress(created, updated, failed).catch(() => { /* progress write best-effort */ });
+        }
       }
 
       if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
@@ -416,6 +423,7 @@ async function deleteOrphans(
   listId: string,
   currentExternalIds: Set<string>,
   existingByExternalId: Map<string, string>,
+  onProgress?: (deleted: number, failed: number) => Promise<void>,
 ): Promise<{ deleted: number; failed: number }> {
   const orphanItemIds: string[] = [];
   // Array.from(...) sidesteps the tsconfig downlevelIteration constraint
@@ -473,6 +481,12 @@ async function deleteOrphans(
         if (maxRetryAfter < 5) maxRetryAfter = 5;
       }
 
+      // Heartbeat: bump sync_status updatedAt every ~200 deletes so the
+      // UI's stale-detector sees movement.
+      if (onProgress && deleted > 0 && deleted % 200 < 20) {
+        await onProgress(deleted, failed).catch(() => { /* best-effort */ });
+      }
+
       if (i + 20 < pending.length) await sleep(INTER_BATCH_PAUSE_MS);
     }
 
@@ -512,10 +526,23 @@ export async function syncEntity(entity: string): Promise<{ created: number; fai
     const items = await getEntityData(entity);
     console.log(`Upserting ${items.length} ${entity} items to SharePoint...`);
 
-    const upsertResult = await batchUpsertItems(client, siteId, listId, items, existing);
+    // Progress heartbeat: every ~200 items the batchers call this with
+    // running totals so the UI's 2-min stuck-detector doesn't flag a
+    // legitimate long-running sync, and the user sees live counts climb.
+    const writeProgress = async (synced: number, failed: number) => {
+      await updateSyncStatus(entity, { itemsSynced: synced, itemsFailed: failed });
+    };
+
+    const upsertResult = await batchUpsertItems(
+      client, siteId, listId, items, existing,
+      async (created, updated, failed) => writeProgress(created + updated, failed),
+    );
 
     const currentExternalIds = new Set<string>(items.map((i: any) => i.ExternalId).filter(Boolean));
-    const orphanResult = await deleteOrphans(client, siteId, listId, currentExternalIds, existing);
+    const orphanResult = await deleteOrphans(
+      client, siteId, listId, currentExternalIds, existing,
+      async (deleted, failed) => writeProgress(upsertResult.created + upsertResult.updated, upsertResult.failed + failed),
+    );
 
     const totalSynced = upsertResult.created + upsertResult.updated;
     const totalFailed = upsertResult.failed + orphanResult.failed;
