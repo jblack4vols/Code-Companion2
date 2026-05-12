@@ -41,7 +41,7 @@ export default function ReferralsPage() {
   const [isEditing, setIsEditing] = useState(false);
   const [editData, setEditData] = useState<EditData>({});
   const [page, setPage] = useState(1);
-  const [sortBy, setSortBy] = useState("");
+  const [sortBy, setSortBy] = useState("referralDate");
   const [sortDir, setSortDir] = useState("desc");
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
