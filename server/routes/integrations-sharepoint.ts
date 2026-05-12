@@ -6,6 +6,33 @@ import type { Express } from "express";
 import { eq } from "drizzle-orm";
 import { db } from "../db";
 import { sharepointSyncStatus } from "@shared/schema";
+
+/**
+ * Wrap a promise so it survives past res.json() on Vercel's serverless
+ * runtime. Without this, Vercel kills the function ~30s after the
+ * response is sent, even if a background promise is still running —
+ * which is why SharePoint syncs were dying ~1 minute into a 5+ minute
+ * job. Documented at https://vercel.com/docs/functions/functions-api-reference#waituntil
+ *
+ * Falls back to a no-op outside Vercel (local dev, Railway) where the
+ * Node process stays alive for the duration of the request handler
+ * anyway. Import is dynamic so node test runs don't blow up on a
+ * missing @vercel/functions in environments that don't have it.
+ */
+async function runInBackground(promise: Promise<unknown>): Promise<void> {
+  if (process.env.VERCEL) {
+    try {
+      const { waitUntil } = await import("@vercel/functions");
+      waitUntil(promise);
+      return;
+    } catch (err: any) {
+      console.warn("[runInBackground] @vercel/functions unavailable, falling back to fire-and-forget:", err?.message);
+    }
+  }
+  // Local / non-Vercel: just let the promise run, no special handling
+  // needed because the process stays alive for the request lifetime.
+  promise.catch(() => {});
+}
 import {
   searchSites as searchSPSites,
   getSiteId as getSPSiteId,
@@ -140,15 +167,23 @@ export function registerSharePointRoutes(app: Express) {
     // The 2-min stuck-detection in the UI (PR #46) flips a stuck SYNCING
     // row's badge to 'Stuck — click Sync to retry' so the user knows.
     res.json({ message: `Sync started for ${entity}` });
-    syncSPEntity(entity)
-      .then(result => console.log(`SharePoint sync complete for ${entity}: ${result.created} synced, ${result.failed} failed`))
-      .catch(err => logGraphErr(`[SharePoint] sync failed for ${entity}:`, err));
+    // Background work continues past res.json() — runInBackground hands
+    // it to Vercel's waitUntil so the runtime keeps the function alive
+    // until the promise resolves (up to maxDuration=300s). Pre-waitUntil
+    // Vercel was killing the worker ~30-60s after response, mid-sync.
+    runInBackground(
+      syncSPEntity(entity)
+        .then(result => console.log(`SharePoint sync complete for ${entity}: ${result.created} synced, ${result.failed} failed`))
+        .catch(err => logGraphErr(`[SharePoint] sync failed for ${entity}:`, err))
+    );
   });
 
   app.post("/api/sharepoint/sync-all", requireRole("OWNER", "DIRECTOR"), async (req, res) => {
     res.json({ message: "Sync started for all entities" });
-    syncSPAll()
-      .then(results => console.log("SharePoint sync all complete:", results))
-      .catch(err => logGraphErr("[SharePoint] sync-all failed:", err));
+    runInBackground(
+      syncSPAll()
+        .then(results => console.log("SharePoint sync all complete:", results))
+        .catch(err => logGraphErr("[SharePoint] sync-all failed:", err))
+    );
   });
 }
