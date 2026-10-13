@@ -54,6 +54,7 @@ const FIELDS_BY_TYPE: Record<string, FieldDef[]> = {
   claims: [
     { key: "claimNumber", label: "Claim Number", required: true },
     { key: "dos", label: "Date of Service", required: true },
+    { key: "patientAccountNumber", label: "Patient Account #" },
     { key: "payer", label: "Payer" },
     { key: "cptCodes", label: "CPT Code(s)" },
     { key: "units", label: "Units" },

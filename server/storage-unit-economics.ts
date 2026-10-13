@@ -3,7 +3,7 @@
  * Extracted from storage.ts to keep files under 200 lines.
  */
 import { db } from "./db";
-import { eq, and, gte, lte, desc, asc, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, isNull, isNotNull, sql, inArray } from "drizzle-orm";
 import {
   clinicFinancials, providerProductivity, financialAlerts, financialTargets,
   locations, users,
@@ -435,4 +435,81 @@ export async function getUnitEconomicsForecast(locationId?: string): Promise<For
     });
   }
   return forecasts.sort((a, b) => b.forecastRevenue - a.forecastRevenue);
+}
+
+// ---- Practice-wide EBITDA rollup ----
+
+export interface EbitdaRollup {
+  periodDate: string;
+  totalGrossRevenue: number;
+  totalLaborCost: number;
+  totalRentCost: number;
+  totalSuppliesCost: number;
+  totalOtherCosts: number;
+  totalExpenses: number;
+  ebitda: number;
+  ebitdaMargin: number;
+  totalVisits: number;
+  revenuePerVisit: number;
+  locationCount: number;
+}
+
+export async function getEbitdaRollup(filters: {
+  periodType?: string;
+  months?: number;
+  locationIds?: string[] | null;
+}): Promise<EbitdaRollup[]> {
+  const periodType = filters.periodType ?? "MONTHLY";
+  const months = filters.months ?? 12;
+  const cutoff = new Date();
+  cutoff.setMonth(cutoff.getMonth() - months);
+
+  const conditions: any[] = [
+    eq(clinicFinancials.periodType, periodType as any),
+    gte(clinicFinancials.periodDate, cutoff.toISOString().split("T")[0]),
+  ];
+  if (filters.locationIds) {
+    conditions.push(inArray(clinicFinancials.locationId, filters.locationIds));
+  }
+
+  const rows = await db
+    .select({
+      periodDate: clinicFinancials.periodDate,
+      totalGrossRevenue: sql<number>`SUM(CAST(${clinicFinancials.grossRevenue} AS NUMERIC))`,
+      totalLaborCost: sql<number>`SUM(CAST(${clinicFinancials.laborCost} AS NUMERIC))`,
+      totalRentCost: sql<number>`SUM(CAST(${clinicFinancials.rentCost} AS NUMERIC))`,
+      totalSuppliesCost: sql<number>`SUM(CAST(${clinicFinancials.suppliesCost} AS NUMERIC))`,
+      totalOtherCosts: sql<number>`SUM(CAST(${clinicFinancials.otherFixedCosts} AS NUMERIC))`,
+      totalVisits: sql<number>`SUM(${clinicFinancials.totalVisits})`,
+      locationCount: sql<number>`COUNT(DISTINCT ${clinicFinancials.locationId})`,
+    })
+    .from(clinicFinancials)
+    .where(and(...conditions))
+    .groupBy(clinicFinancials.periodDate)
+    .orderBy(desc(clinicFinancials.periodDate));
+
+  return rows.map(r => {
+    const revenue = Number(r.totalGrossRevenue);
+    const labor = Number(r.totalLaborCost);
+    const rent = Number(r.totalRentCost);
+    const supplies = Number(r.totalSuppliesCost);
+    const other = Number(r.totalOtherCosts);
+    const expenses = labor + rent + supplies + other;
+    const ebitda = revenue - expenses;
+    const visits = Number(r.totalVisits);
+    return {
+      periodDate: r.periodDate,
+      totalGrossRevenue: revenue,
+      totalLaborCost: labor,
+      totalRentCost: rent,
+      totalSuppliesCost: supplies,
+      totalOtherCosts: other,
+      totalExpenses: expenses,
+      ebitda,
+      ebitdaMargin: revenue > 0 ? Math.round((ebitda / revenue) * 100) : 0,
+      totalVisits: visits,
+      revenuePerVisit: visits > 0 ? Math.round(revenue / visits) : 0,
+      locationCount: Number(r.locationCount),
+    };
+  });
 }

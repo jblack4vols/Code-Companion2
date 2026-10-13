@@ -34,6 +34,8 @@ import { registerRevenueRecoveryRoutes } from "./routes/revenue-recovery";
 import { registerBillingLagRoutes } from "./routes/billing-lag";
 import { registerRevenueRecoveryAppealsRoutes } from "./routes/revenue-recovery-appeals";
 import { registerFrontDeskRoutes } from "./routes/frontdesk";
+import { registerReferralClaimsRoutes } from "./routes/referral-claims";
+import { registerMarketerRoiRoutes } from "./routes/marketer-roi";
 import { registerRpvAnalyticsRoutes } from "./routes/rpv-analytics";
 import { registerReferralIntelligenceRoutes } from "./routes/referral-intelligence";
 import { registerProviderProductivityV2Routes } from "./routes/provider-productivity-v2";
@@ -127,6 +129,8 @@ export async function registerRoutes(
   await registerRevenueRecoveryAppealsRoutes(app);
   registerFrontDeskRoutes(app);
   registerFeedbackRoutes(app);
+  registerReferralClaimsRoutes(app);
+  registerMarketerRoiRoutes(app);
   registerRpvAnalyticsRoutes(app);
   registerReferralIntelligenceRoutes(app);
   registerProviderProductivityV2Routes(app);

@@ -76,6 +76,12 @@ const RevenueAppealsPage = lazy(() => import("@/pages/revenue-appeals"));
 const RevenueImportPage = lazy(() => import("@/pages/revenue-import"));
 const FrontDeskPage = lazy(() => import("@/pages/frontdesk"));
 const FeedbackPage = lazy(() => import("@/pages/feedback"));
+const ReferralAgingQueuePage = lazy(() => import("@/pages/referral-aging-queue"));
+const AuthExpirationAlertsPage = lazy(() => import("@/pages/auth-expiration-alerts"));
+const EbitdaRollupPage = lazy(() => import("@/pages/ebitda-rollup"));
+const ReferralClaimsLinkingPage = lazy(() => import("@/pages/referral-claims-linking"));
+const PayerProfitabilityPage = lazy(() => import("@/pages/payer-profitability"));
+const MarketerRoiDashboardPage = lazy(() => import("@/pages/marketer-roi-dashboard"));
 const ProviderProductivityV2Page = lazy(() => import("@/pages/provider-productivity-v2"));
 const LifecyclePage = lazy(() => import("@/pages/lifecycle"));
 const CashFlowPage = lazy(() => import("@/pages/cash-flow"));
@@ -161,6 +167,12 @@ function AuthenticatedRouter() {
         <Route path="/revenue/billing-lag" component={guard(ANALYTICS, RevenueBillingLagPage)} />
         <Route path="/revenue/appeals" component={guard(ANALYTICS, RevenueAppealsPage)} />
         <Route path="/revenue/import" component={guard(ANALYTICS, RevenueImportPage)} />
+        <Route path="/revenue/payer-profitability" component={guard(ANALYTICS, PayerProfitabilityPage)} />
+        <Route path="/revenue/referral-claims" component={guard(ANALYTICS, ReferralClaimsLinkingPage)} />
+        <Route path="/unit-economics/ebitda-rollup" component={guard(ANALYTICS, EbitdaRollupPage)} />
+        <Route path="/referral-aging-queue" component={ReferralAgingQueuePage} />
+        <Route path="/auth-expiration-alerts" component={guard(ANALYTICS, AuthExpirationAlertsPage)} />
+        <Route path="/marketer-roi" component={guard(ADMIN, MarketerRoiDashboardPage)} />
 
         {/* Admin: OWNER, DIRECTOR */}
         <Route path="/import" component={guard(ADMIN, ImportPage)} />
