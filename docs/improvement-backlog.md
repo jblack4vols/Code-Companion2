@@ -49,8 +49,10 @@ All six roadmap analytics features are built and merged to `main`:
 | BCBS Audit Status Panel | `/revenue/bcbs-audit` | DONE — payer-scoped claim-lifecycle + exposure panel (`storage-bcbs-audit.ts`, `GET /api/revenue/bcbs-audit`), PR #64 |
 | Cash Flow Projection | `/cash-flow` | DONE |
 
-## Remaining P1 (open)
+## Remaining P1
 
-- **#6 — At-risk referral source alerting.** Dashboard exists (declining referrals); the
-  detection→notification wiring (physicians down >20% over 2 months + no touchpoint in 30 days +
-  overdue follow-up, pushed into the existing alert/digest pipeline) is not yet built.
+- **#6 — At-risk referral source alerting.** ~~Detection→notification wiring.~~ **DONE** — detection
+  (`getAtRiskReferralSources`) and the in-app dashboard card (`AtRiskReferralSourcesCard`) already
+  existed; added the proactive **email push**: weekday `sendAtRiskReferralDigests()` emails OWNER/DIRECTOR
+  a digest of at-risk sources (down 20%+ with no 30-day contact or overdue follow-up) via
+  `sendAtRiskReferralDigestEmail`, scheduled alongside the overdue-task digest.
