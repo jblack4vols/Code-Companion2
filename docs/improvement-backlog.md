@@ -56,3 +56,36 @@ All six roadmap analytics features are built and merged to `main`:
   existed; added the proactive **email push**: weekday `sendAtRiskReferralDigests()` emails OWNER/DIRECTOR
   a digest of at-risk sources (down 20%+ with no 30-day contact or overdue follow-up) via
   `sendAtRiskReferralDigestEmail`, scheduled alongside the overdue-task digest.
+
+---
+
+## Round 2 — fresh codebase pass (2026-10-13)
+
+Original P0–P2 list above is cleared. New findings from a three-dimension audit (security/HIPAA,
+performance/data-layer, maintainability/tests). Evidence from codebase only; ranked by ROI.
+
+| # | Pri | Finding | Impact | Effort | Evidence |
+|---|---|---|---|---|---|
+| R2-1 | P0 | **Add unique index/constraint on `claims.claim_number`** | `upsertClaim` uses `ON CONFLICT (claim_number)` but no unique index exists — Postgres needs one, so claims import may be throwing; every `WHERE claim_number =` is a seq scan | XS | `shared/schema.ts:744-777` (no unique), `storage-revenue-recovery.ts:82`. **Verify against live DB first.** |
+| R2-2 | P0 | **Location-scope `/api/revenue/*` claims/denials/BCBS reads** | ANALYST is location-scoped but these endpoints never call `getUserLocationScope()`; a scoped analyst sees all 8 locations' claims (incl. `patientAccountNumber`, financials) & BCBS exposure | M | `routes/revenue-recovery.ts:160,389,472,552,…`; `storage-revenue-recovery.ts:43-58`; `storage-bcbs-audit.ts:50` (no loc filter — from this session's panel) |
+| R2-3 | P0 | **Location-scope front-desk patient-request PHI** | `GET /api/frontdesk/requests` + `/stats` return every location's intake PHI (`patientName`, `phone`, `symptoms`) to any FRONT_DESK user; minimum-necessary violation | M | `routes/frontdesk.ts:56-76,228`; `shared/schema.ts:849-865` |
+| R2-4 | P1 | **Zod-validate revenue/appeal write bodies** | `POST /api/revenue/claims`, `/claims/bulk`, `/rates`, `/appeal-templates` pass `req.body` straight to storage; schemas exist but unused → malformed fields reach DB, 500s | S | `routes/revenue-recovery.ts:196,208,451`; `revenue-recovery-appeals.ts:65`; schemas `shared/schema.ts:893-907` |
+| R2-5 | P1 | **Fix `flagUnderpaidClaims` N+1 run inside the import request** | Per-claim re-fetch ×2 + per-CPT rate SELECT, all sync in the HTTP path → claims-import latency grows ~quadratically, timeouts at scale | M | `storage-revenue-recovery.ts:312-344,291-310`; invoked `routes/revenue-recovery.ts:322` |
+| R2-6 | P1 | **Delete dead root `src/` dir (24 files) + drop `@supabase/supabase-js`** | Abandoned Next.js port never built/typechecked (tsconfig excludes it); live versions live in `client/src/pages`; `src/lib/supabase.ts` is the dep's only importer | S | `/src/**`; `tsconfig.json` include; `vite.config.ts` root |
+| R2-7 | P1 | **Add pure-logic tests for ETL summaries & cash-flow** | Two financially-significant modules with testable pure helpers have zero tests | M | `etl-summary-generation.ts` (225 ln), `routes/cash-flow.ts` (295 ln) |
+| R2-8 | P2 | **Drop per-row probe loops in bulk upserts** | `bulkUpsertClaims`/`bulkUpsertPayerRates`/unit-econ imports do a per-row `SELECT` before each upsert (ON CONFLICT already covers it) → O(2N) round-trips | S | `storage-revenue-recovery.ts:116-122,246-253`; `storage-unit-economics.ts:127-133,180-186` |
+| R2-9 | P2 | **Index `referrals.updatedAt` + `collections.updatedAt`** | Incremental nightly ETL filters by `updated_at` with no index → seq scans that worsen with data growth | XS | `etl.ts:43-44`; `shared/schema.ts:193-197,299-300` |
+| R2-10 | P2 | **Paginate/cap `GET /api/revenue/underpaid`** | Returns all underpaid claims, no limit (unlike `getClaims`) → unbounded dashboard payload | S | `storage-revenue-recovery.ts:141-156` |
+| R2-11 | P2 | **Extract shared CSV/XLSX parse helpers; kill test drift** | `parseNum`/date parser duplicated & drifted across `revenue-recovery.ts` & `unit-economics.ts`; the import-parsing test reimplements a 3rd copy, so it validates logic the routes don't run | S | `routes/revenue-recovery.ts:55,62`; `routes/unit-economics.ts:88,95`; `__tests__/unit-economics-import-parsing.test.ts:14,26` |
+| R2-12 | P2 | **Standardize error handling via `next(err)` + global handler** | 0 routes use the documented global handler; ~9 handlers return raw `err.message` (leaks internals, diverges from CLAUDE.md) | S | `routes/revenue-recovery.ts:175,187,198,…` |
+| R2-13 | P2 | **Split files well over the 200-line convention** | Maintainability; clean endpoint seams | M | `sharepoint.ts` 818, `storage.ts` 810, `routes/dashboard.ts` 693, `routes/import.ts` 647, `routes/revenue-recovery.ts` 626 |
+| R2-14 | P2 | **Upgrade/replace `xlsx` 0.18.5** | Known npm advisories (prototype-pollution / ReDoS) in that pinned version | S | `package.json`; used in `server/import-real-financials.ts` |
+| R2-15 | P2 | **Remove likely-unused `ws` dependency** (verify first) | No import anywhere; app uses `pg` not neon-serverless | XS | `package.json:96`; only an esbuild `external` |
+
+**Recommended first three:** R2-1 (XS, possible broken import), then R2-2 + R2-3 (the two Critical HIPAA
+location-scoping gaps). R2-2 includes the BCBS panel shipped this session.
+
+### Open questions
+- R2-1: does a `claim_number` unique constraint already exist in the live DB out-of-band? If not, imports are currently failing.
+- R2-2/R2-3: is ANALYST / FRONT_DESK *intended* to see all-location revenue & intake data? `permissions.md` is silent on `/api/revenue/*` and `/api/frontdesk/*` — looks like newer surfaces simply not yet wired to scope.
+- R2-6: is the root `src/` dir / `@supabase/supabase-js` reserved for a planned migration? If so, keep.
