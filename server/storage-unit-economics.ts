@@ -3,7 +3,7 @@
  * Extracted from storage.ts to keep files under 200 lines.
  */
 import { db } from "./db";
-import { eq, and, gte, lte, desc, asc, isNull, isNotNull, sql } from "drizzle-orm";
+import { eq, and, gte, lte, desc, asc, isNull, isNotNull, sql, inArray } from "drizzle-orm";
 import {
   clinicFinancials, providerProductivity, financialAlerts, financialTargets,
   locations, users,
@@ -457,11 +457,20 @@ export interface EbitdaRollup {
 export async function getEbitdaRollup(filters: {
   periodType?: string;
   months?: number;
+  locationIds?: string[] | null;
 }): Promise<EbitdaRollup[]> {
   const periodType = filters.periodType ?? "MONTHLY";
   const months = filters.months ?? 12;
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - months);
+
+  const conditions: any[] = [
+    eq(clinicFinancials.periodType, periodType as any),
+    gte(clinicFinancials.periodDate, cutoff.toISOString().split("T")[0]),
+  ];
+  if (filters.locationIds) {
+    conditions.push(inArray(clinicFinancials.locationId, filters.locationIds));
+  }
 
   const rows = await db
     .select({
@@ -475,10 +484,7 @@ export async function getEbitdaRollup(filters: {
       locationCount: sql<number>`COUNT(DISTINCT ${clinicFinancials.locationId})`,
     })
     .from(clinicFinancials)
-    .where(and(
-      eq(clinicFinancials.periodType, periodType as any),
-      gte(clinicFinancials.periodDate, cutoff.toISOString().split("T")[0]),
-    ))
+    .where(and(...conditions))
     .groupBy(clinicFinancials.periodDate)
     .orderBy(desc(clinicFinancials.periodDate));
 

@@ -3,7 +3,7 @@
  * via users -> physicians (assignedOwnerId) -> physicianMonthlySummary.
  */
 import { db } from "./db";
-import { sql, eq } from "drizzle-orm";
+import { sql, eq, and, isNull, gte } from "drizzle-orm";
 import { users, physicians, physicianMonthlySummary } from "@shared/schema";
 
 export interface MarketerRoiRow {
@@ -27,6 +27,8 @@ export async function getMarketerRoi(filters: {
   const cutoff = new Date();
   cutoff.setMonth(cutoff.getMonth() - months);
 
+  const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, "0")}`;
+
   const rows = await db
     .select({
       marketerId: users.id,
@@ -38,14 +40,19 @@ export async function getMarketerRoi(filters: {
       totalRevenue: sql<number>`COALESCE(SUM(CAST(${physicianMonthlySummary.revenueGenerated} AS NUMERIC)), 0)`,
     })
     .from(users)
-    .leftJoin(physicians, eq(physicians.assignedOwnerId, users.id))
-    .leftJoin(physicianMonthlySummary, eq(physicianMonthlySummary.physicianId, physicians.id))
+    .leftJoin(physicians, and(eq(physicians.assignedOwnerId, users.id), isNull(physicians.deletedAt)))
+    .leftJoin(
+      physicianMonthlySummary,
+      and(eq(physicianMonthlySummary.physicianId, physicians.id), gte(physicianMonthlySummary.month, cutoffStr)),
+    )
     .where(eq(users.role, "MARKETER"))
     .groupBy(users.id, users.name, users.annualCompensation, users.travelBudget);
 
   return rows.map(r => {
-    const comp = Number(r.annualCompensation ?? 0);
-    const travel = Number(r.travelBudget ?? 0);
+    const annualComp = Number(r.annualCompensation ?? 0);
+    const annualTravel = Number(r.travelBudget ?? 0);
+    const comp = Math.round((annualComp / 12) * months);
+    const travel = Math.round((annualTravel / 12) * months);
     const totalCost = comp + travel;
     const revenue = Number(r.totalRevenue);
     const referrals = Number(r.totalReferrals);

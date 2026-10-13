@@ -48,8 +48,15 @@ export default function EbitdaRollupPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {isLoading || !latest ? (
+        {isLoading ? (
           [0, 1, 2, 3].map(i => <Skeleton key={i} className="h-24" />)
+        ) : !latest ? (
+          [
+            { label: "Total Revenue", id: "kpi-revenue" },
+            { label: "Total Expenses", id: "kpi-expenses" },
+            { label: "EBITDA", id: "kpi-ebitda" },
+            { label: "EBITDA Margin", id: "kpi-margin" },
+          ].map(k => <Kpi key={k.id} label={k.label} value="—" testId={k.id} />)
         ) : (
           <>
             <Kpi label="Total Revenue" value={fmtMoney(latest.totalGrossRevenue)} testId="kpi-revenue" />

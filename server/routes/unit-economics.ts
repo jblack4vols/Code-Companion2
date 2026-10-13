@@ -138,14 +138,14 @@ export async function registerUnitEconomicsRoutes(app: Express) {
     async (req, res) => {
       try {
         const locationScope = await getUserLocationScope(req);
-        // Practice-wide totals are not location-scoped; restrict to unscoped users
-        if (locationScope !== null) {
-          return res.status(403).json({ message: "Forbidden: practice-wide data requires all-location access" });
+        if (locationScope !== null && locationScope.length === 0) {
+          return res.json([]);
         }
         const months = req.query.months ? parseInt(req.query.months as string, 10) : 12;
         const data = await unitEconomicsStorage.getEbitdaRollup({
           periodType: (req.query.periodType as string) || "MONTHLY",
           months: Number.isFinite(months) && months > 0 ? months : 12,
+          locationIds: locationScope,
         });
         res.json(data);
       } catch (err: any) {
