@@ -775,6 +775,8 @@ export const claims = pgTable("claims", {
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => [
+  // Unique: upsertClaim relies on ON CONFLICT (claim_number); Postgres requires this constraint.
+  uniqueIndex("claims_claim_number_unique").on(table.claimNumber),
   index("claims_location_idx").on(table.locationId),
   index("claims_dos_idx").on(table.dos),
   index("claims_status_idx").on(table.status),
