@@ -31,7 +31,8 @@ server/
   outlook.ts            Email sending (SMTP + Graph)
   sharepoint.ts         SharePoint sync via Graph API
   middleware/            auth, csrf, envValidation, errorHandler, rateLimiter
-  routes/               18 route modules (auth, physicians, referrals, etc.)
+  routes/               36 route modules (auth, physicians, referrals, revenue-recovery, etc.)
+  storage-*.ts          19 domain storage modules (revenue-recovery, bcbs-audit, billing-lag, etc.)
 shared/
   schema.ts             Drizzle table/enum definitions (shared types for client+server)
 script/
