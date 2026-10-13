@@ -229,6 +229,8 @@ export interface IStorage {
   // Referrals
   getReferrals(physicianId?: string, locationIds?: string[]): Promise<Referral[]>;
   getReferralsPaginated(filters: ReferralFilters): Promise<PaginatedResult<any>>;
+  getUnscheduledReferralAging(filters: { locationId?: string; locationIds?: string[] | null }): Promise<any[]>;
+  getExpiringAuthorizations(filters: { daysAhead?: number; locationId?: string; locationIds?: string[] | null }): Promise<any[]>;
   createReferral(ref: InsertReferral): Promise<Referral>;
   updateReferral(id: string, data: Partial<InsertReferral>): Promise<Referral | undefined>;
 
@@ -487,6 +489,8 @@ export class DatabaseStorage implements IStorage {
   // Referrals
   getReferrals = referralsStorage.getReferrals;
   getReferralsPaginated = referralsStorage.getReferralsPaginated;
+  getUnscheduledReferralAging = referralsStorage.getUnscheduledReferralAging;
+  getExpiringAuthorizations = referralsStorage.getExpiringAuthorizations;
   createReferral = referralsStorage.createReferral;
   updateReferral = referralsStorage.updateReferral;
   softDeleteReferral = referralsStorage.softDeleteReferral;

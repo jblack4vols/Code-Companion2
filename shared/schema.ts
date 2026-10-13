@@ -74,6 +74,8 @@ export const users = pgTable("users", {
   forcePasswordChange: boolean("force_password_change").default(true).notNull(),
   passwordResetToken: text("password_reset_token"),
   passwordResetExpires: timestamp("password_reset_expires"),
+  annualCompensation: numeric("annual_compensation", { precision: 12, scale: 2 }),
+  travelBudget: numeric("travel_budget", { precision: 12, scale: 2 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -171,6 +173,9 @@ export const referrals = pgTable("referrals", {
   dischargeReason: text("discharge_reason"),
   scheduledVisits: integer("scheduled_visits").default(0),
   arrivedVisits: integer("arrived_visits").default(0),
+  authorizedVisits: integer("authorized_visits"),
+  authExpirationDate: date("auth_expiration_date"),
+  authNumber: text("auth_number"),
   discipline: text("discipline"),
   primaryInsurance: text("primary_insurance"),
   primaryPayerType: text("primary_payer_type"),

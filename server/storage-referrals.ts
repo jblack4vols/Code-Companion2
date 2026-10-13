@@ -3,7 +3,7 @@
  * Extracted from storage.ts to keep files under 200 lines.
  */
 import { db } from "./db";
-import { eq, desc, asc, and, or, ilike, isNull, isNotNull, gte, lte, inArray, sql } from "drizzle-orm";
+import { eq, desc, asc, and, or, ilike, isNull, isNotNull, not, gte, lte, inArray, sql } from "drizzle-orm";
 import {
   referrals, physicians, locations,
   type Referral, type InsertReferral,
@@ -286,4 +286,72 @@ export async function exportReferralsCsv(filters: ReferralFilters): Promise<any[
     .leftJoin(locations, eq(referrals.locationId, locations.id))
     .where(where)
     .orderBy(desc(referrals.referralDate));
+}
+
+export async function getUnscheduledReferralAging(filters: {
+  locationId?: string;
+  locationIds?: string[] | null;
+}): Promise<any[]> {
+  const conditions: any[] = [
+    eq(referrals.status, "RECEIVED"),
+    isNull(referrals.dateOfFirstScheduledVisit),
+    isNull(referrals.deletedAt),
+  ];
+  if (filters.locationId) conditions.push(eq(referrals.locationId, filters.locationId));
+  if (filters.locationIds) conditions.push(inArray(referrals.locationId, filters.locationIds));
+
+  return db
+    .select({
+      id: referrals.id,
+      patientFullName: referrals.patientFullName,
+      patientPhone: referrals.patientPhone,
+      patientAccountNumber: referrals.patientAccountNumber,
+      referralDate: referrals.referralDate,
+      referringProviderName: referrals.referringProviderName,
+      locationId: referrals.locationId,
+      primaryInsurance: referrals.primaryInsurance,
+      valueEstimate: referrals.valueEstimate,
+      diagnosisCategory: referrals.diagnosisCategory,
+    })
+    .from(referrals)
+    .where(and(...conditions))
+    .orderBy(asc(referrals.referralDate));
+}
+
+export async function getExpiringAuthorizations(filters: {
+  daysAhead?: number;
+  locationId?: string;
+  locationIds?: string[] | null;
+}): Promise<any[]> {
+  const daysAhead = filters.daysAhead ?? 30;
+  const cutoff = new Date();
+  cutoff.setDate(cutoff.getDate() + daysAhead);
+
+  const conditions: any[] = [
+    isNotNull(referrals.authExpirationDate),
+    lte(referrals.authExpirationDate, cutoff.toISOString().split("T")[0]),
+    isNull(referrals.deletedAt),
+    not(eq(referrals.status, "DISCHARGED")),
+  ];
+  if (filters.locationId) conditions.push(eq(referrals.locationId, filters.locationId));
+  if (filters.locationIds) conditions.push(inArray(referrals.locationId, filters.locationIds));
+
+  return db
+    .select({
+      id: referrals.id,
+      patientFullName: referrals.patientFullName,
+      patientPhone: referrals.patientPhone,
+      patientAccountNumber: referrals.patientAccountNumber,
+      authorizedVisits: referrals.authorizedVisits,
+      arrivedVisits: referrals.arrivedVisits,
+      authExpirationDate: referrals.authExpirationDate,
+      authNumber: referrals.authNumber,
+      primaryInsurance: referrals.primaryInsurance,
+      locationId: referrals.locationId,
+      caseTherapist: referrals.caseTherapist,
+      status: referrals.status,
+    })
+    .from(referrals)
+    .where(and(...conditions))
+    .orderBy(asc(referrals.authExpirationDate));
 }
