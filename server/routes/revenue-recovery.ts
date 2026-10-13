@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireRole, qstr } from "./shared";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
+import { getBcbsAuditStatus } from "../storage-bcbs-audit";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
 
 export async function registerRevenueRecoveryRoutes(app: Express) {
@@ -544,6 +545,25 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // ---- BCBS Audit Status Panel ----
+
+  // GET /api/revenue/bcbs-audit — payer-scoped audit status (defaults to BCBS)
+  app.get("/api/revenue/bcbs-audit", READ, async (req, res) => {
+    try {
+      const result = await getBcbsAuditStatus({
+        payer: qstr(req.query.payer as any),
+        dateFrom: qstr(req.query.dateFrom as any),
+        dateTo: qstr(req.query.dateTo as any),
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // ---- Denial Intelligence (summary) ----
 
   // GET /api/revenue/denials/summary — overall denial stats
   app.get("/api/revenue/denials/summary", READ, async (req, res) => {
