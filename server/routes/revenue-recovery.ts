@@ -12,7 +12,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireRole, qstr, getUserLocationScope } from "./shared";
-import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
+import { flagUnderpaidClaims, upsertClaim, upsertPayerRate, getPayerProfitability } from "../storage-revenue-recovery";
 import { getBcbsAuditStatus } from "../storage-bcbs-audit";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
 
@@ -416,6 +416,21 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const result = await storage.getReimbursementSummary({
         locationId: qstr(req.query.locationId as any),
         locationIds: (await getUserLocationScope(req)) ?? undefined,
+        dateFrom: qstr(req.query.dateFrom as any),
+        dateTo: qstr(req.query.dateTo as any),
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/revenue/payer-profitability — per-payer profitability matrix
+  app.get("/api/revenue/payer-profitability", READ, async (req, res) => {
+    try {
+      const result = await getPayerProfitability({
+        locationId: qstr(req.query.locationId as any),
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });

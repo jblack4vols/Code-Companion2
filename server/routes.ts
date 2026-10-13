@@ -40,6 +40,8 @@ import { registerProviderProductivityV2Routes } from "./routes/provider-producti
 import { registerOutlookOAuthRoutes } from "./routes/outlook-oauth";
 import { registerLifecycleRoutes } from "./routes/lifecycle";
 import { registerCashFlowRoutes } from "./routes/cash-flow";
+import { registerReferralClaimsRoutes } from "./routes/referral-claims";
+import { registerMarketerRoiRoutes } from "./routes/marketer-roi";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -133,6 +135,8 @@ export async function registerRoutes(
   registerOutlookOAuthRoutes(app);
   registerLifecycleRoutes(app);
   registerCashFlowRoutes(app);
+  registerReferralClaimsRoutes(app);
+  registerMarketerRoiRoutes(app);
 
   return httpServer;
 }

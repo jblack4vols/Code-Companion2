@@ -4,6 +4,7 @@
  */
 import type { Express } from "express";
 import { storage } from "../storage";
+import * as unitEconomicsStorage from "../storage-unit-economics";
 import { requireRole, getClientIp, getUserLocationScope } from "./shared";
 import { evaluateAlerts, evaluateProviderAlerts } from "../unit-economics-alert-engine";
 import os from "os";
@@ -126,6 +127,30 @@ export async function registerUnitEconomicsRoutes(app: Express) {
       } catch (err: any) {
         console.error(err);
       res.status(500).json({ message: "Internal server error" });
+      }
+    },
+  );
+
+  // GET /api/unit-economics/ebitda-rollup — practice-wide EBITDA by period (all locations)
+  app.get(
+    "/api/unit-economics/ebitda-rollup",
+    requireRole("OWNER", "DIRECTOR", "ANALYST"),
+    async (req, res) => {
+      try {
+        const locationScope = await getUserLocationScope(req);
+        // Practice-wide totals are not location-scoped; restrict to unscoped users
+        if (locationScope !== null) {
+          return res.status(403).json({ message: "Forbidden: practice-wide data requires all-location access" });
+        }
+        const months = req.query.months ? parseInt(req.query.months as string, 10) : 12;
+        const data = await unitEconomicsStorage.getEbitdaRollup({
+          periodType: (req.query.periodType as string) || "MONTHLY",
+          months: Number.isFinite(months) && months > 0 ? months : 12,
+        });
+        res.json(data);
+      } catch (err: any) {
+        console.error(err);
+        res.status(500).json({ message: "Internal server error" });
       }
     },
   );
