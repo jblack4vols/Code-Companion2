@@ -33,3 +33,24 @@ Ranked by ROI for an 8-location physician referral CRM. Evidence from codebase o
 - **XS** — < 1 hour, single file change
 - **S** — 1–4 hours, 2–3 files
 - **M** — 4–12 hours, multiple files + tests
+
+---
+
+## Roadmap Features — all shipped
+
+All six roadmap analytics features are built and merged to `main`:
+
+| Feature | Route | Status |
+|---|---|---|
+| Referral Intelligence Dashboard | `/referral-intelligence` | DONE |
+| RPV Analytics by Location | `/rpv-analytics` | DONE |
+| Provider Productivity View | `/unit-economics/providers` | DONE |
+| Patient Lifecycle Funnel | `/lifecycle` | DONE |
+| BCBS Audit Status Panel | `/revenue/bcbs-audit` | DONE — payer-scoped claim-lifecycle + exposure panel (`storage-bcbs-audit.ts`, `GET /api/revenue/bcbs-audit`), PR #64 |
+| Cash Flow Projection | `/cash-flow` | DONE |
+
+## Remaining P1 (open)
+
+- **#6 — At-risk referral source alerting.** Dashboard exists (declining referrals); the
+  detection→notification wiring (physicians down >20% over 2 months + no touchpoint in 30 days +
+  overdue follow-up, pushed into the existing alert/digest pipeline) is not yet built.
