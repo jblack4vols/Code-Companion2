@@ -331,7 +331,8 @@ export async function getExpiringAuthorizations(filters: {
     isNotNull(referrals.authExpirationDate),
     lte(referrals.authExpirationDate, cutoff.toISOString().split("T")[0]),
     isNull(referrals.deletedAt),
-    not(eq(referrals.status, "DISCHARGED")),
+    inArray(referrals.status, ["RECEIVED", "SCHEDULED", "EVAL_COMPLETED"]),
+    sql`(${referrals.authorizedVisits} IS NULL OR ${referrals.arrivedVisits} IS NULL OR ${referrals.arrivedVisits} < ${referrals.authorizedVisits})`,
   ];
   if (filters.locationId) conditions.push(eq(referrals.locationId, filters.locationId));
   if (filters.locationIds) conditions.push(inArray(referrals.locationId, filters.locationIds));

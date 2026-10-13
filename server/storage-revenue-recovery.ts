@@ -362,11 +362,13 @@ export interface PayerProfitabilityRow {
 
 export async function getPayerProfitability(filters: {
   locationId?: string;
+  locationIds?: string[] | null;
   dateFrom?: string;
   dateTo?: string;
 }): Promise<PayerProfitabilityRow[]> {
   const conditions: any[] = [];
   if (filters.locationId) conditions.push(eq(claims.locationId, filters.locationId));
+  if (filters.locationIds) conditions.push(inArray(claims.locationId, filters.locationIds));
   if (filters.dateFrom) conditions.push(gte(claims.dos, filters.dateFrom));
   if (filters.dateTo) conditions.push(lte(claims.dos, filters.dateTo));
   const where = conditions.length ? and(...conditions) : undefined;
@@ -376,6 +378,7 @@ export async function getPayerProfitability(filters: {
       payer: claims.payer,
       payerType: claims.payerType,
       claimCount: sql<number>`COUNT(*)`,
+      visitCount: sql<number>`COUNT(DISTINCT ${claims.dos})`,
       totalBilled: sql<number>`COALESCE(SUM(CAST(${claims.billedAmount} AS NUMERIC)), 0)`,
       totalPaid: sql<number>`COALESCE(SUM(CAST(${claims.paidAmount} AS NUMERIC)), 0)`,
       totalExpected: sql<number>`COALESCE(SUM(CAST(${claims.expectedAmount} AS NUMERIC)), 0)`,
@@ -388,18 +391,21 @@ export async function getPayerProfitability(filters: {
     .groupBy(claims.payer, claims.payerType)
     .orderBy(sql`SUM(CAST(${claims.paidAmount} AS NUMERIC)) DESC`);
 
-  return rows.map(r => ({
-    payer: r.payer ?? "Unknown",
-    payerType: r.payerType,
-    claimCount: Number(r.claimCount),
-    totalBilled: Number(r.totalBilled),
-    totalPaid: Number(r.totalPaid),
-    totalExpected: Number(r.totalExpected),
-    avgReimbursement: Number(r.avgReimbursement),
-    denialCount: Number(r.denialCount),
-    denialRate: Number(r.claimCount) > 0 ? Math.round((Number(r.denialCount) / Number(r.claimCount)) * 100) : 0,
-    collectionRate: Number(r.totalBilled) > 0 ? Math.round((Number(r.totalPaid) / Number(r.totalBilled)) * 100) : 0,
-    avgDaysToPay: Math.round(Number(r.avgDaysToPay)),
-    netRevenuePerVisit: Number(r.claimCount) > 0 ? Math.round(Number(r.totalPaid) / Number(r.claimCount)) : 0,
-  }));
+  return rows.map(r => {
+    const visits = Number(r.visitCount);
+    return {
+      payer: r.payer ?? "Unknown",
+      payerType: r.payerType,
+      claimCount: Number(r.claimCount),
+      totalBilled: Number(r.totalBilled),
+      totalPaid: Number(r.totalPaid),
+      totalExpected: Number(r.totalExpected),
+      avgReimbursement: Number(r.avgReimbursement),
+      denialCount: Number(r.denialCount),
+      denialRate: Number(r.claimCount) > 0 ? Math.round((Number(r.denialCount) / Number(r.claimCount)) * 100) : 0,
+      collectionRate: Number(r.totalBilled) > 0 ? Math.round((Number(r.totalPaid) / Number(r.totalBilled)) * 100) : 0,
+      avgDaysToPay: Math.round(Number(r.avgDaysToPay)),
+      netRevenuePerVisit: visits > 0 ? Math.round(Number(r.totalPaid) / visits) : 0,
+    };
+  });
 }

@@ -2,12 +2,14 @@
  * Referral-to-Claims Linking — actual collected revenue per referral vs. estimates.
  * Gated to OWNER/DIRECTOR/ANALYST.
  */
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Link2 } from "lucide-react";
+import { Link2, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Summary {
   totalReferrals: number;
@@ -41,15 +43,19 @@ async function getJson<T>(url: string): Promise<T> {
   return r.json();
 }
 
+const PAGE_SIZE = 50;
+
 export default function ReferralClaimsLinkingPage() {
+  const [page, setPage] = useState(1);
   const { data: summary, isLoading: summaryLoading } = useQuery<Summary>({
     queryKey: ["/api/referral-claims/summary"],
     queryFn: () => getJson("/api/referral-claims/summary"),
   });
-  const { data: linked, isLoading: linkedLoading } = useQuery<{ data: LinkedRow[]; total: number }>({
-    queryKey: ["/api/referral-claims/linked"],
-    queryFn: () => getJson("/api/referral-claims/linked"),
+  const { data: linked, isLoading: linkedLoading } = useQuery<{ data: LinkedRow[]; total: number; page: number; pageSize: number }>({
+    queryKey: ["/api/referral-claims/linked", page],
+    queryFn: () => getJson(`/api/referral-claims/linked?page=${page}&pageSize=${PAGE_SIZE}`),
   });
+  const totalPages = linked ? Math.ceil(linked.total / PAGE_SIZE) : 0;
 
   const s = summary;
   const linkRate = s && s.totalReferrals > 0 ? Math.round((s.linkedReferrals / s.totalReferrals) * 100) : 0;
@@ -92,6 +98,7 @@ export default function ReferralClaimsLinkingPage() {
         <CardHeader><CardTitle className="text-base">Referrals and Linked Claims</CardTitle></CardHeader>
         <CardContent>
           {linkedLoading ? <Skeleton className="h-40 w-full" /> : (
+            <>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -129,6 +136,23 @@ export default function ReferralClaimsLinkingPage() {
                 )}
               </TableBody>
             </Table>
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between pt-4" data-testid="pagination">
+                <p className="text-sm text-muted-foreground">
+                  Showing {(page - 1) * PAGE_SIZE + 1}–{Math.min(page * PAGE_SIZE, linked?.total ?? 0)} of {linked?.total ?? 0}
+                </p>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" disabled={page <= 1} onClick={() => setPage(p => p - 1)} data-testid="button-prev">
+                    <ChevronLeft className="w-4 h-4" /> Prev
+                  </Button>
+                  <span className="text-sm">Page {page} of {totalPages}</span>
+                  <Button variant="outline" size="sm" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)} data-testid="button-next">
+                    Next <ChevronRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              </div>
+            )}
+            </>
           )}
         </CardContent>
       </Card>

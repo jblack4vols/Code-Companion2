@@ -20,8 +20,12 @@ export function registerAuthRoutes(app: Express) {
     if (!req.session.userId) return res.status(401).json({ message: "Not authenticated" });
     const user = await storage.getUser(req.session.userId);
     if (!user) return res.status(401).json({ message: "Not authenticated" });
-    const { password: _, passwordResetToken: _t, passwordResetExpires: _e, ...safeUser } = user;
-    res.json(safeUser);
+    const { password: _, passwordResetToken: _t, passwordResetExpires: _e, annualCompensation: _ac, travelBudget: _tb, ...safeUser } = user;
+    if (user.role === "OWNER" || user.role === "DIRECTOR") {
+      res.json({ ...safeUser, annualCompensation: user.annualCompensation, travelBudget: user.travelBudget });
+    } else {
+      res.json(safeUser);
+    }
   });
 
   app.get("/api/auth/session-timeout", (_req, res) => {

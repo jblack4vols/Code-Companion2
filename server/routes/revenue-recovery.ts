@@ -11,7 +11,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { requireRole, qstr } from "./shared";
+import { requireRole, qstr, getUserLocationScope } from "./shared";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate, getPayerProfitability } from "../storage-revenue-recovery";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
 
@@ -306,6 +306,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
             await upsertClaim({
               claimNumber,
               dos,
+              patientAccountNumber: columnMapping.patientAccountNumber ? String(row[columnMapping.patientAccountNumber] || "").trim() || null : null,
               payer: String(row[columnMapping.payer] || "").trim() || null,
               cptCodes: String(row[columnMapping.cptCodes] || "").trim() || null,
               units: columnMapping.units ? parseNum(row[columnMapping.units]) : null,
@@ -420,8 +421,17 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   // GET /api/revenue/payer-profitability — per-payer profitability matrix
   app.get("/api/revenue/payer-profitability", READ, async (req, res) => {
     try {
+      const locationScope = await getUserLocationScope(req);
+      if (locationScope !== null && locationScope.length === 0) {
+        return res.json([]);
+      }
+      const requestedLocation = qstr(req.query.locationId as any);
+      if (requestedLocation && locationScope !== null && !locationScope.includes(requestedLocation)) {
+        return res.json([]);
+      }
       const result = await getPayerProfitability({
-        locationId: qstr(req.query.locationId as any),
+        locationId: requestedLocation,
+        locationIds: locationScope,
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });
