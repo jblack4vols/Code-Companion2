@@ -20,6 +20,11 @@ export async function getUserByEmail(email: string): Promise<User | undefined> {
   return user;
 }
 
+export async function getUserByMicrosoftId(microsoftId: string): Promise<User | undefined> {
+  const [user] = await db.select().from(users).where(eq(users.microsoftId, microsoftId));
+  return user;
+}
+
 export async function getUserByResetToken(token: string): Promise<User | undefined> {
   const [user] = await db.select().from(users).where(eq(users.passwordResetToken, token));
   return user;

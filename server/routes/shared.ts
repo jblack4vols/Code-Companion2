@@ -17,6 +17,7 @@ export async function getUserLocationScope(req: Request): Promise<string[] | nul
 declare module "express-session" {
   interface SessionData {
     userId: string;
+    oauthState?: string;
   }
 }
 

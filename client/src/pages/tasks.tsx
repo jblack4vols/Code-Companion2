@@ -70,6 +70,7 @@ export default function TasksPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/tasks"] });
     },
+    onError: (err: unknown) => toast({ title: "Could not update task", description: err instanceof Error ? err.message : "Unknown error", variant: "destructive" }),
   });
 
   const handleAdd = (e: React.FormEvent<HTMLFormElement>) => {

@@ -12,10 +12,10 @@ const isServerless = !!process.env.VERCEL;
 
 const pool = new pg.Pool({
   connectionString: process.env.DATABASE_URL,
-  max: isServerless ? 3 : 20,
-  idleTimeoutMillis: isServerless ? 10000 : 30000,
-  connectionTimeoutMillis: 10000,
-  ssl: isProduction ? { rejectUnauthorized: false } : undefined,
+  max: isServerless ? 1 : 20,
+  idleTimeoutMillis: isServerless ? 5000 : 30000,
+  connectionTimeoutMillis: 20000,
+  ssl: (isProduction || isServerless) ? { rejectUnauthorized: false } : undefined,
 });
 
 export const db = drizzle(pool, { schema });

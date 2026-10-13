@@ -10,6 +10,7 @@ import { eq, and, gte, lt, sql } from "drizzle-orm";
 import {
   physicians, referrals, collections, locations, territories,
   tieringWeights, appSettings, tasks, users, scheduledReports,
+  userOauthTokens, calendarEvents,
 } from "@shared/schema";
 import {
   sendOverdueTaskDigest, sendScheduledReportEmail, sendUserInactivityDigest,
@@ -252,10 +253,85 @@ async function getScheduleSetting(key: string, defaultValue: string): Promise<st
   } catch { return defaultValue; }
 }
 
+/** Sync Outlook calendar events for all users with connected Microsoft accounts */
+async function syncAllOutlookCalendars() {
+  try {
+    const { getValidAccessToken } = await import("./outlook-oauth-token-helpers");
+    const { Client } = await import("@microsoft/microsoft-graph-client");
+    const { storage } = await import("./storage");
+
+    const tokenRows = await db.select().from(userOauthTokens);
+    if (tokenRows.length === 0) return;
+
+    const now = new Date();
+    const end = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+    let totalSynced = 0;
+
+    for (const row of tokenRows) {
+      try {
+        const accessToken = await getValidAccessToken(row.userId);
+        const client = Client.initWithMiddleware({
+          authProvider: { getAccessToken: async () => accessToken },
+        });
+
+        const result = await client
+          .api("/me/calendarView")
+          .query({
+            startDateTime: now.toISOString(),
+            endDateTime: end.toISOString(),
+            $select: "id,subject,bodyPreview,start,end,isAllDay,onlineMeetingUrl",
+            $top: 100,
+          })
+          .get();
+
+        const events: any[] = result.value ?? [];
+        for (const ev of events) {
+          const startAt = new Date(ev.start?.dateTime ?? ev.start?.date);
+          const endAt = new Date(ev.end?.dateTime ?? ev.end?.date);
+          const [existing] = await db
+            .select({ id: calendarEvents.id })
+            .from(calendarEvents)
+            .where(eq(calendarEvents.outlookEventId, ev.id));
+
+          if (existing) {
+            await storage.updateCalendarEvent(existing.id, {
+              title: ev.subject || "(No title)",
+              description: ev.bodyPreview ?? null,
+              startAt, endAt,
+              allDay: ev.isAllDay ?? false,
+              meetingUrl: ev.onlineMeetingUrl ?? null,
+            });
+          } else {
+            await storage.createCalendarEvent({
+              title: ev.subject || "(No title)",
+              description: ev.bodyPreview ?? null,
+              eventType: "MEETING",
+              startAt, endAt,
+              organizerUserId: row.userId,
+              outlookEventId: ev.id,
+              allDay: ev.isAllDay ?? false,
+              meetingUrl: ev.onlineMeetingUrl ?? null,
+            });
+          }
+          totalSynced++;
+        }
+      } catch (err: any) {
+        // Per-user failures are non-fatal — log and continue
+        console.error(`[Calendar Sync] Failed for user ${row.userId}: ${err.message}`);
+      }
+    }
+
+    console.log(`[Calendar Sync] Synced ${totalSynced} events for ${tokenRows.length} user(s)`);
+  } catch (err: any) {
+    console.error(`[Calendar Sync] Fatal error: ${err.message}`);
+  }
+}
+
 let etlTask: ScheduledTask | null = null;
 let digestTask: ScheduledTask | null = null;
 let reportTask: ScheduledTask | null = null;
 let inactivityTask: ScheduledTask | null = null;
+let calendarSyncTask: ScheduledTask | null = null;
 
 export async function scheduleETL() {
   const etlTime = await getScheduleSetting("etl_schedule_time", "2:00");
@@ -287,11 +363,17 @@ export async function scheduleETL() {
     console.log("[Inactivity] Weekly user inactivity check triggered at", new Date().toISOString());
     await checkUserInactivity();
   });
+  if (calendarSyncTask) calendarSyncTask.stop();
+  calendarSyncTask = cron.schedule("30 2 * * *", async () => {
+    console.log("[Calendar Sync] Nightly sync triggered at", new Date().toISOString());
+    await syncAllOutlookCalendars();
+  });
 
   console.log(`[ETL] Nightly ETL scheduled for ${etlTime} daily`);
   console.log(`[Email] Overdue task digest scheduled for ${digestTime} weekdays`);
   console.log(`[Reports] Scheduled report delivery check at ${reportTime} daily`);
   console.log("[Inactivity] User inactivity check scheduled for 8:00 AM Mondays");
+  console.log("[Calendar] Outlook calendar sync scheduled for 2:30 AM daily");
 }
 
 export async function triggerETL() { await runETL(); }

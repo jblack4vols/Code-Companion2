@@ -237,6 +237,7 @@ export default function AdminLocationsPage() {
                               size="icon"
                               variant="ghost"
                               onClick={() => openEdit(loc)}
+                              aria-label={`Edit ${loc.name}`}
                               data-testid={`button-edit-location-${loc.id}`}
                             >
                               <Pencil className="w-4 h-4" />
@@ -248,6 +249,7 @@ export default function AdminLocationsPage() {
                                 <Button
                                   size="icon"
                                   variant="ghost"
+                                  aria-label={`Delete ${loc.name}`}
                                   data-testid={`button-delete-location-${loc.id}`}
                                 >
                                   <Trash2 className="w-4 h-4" />

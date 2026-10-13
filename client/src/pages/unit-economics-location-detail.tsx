@@ -137,6 +137,7 @@ export default function UnitEconomicsLocationDetailPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/unit-economics/alerts", locationId] });
       toast({ title: "Alert acknowledged" });
     },
+    onError: (err: Error) => toast({ title: "Could not acknowledge alert", description: err.message, variant: "destructive" }),
   });
 
   if (isLoading) {

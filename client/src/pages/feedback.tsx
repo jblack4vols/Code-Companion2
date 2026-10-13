@@ -417,7 +417,7 @@ export default function FeedbackPage() {
               </>
             )}
             {(filterCategory !== "all" || filterStatus !== "all" || searchQuery) && (
-              <Button variant="ghost" size="icon" onClick={() => { setFilterCategory("all"); setFilterStatus("all"); setSearchQuery(""); }} data-testid="button-clear-filters">
+              <Button variant="ghost" size="icon" onClick={() => { setFilterCategory("all"); setFilterStatus("all"); setSearchQuery(""); }} aria-label="Clear filters" data-testid="button-clear-filters">
                 <X className="w-4 h-4" />
               </Button>
             )}
@@ -480,6 +480,7 @@ export default function FeedbackPage() {
                                 size="icon"
                                 className="h-8 w-8"
                                 onClick={(e) => { e.stopPropagation(); openEdit(item); }}
+                                aria-label="Edit feedback item"
                                 data-testid={`button-edit-${item.id}`}
                               >
                                 <Pencil className="w-3.5 h-3.5" />
@@ -489,6 +490,7 @@ export default function FeedbackPage() {
                                 size="icon"
                                 className="h-8 w-8 text-destructive"
                                 onClick={(e) => { e.stopPropagation(); setDeleteId(item.id); }}
+                                aria-label="Delete feedback item"
                                 data-testid={`button-delete-${item.id}`}
                               >
                                 <Trash2 className="w-3.5 h-3.5" />
@@ -595,6 +597,7 @@ export default function FeedbackPage() {
                           size="icon"
                           className="h-6 w-6 shrink-0"
                           onClick={() => removeFile(idx)}
+                          aria-label="Remove attached file"
                           data-testid={`button-remove-file-${idx}`}
                         >
                           <X className="w-3 h-3" />
@@ -730,6 +733,7 @@ export default function FeedbackPage() {
                         className="shrink-0 self-end"
                         disabled={!noteContent.trim() || addNoteMutation.isPending}
                         onClick={() => addNoteMutation.mutate({ id: detail.id, content: noteContent })}
+                        aria-label="Add note"
                         data-testid="button-add-note"
                       >
                         <Send className="w-4 h-4" />

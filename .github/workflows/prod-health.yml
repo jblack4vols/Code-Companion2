@@ -1,0 +1,27 @@
+name: Prod Health
+
+# Lightweight cloud-side liveness check for crm.tristarpt.com.
+# Runs every 15 minutes and on demand. If a probe fails, the workflow run
+# fails — surfaces in the Actions tab and (with default GitHub settings)
+# emails the repo admins.
+#
+# This deliberately does NOT touch authenticated endpoints. To monitor
+# /api/feedback or /api/audit-logs you'd need to add an API key with the
+# relevant scopes and read it from a repo secret.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    name: Probe production
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run probe
+        run: bash scripts/check-prod-health.sh
