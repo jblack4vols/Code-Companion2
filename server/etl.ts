@@ -6,7 +6,7 @@
  */
 import cron, { type ScheduledTask } from "node-cron";
 import { db } from "./db";
-import { eq, and, gte, lt, sql } from "drizzle-orm";
+import { eq, and, gte, lt, sql, inArray } from "drizzle-orm";
 import {
   physicians, referrals, collections, locations, territories,
   tieringWeights, appSettings, tasks, users, scheduledReports,
@@ -14,6 +14,7 @@ import {
 } from "@shared/schema";
 import {
   sendOverdueTaskDigest, sendScheduledReportEmail, sendUserInactivityDigest,
+  sendAtRiskReferralDigestEmail,
 } from "./outlook";
 import { storage } from "./storage";
 import {
@@ -164,6 +165,50 @@ async function sendOverdueDigests() {
     console.log(`[Email] Overdue digests sent to ${Object.keys(byUser).length} users`);
   } catch (err: any) {
     console.error("[Email] Error sending overdue digests:", err.message);
+  }
+}
+
+// ---- At-risk referral source digest (weekday push to OWNER/DIRECTOR) ----
+
+function getAppUrl(): string {
+  return process.env.REPLIT_DEV_DOMAIN
+    ? `https://${process.env.REPLIT_DEV_DOMAIN}`
+    : process.env.REPL_SLUG
+      ? `https://${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`
+      : "https://tristar360.replit.app";
+}
+
+export async function sendAtRiskReferralDigests() {
+  console.log("[Email] Checking for at-risk referral sources...");
+  try {
+    const result = await storage.getAtRiskReferralSources();
+    const sources = (result?.data ?? [])
+      .filter(s => s.physician)
+      .map(s => ({
+        name: `${s.physician!.firstName} ${s.physician!.lastName}`.trim(),
+        practiceName: s.physician!.practiceName,
+        changePercent: s.changePercent,
+        currentCount: s.currentCount,
+        priorCount: s.priorCount,
+        riskSignal: s.riskSignal,
+        daysSinceContact: s.daysSinceContact,
+      }));
+    if (sources.length === 0) { console.log("[Email] No at-risk referral sources."); return; }
+
+    const recipients = await db
+      .select({ email: users.email, name: users.name })
+      .from(users)
+      .where(inArray(users.role, ["OWNER", "DIRECTOR"]));
+    const appUrl = getAppUrl();
+    let sent = 0;
+    for (const r of recipients) {
+      if (!r.email) continue;
+      await sendAtRiskReferralDigestEmail(r.email, r.name, sources, appUrl);
+      sent++;
+    }
+    console.log(`[Email] At-risk referral digest sent to ${sent} recipients (${sources.length} sources)`);
+  } catch (err: any) {
+    console.error("[Email] Error sending at-risk referral digest:", err.message);
   }
 }
 
@@ -354,6 +399,7 @@ export async function scheduleETL() {
   digestTask = cron.schedule(`${digM} ${digH} * * 1-5`, async () => {
     console.log("[Email] Morning overdue digest triggered at", new Date().toISOString());
     await sendOverdueDigests();
+    await sendAtRiskReferralDigests();
   });
   reportTask = cron.schedule(`${repM} ${repH} * * *`, async () => {
     console.log("[Reports] Scheduled report check triggered at", new Date().toISOString());
