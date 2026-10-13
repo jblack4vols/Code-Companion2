@@ -65,6 +65,7 @@ const financeItems = [
   { title: "Revenue Dashboard", url: "/revenue", icon: Scale },
   { title: "Claims", url: "/revenue/claims", icon: FileText },
   { title: "Denials", url: "/revenue/denials", icon: XCircle },
+  { title: "BCBS Audit", url: "/revenue/bcbs-audit", icon: ShieldCheck },
   { title: "Billing Lag", url: "/revenue/billing-lag", icon: Clock },
   { title: "Appeals", url: "/revenue/appeals", icon: Scale },
 ];

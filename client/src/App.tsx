@@ -73,6 +73,7 @@ const ReferralIntelligencePage = lazy(() => import("@/pages/referral-intelligenc
 const RevenueDashboardPage = lazy(() => import("@/pages/revenue-dashboard"));
 const RevenueClaimsPage = lazy(() => import("@/pages/revenue-claims"));
 const RevenueDenialsPage = lazy(() => import("@/pages/revenue-denials"));
+const RevenueBcbsAuditPage = lazy(() => import("@/pages/revenue-bcbs-audit"));
 const RevenueBillingLagPage = lazy(() => import("@/pages/revenue-billing-lag"));
 const RevenueAppealsPage = lazy(() => import("@/pages/revenue-appeals"));
 const RevenueImportPage = lazy(() => import("@/pages/revenue-import"));
@@ -161,6 +162,7 @@ function AuthenticatedRouter() {
         <Route path="/revenue" component={guard(ANALYTICS, RevenueDashboardPage)} />
         <Route path="/revenue/claims" component={guard(ANALYTICS, RevenueClaimsPage)} />
         <Route path="/revenue/denials" component={guard(ANALYTICS, RevenueDenialsPage)} />
+        <Route path="/revenue/bcbs-audit" component={guard(ANALYTICS, RevenueBcbsAuditPage)} />
         <Route path="/revenue/billing-lag" component={guard(ANALYTICS, RevenueBillingLagPage)} />
         <Route path="/revenue/appeals" component={guard(ANALYTICS, RevenueAppealsPage)} />
         <Route path="/revenue/import" component={guard(ANALYTICS, RevenueImportPage)} />
