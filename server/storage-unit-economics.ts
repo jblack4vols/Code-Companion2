@@ -122,19 +122,23 @@ export async function upsertClinicFinancial(data: InsertClinicFinancial): Promis
 }
 
 export async function bulkUpsertClinicFinancials(rows: InsertClinicFinancial[]): Promise<{ inserted: number; updated: number }> {
+  if (!rows.length) return { inserted: 0, updated: 0 };
+  const key = (loc: string, date: string, type: string) => `${loc}\u0000${date}\u0000${type}`;
+  // One batched existence probe (keyed on location+period) instead of a SELECT per row.
+  const locationIds = Array.from(new Set(rows.map(r => r.locationId)));
+  const existingRows = await db.select({
+    locationId: clinicFinancials.locationId,
+    periodDate: clinicFinancials.periodDate,
+    periodType: clinicFinancials.periodType,
+  }).from(clinicFinancials).where(inArray(clinicFinancials.locationId, locationIds));
+  const existing = new Set(existingRows.map(r => key(r.locationId, r.periodDate, r.periodType ?? "WEEKLY")));
   let inserted = 0;
   let updated = 0;
   for (const row of rows) {
-    const existing = await db.select({ id: clinicFinancials.id })
-      .from(clinicFinancials)
-      .where(and(
-        eq(clinicFinancials.locationId, row.locationId),
-        eq(clinicFinancials.periodDate, row.periodDate),
-        eq(clinicFinancials.periodType, row.periodType ?? "WEEKLY"),
-      ))
-      .limit(1);
+    const k = key(row.locationId, row.periodDate, row.periodType ?? "WEEKLY");
+    if (existing.has(k)) updated++;
+    else { inserted++; existing.add(k); }
     await upsertClinicFinancial(row);
-    if (existing.length > 0) updated++; else inserted++;
   }
   return { inserted, updated };
 }
@@ -175,19 +179,23 @@ export async function upsertProviderProductivity(data: InsertProviderProductivit
 }
 
 export async function bulkUpsertProviderProductivity(rows: InsertProviderProductivity[]): Promise<{ inserted: number; updated: number }> {
+  if (!rows.length) return { inserted: 0, updated: 0 };
+  const key = (user: string, loc: string, week: string) => `${user}\u0000${loc}\u0000${week}`;
+  // One batched existence probe (keyed on user+location+week) instead of a SELECT per row.
+  const userIds = Array.from(new Set(rows.map(r => r.userId)));
+  const existingRows = await db.select({
+    userId: providerProductivity.userId,
+    locationId: providerProductivity.locationId,
+    weekStartDate: providerProductivity.weekStartDate,
+  }).from(providerProductivity).where(inArray(providerProductivity.userId, userIds));
+  const existing = new Set(existingRows.map(r => key(r.userId, r.locationId, r.weekStartDate)));
   let inserted = 0;
   let updated = 0;
   for (const row of rows) {
-    const existing = await db.select({ id: providerProductivity.id })
-      .from(providerProductivity)
-      .where(and(
-        eq(providerProductivity.userId, row.userId),
-        eq(providerProductivity.locationId, row.locationId),
-        eq(providerProductivity.weekStartDate, row.weekStartDate),
-      ))
-      .limit(1);
+    const k = key(row.userId, row.locationId, row.weekStartDate);
+    if (existing.has(k)) updated++;
+    else { inserted++; existing.add(k); }
     await upsertProviderProductivity(row);
-    if (existing.length > 0) updated++; else inserted++;
   }
   return { inserted, updated };
 }
