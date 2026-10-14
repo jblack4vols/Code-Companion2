@@ -1,8 +1,8 @@
 import type { Express } from "express";
 import { db } from "../db";
 import { patientRequests, appointmentSlots, locations } from "@shared/schema";
-import { requireRole, requireAuth } from "./shared";
-import { eq, and, gte, asc, sql } from "drizzle-orm";
+import { requireRole, requireAuth, getUserLocationScope } from "./shared";
+import { eq, and, or, gte, asc, sql, isNull, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 const EMERGENCY_PHRASES = [
@@ -58,16 +58,22 @@ export function registerFrontDeskRoutes(app: Express) {
   app.get("/api/frontdesk/requests", ACCESS, async (req, res) => {
     try {
       const status = req.query.status as string | undefined;
-      let query = db.select().from(patientRequests).orderBy(asc(patientRequests.createdAt));
-
-      if (status) {
-        const results = await db.select().from(patientRequests)
-          .where(eq(patientRequests.status, status as any))
-          .orderBy(asc(patientRequests.createdAt));
-        return res.json(results);
+      const scope = await getUserLocationScope(req);
+      const conditions: any[] = [];
+      if (status) conditions.push(eq(patientRequests.status, status as any));
+      // Location scope: scoped FRONT_DESK sees their locations' requests plus
+      // unrouted intakes (no location preference yet). OWNER/DIRECTOR (null) see all.
+      if (scope !== null) {
+        conditions.push(
+          scope.length
+            ? or(inArray(patientRequests.locationPreference, scope), isNull(patientRequests.locationPreference))
+            : isNull(patientRequests.locationPreference),
+        );
       }
 
-      const results = await query;
+      const results = await db.select().from(patientRequests)
+        .where(conditions.length ? and(...conditions) : undefined)
+        .orderBy(asc(patientRequests.createdAt));
       res.json(results);
     } catch (err: any) {
       console.error(err);
@@ -225,12 +231,17 @@ export function registerFrontDeskRoutes(app: Express) {
     }
   });
 
-  app.get("/api/frontdesk/stats", ACCESS, async (_req, res) => {
+  app.get("/api/frontdesk/stats", ACCESS, async (req, res) => {
     try {
       const today = new Date().toISOString().slice(0, 10);
+      const scope = await getUserLocationScope(req);
+      const reqScopeSql = scope !== null
+        ? sql` AND (location_preference = ANY(${scope}) OR location_preference IS NULL)`
+        : sql``;
+      const slotScopeSql = scope !== null ? sql` AND location_id = ANY(${scope})` : sql``;
 
       const requestResult = await db.execute(sql`
-        SELECT 
+        SELECT
           COUNT(*) FILTER (WHERE status = 'NEW') as new_count,
           COUNT(*) FILTER (WHERE status = 'TRIAGED') as triaged_count,
           COUNT(*) FILTER (WHERE status = 'SCHEDULED') as scheduled_count,
@@ -243,14 +254,16 @@ export function registerFrontDeskRoutes(app: Express) {
           COUNT(*) as total
         FROM patient_requests
         WHERE created_at >= CURRENT_DATE
+          ${reqScopeSql}
       `);
       const requestStats = (requestResult.rows as any[])[0] || {};
 
       const slotResult = await db.execute(sql`
-        SELECT 
+        SELECT
           COUNT(*) FILTER (WHERE is_available = true AND date >= ${today}) as available_slots,
           COUNT(*) FILTER (WHERE is_available = false AND date >= ${today}) as booked_slots
         FROM appointment_slots
+        WHERE 1=1 ${slotScopeSql}
       `);
       const slotStats = (slotResult.rows as any[])[0] || {};
 

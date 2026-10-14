@@ -11,7 +11,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
-import { requireRole, qstr } from "./shared";
+import { requireRole, qstr, getUserLocationScope } from "./shared";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
 import { getBcbsAuditStatus } from "../storage-bcbs-audit";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
@@ -163,6 +163,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const pageSize = Math.min(parseInt(qstr(req.query.pageSize as any) || "50"), 200);
       const result = await storage.getClaims({
         locationId: qstr(req.query.locationId as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         payer: qstr(req.query.payer as any),
         status: qstr(req.query.status as any),
         dateFrom: qstr(req.query.dateFrom as any),
@@ -183,6 +184,11 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
     try {
       const claim = await storage.getClaim(req.params.id as string);
       if (!claim) return res.status(404).json({ message: "Claim not found" });
+      // Location scope: a scoped reader may only see claims at their locations.
+      const scope = await getUserLocationScope(req);
+      if (scope !== null && (!claim.locationId || !scope.includes(claim.locationId))) {
+        return res.status(404).json({ message: "Claim not found" });
+      }
       res.json(claim);
     } catch (err: any) {
       console.error(err);
@@ -391,6 +397,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const minVariance = req.query.minVariance ? parseFloat(qstr(req.query.minVariance as any) || "0") : undefined;
       const result = await storage.getUnderpaidClaims({
         locationId: qstr(req.query.locationId as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         payer: qstr(req.query.payer as any),
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
@@ -408,6 +415,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
     try {
       const result = await storage.getReimbursementSummary({
         locationId: qstr(req.query.locationId as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });
@@ -471,6 +479,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
 
   app.get("/api/revenue/underpayments/by-payer", READ, async (req, res) => {
     try {
+      const scope = await getUserLocationScope(req);
+      const scopeSql = scope !== null ? sql` AND location_id = ANY(${scope})` : sql``;
       const result = await db.execute(sql`
         SELECT
           payer,
@@ -486,6 +496,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
         WHERE is_underpaid = true
           AND underpaid_amount IS NOT NULL
           AND underpaid_amount > 0
+          ${scopeSql}
         GROUP BY payer, payer_type
         ORDER BY total_underpaid DESC
       `);
@@ -498,6 +509,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
 
   app.get("/api/revenue/underpayments/by-cpt", READ, async (req, res) => {
     try {
+      const scope = await getUserLocationScope(req);
+      const scopeSql = scope !== null ? sql` AND location_id = ANY(${scope})` : sql``;
       const result = await db.execute(sql`
         SELECT
           cpt_codes as cpt_code,
@@ -511,6 +524,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
           AND underpaid_amount IS NOT NULL
           AND underpaid_amount > 0
           AND cpt_codes IS NOT NULL
+          ${scopeSql}
         GROUP BY cpt_codes
         ORDER BY total_underpaid DESC
         LIMIT 50
@@ -553,6 +567,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
     try {
       const result = await getBcbsAuditStatus({
         payer: qstr(req.query.payer as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });
@@ -570,6 +585,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
     try {
       const result = await storage.getDenialSummary({
         locationId: qstr(req.query.locationId as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });
@@ -586,6 +602,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const limit = req.query.limit ? parseInt(qstr(req.query.limit as any) || "20") : undefined;
       const result = await storage.getTopDenialCodes({
         locationId: qstr(req.query.locationId as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         limit,
       });
       res.json(result);
@@ -599,6 +616,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   app.get("/api/revenue/denials/outliers", READ, async (req, res) => {
     try {
       const result = await storage.getProviderDenialOutliers({
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });
@@ -615,6 +633,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const months = req.query.months ? parseInt(qstr(req.query.months as any) || "12") : undefined;
       const result = await storage.getDenialTrends({
         locationId: qstr(req.query.locationId as any),
+        locationIds: (await getUserLocationScope(req)) ?? undefined,
         months,
       });
       res.json(result);
