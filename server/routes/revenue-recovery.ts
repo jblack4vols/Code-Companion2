@@ -412,6 +412,8 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
         minVariance,
+        page: req.query.page ? parseInt(qstr(req.query.page as any) || "1") : undefined,
+        pageSize: req.query.pageSize ? parseInt(qstr(req.query.pageSize as any) || "200") : undefined,
       });
       res.json(result);
     } catch (err: any) {

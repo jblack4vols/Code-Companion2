@@ -15,7 +15,6 @@ const allowlist = [
   "multer",
   "nodemailer",
   "pg",
-  "ws",
   "exceljs",
   "xlsx",
   "zod",
