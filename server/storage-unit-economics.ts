@@ -122,19 +122,18 @@ export async function upsertClinicFinancial(data: InsertClinicFinancial): Promis
 }
 
 export async function bulkUpsertClinicFinancials(rows: InsertClinicFinancial[]): Promise<{ inserted: number; updated: number }> {
-  let inserted = 0;
-  let updated = 0;
+  const locationIds = Array.from(new Set(rows.map(r => r.locationId)));
+  const existingSet = new Set<string>();
+  if (locationIds.length > 0) {
+    const existing = await db.select({
+      l: clinicFinancials.locationId, d: clinicFinancials.periodDate, t: clinicFinancials.periodType,
+    }).from(clinicFinancials).where(inArray(clinicFinancials.locationId, locationIds));
+    for (const e of existing) existingSet.add(`${e.l}|${e.d}|${e.t}`);
+  }
+  let inserted = 0, updated = 0;
   for (const row of rows) {
-    const existing = await db.select({ id: clinicFinancials.id })
-      .from(clinicFinancials)
-      .where(and(
-        eq(clinicFinancials.locationId, row.locationId),
-        eq(clinicFinancials.periodDate, row.periodDate),
-        eq(clinicFinancials.periodType, row.periodType ?? "WEEKLY"),
-      ))
-      .limit(1);
     await upsertClinicFinancial(row);
-    if (existing.length > 0) updated++; else inserted++;
+    if (existingSet.has(`${row.locationId}|${row.periodDate}|${row.periodType ?? "WEEKLY"}`)) updated++; else inserted++;
   }
   return { inserted, updated };
 }
@@ -175,19 +174,18 @@ export async function upsertProviderProductivity(data: InsertProviderProductivit
 }
 
 export async function bulkUpsertProviderProductivity(rows: InsertProviderProductivity[]): Promise<{ inserted: number; updated: number }> {
-  let inserted = 0;
-  let updated = 0;
+  const userIds = Array.from(new Set(rows.map(r => r.userId)));
+  const existingSet = new Set<string>();
+  if (userIds.length > 0) {
+    const existing = await db.select({
+      u: providerProductivity.userId, l: providerProductivity.locationId, w: providerProductivity.weekStartDate,
+    }).from(providerProductivity).where(inArray(providerProductivity.userId, userIds));
+    for (const e of existing) existingSet.add(`${e.u}|${e.l}|${e.w}`);
+  }
+  let inserted = 0, updated = 0;
   for (const row of rows) {
-    const existing = await db.select({ id: providerProductivity.id })
-      .from(providerProductivity)
-      .where(and(
-        eq(providerProductivity.userId, row.userId),
-        eq(providerProductivity.locationId, row.locationId),
-        eq(providerProductivity.weekStartDate, row.weekStartDate),
-      ))
-      .limit(1);
     await upsertProviderProductivity(row);
-    if (existing.length > 0) updated++; else inserted++;
+    if (existingSet.has(`${row.userId}|${row.locationId}|${row.weekStartDate}`)) updated++; else inserted++;
   }
   return { inserted, updated };
 }

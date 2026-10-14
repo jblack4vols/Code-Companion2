@@ -116,13 +116,17 @@ export async function upsertClaim(data: InsertClaim): Promise<Claim> {
 }
 
 export async function bulkUpsertClaims(rows: InsertClaim[]): Promise<{ inserted: number; updated: number }> {
-  let inserted = 0;
-  let updated = 0;
+  const claimNumbers = rows.map(r => r.claimNumber).filter((v): v is string => !!v);
+  const existingSet = new Set<string>();
+  if (claimNumbers.length > 0) {
+    const existing = await db.select({ cn: claims.claimNumber }).from(claims)
+      .where(inArray(claims.claimNumber, claimNumbers));
+    for (const e of existing) if (e.cn) existingSet.add(e.cn);
+  }
+  let inserted = 0, updated = 0;
   for (const row of rows) {
-    const existing = await db.select({ id: claims.id }).from(claims)
-      .where(eq(claims.claimNumber, row.claimNumber)).limit(1);
     await upsertClaim(row);
-    if (existing.length > 0) updated++; else inserted++;
+    if (existingSet.has(row.claimNumber)) updated++; else inserted++;
   }
   return { inserted, updated };
 }
@@ -256,13 +260,18 @@ export async function upsertPayerRate(data: InsertPayerRate): Promise<PayerRate>
 }
 
 export async function bulkUpsertPayerRates(rows: InsertPayerRate[]): Promise<{ inserted: number; updated: number }> {
-  let inserted = 0;
-  let updated = 0;
+  const keys = rows.map(r => `${r.payer}|${r.cptCode}`);
+  const existingSet = new Set<string>();
+  if (keys.length > 0) {
+    const existing = await db.select({ p: payerRateSchedule.payer, c: payerRateSchedule.cptCode })
+      .from(payerRateSchedule)
+      .where(inArray(payerRateSchedule.payer, Array.from(new Set(rows.map(r => r.payer)))));
+    for (const e of existing) existingSet.add(`${e.p}|${e.c}`);
+  }
+  let inserted = 0, updated = 0;
   for (const row of rows) {
-    const existing = await db.select({ id: payerRateSchedule.id }).from(payerRateSchedule)
-      .where(and(eq(payerRateSchedule.payer, row.payer), eq(payerRateSchedule.cptCode, row.cptCode))).limit(1);
     await upsertPayerRate(row);
-    if (existing.length > 0) updated++; else inserted++;
+    if (existingSet.has(`${row.payer}|${row.cptCode}`)) updated++; else inserted++;
   }
   return { inserted, updated };
 }

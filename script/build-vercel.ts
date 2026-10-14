@@ -16,7 +16,6 @@ const allowlist = [
   "nodemailer",
   "pg",
   "exceljs",
-  "xlsx",
   "zod",
   "zod-validation-error",
   "bcryptjs",
