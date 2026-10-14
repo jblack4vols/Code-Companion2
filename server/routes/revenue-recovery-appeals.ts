@@ -4,6 +4,7 @@
  * Roles: OWNER/DIRECTOR for writes; OWNER/DIRECTOR/ANALYST for reads.
  */
 import type { Express } from "express";
+import { insertAppealTemplateSchema } from "@shared/schema";
 import { requireRole } from "./shared";
 import {
   getAppealTemplates,
@@ -62,7 +63,11 @@ export async function registerRevenueRecoveryAppealsRoutes(app: Express): Promis
     requireRole("OWNER", "DIRECTOR"),
     async (req, res) => {
       try {
-        const tmpl = await upsertAppealTemplate(req.body);
+        const parsed = insertAppealTemplateSchema.safeParse(req.body);
+        if (!parsed.success) {
+          return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
+        }
+        const tmpl = await upsertAppealTemplate(parsed.data);
         res.json(tmpl);
       } catch (err: any) {
         res.status(400).json({ message: err.message });
