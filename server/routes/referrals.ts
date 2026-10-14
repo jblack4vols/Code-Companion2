@@ -8,6 +8,41 @@ import { requireAuth, requireRole, getClientIp, qstr, getUserLocationScope } fro
 import { syncItemCreate, syncItemUpdate, syncItemDelete } from "../sharepoint-item-sync";
 
 export function registerReferralRoutes(app: Express) {
+  app.get("/api/referrals/aging-queue", requireAuth, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      if (locationScope !== null && locationScope.length === 0) {
+        return res.json([]);
+      }
+      const data = await storage.getUnscheduledReferralAging({
+        locationId: qstr(req.query.locationId as any),
+        locationIds: locationScope,
+      });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
+  app.get("/api/referrals/expiring-auths", requireAuth, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      if (locationScope !== null && locationScope.length === 0) {
+        return res.json([]);
+      }
+      const parsed = req.query.daysAhead ? parseInt(req.query.daysAhead as string) : 30;
+      const daysAhead = Number.isNaN(parsed) ? 30 : Math.min(Math.max(parsed, 0), 365);
+      const data = await storage.getExpiringAuthorizations({
+        daysAhead,
+        locationId: qstr(req.query.locationId as any),
+        locationIds: locationScope,
+      });
+      res.json(data);
+    } catch (err: any) {
+      res.status(500).json({ message: err.message });
+    }
+  });
+
   app.get("/api/referrals/paginated", requireAuth, async (req, res) => {
     const locationScope = await getUserLocationScope(req);
     // Non-admin with no location assignments — return empty results

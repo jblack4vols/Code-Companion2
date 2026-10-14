@@ -12,7 +12,7 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { requireRole, qstr, getUserLocationScope } from "./shared";
-import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
+import { flagUnderpaidClaims, upsertClaim, upsertPayerRate, getPayerProfitability } from "../storage-revenue-recovery";
 import { getBcbsAuditStatus } from "../storage-bcbs-audit";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
 
@@ -313,6 +313,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
             await upsertClaim({
               claimNumber,
               dos,
+              patientAccountNumber: columnMapping.patientAccountNumber ? String(row[columnMapping.patientAccountNumber] || "").trim() || null : null,
               payer: String(row[columnMapping.payer] || "").trim() || null,
               cptCodes: String(row[columnMapping.cptCodes] || "").trim() || null,
               units: columnMapping.units ? parseNum(row[columnMapping.units]) : null,
@@ -416,6 +417,30 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       const result = await storage.getReimbursementSummary({
         locationId: qstr(req.query.locationId as any),
         locationIds: (await getUserLocationScope(req)) ?? undefined,
+        dateFrom: qstr(req.query.dateFrom as any),
+        dateTo: qstr(req.query.dateTo as any),
+      });
+      res.json(result);
+    } catch (err: any) {
+      console.error(err);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // GET /api/revenue/payer-profitability — per-payer profitability matrix
+  app.get("/api/revenue/payer-profitability", READ, async (req, res) => {
+    try {
+      const locationScope = await getUserLocationScope(req);
+      if (locationScope !== null && locationScope.length === 0) {
+        return res.json([]);
+      }
+      const requestedLocation = qstr(req.query.locationId as any);
+      if (requestedLocation && locationScope !== null && !locationScope.includes(requestedLocation)) {
+        return res.json([]);
+      }
+      const result = await getPayerProfitability({
+        locationId: requestedLocation,
+        locationIds: locationScope,
         dateFrom: qstr(req.query.dateFrom as any),
         dateTo: qstr(req.query.dateTo as any),
       });

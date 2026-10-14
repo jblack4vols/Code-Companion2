@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import {
-  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, TrendingUp, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search, Lightbulb, MoonStar,
+  LayoutDashboard, Users, Stethoscope, MessageSquare, FileText, ClipboardList, Settings, LogOut, ChevronDown, ChevronRight, Calendar, CalendarClock, MapPin, ScrollText, Award, TrendingDown, TrendingUp, UserCheck, Upload, Cloud, Map, Copy, BarChart3, PieChart, Building2, Compass, ShieldCheck, LineChart, Crosshair, Plug, Link2, Code2, Target, DollarSign, Trophy, Zap, FileStack, Activity, ListChecks, AlertTriangle, XCircle, Clock, Scale, Search, Lightbulb, MoonStar, ShieldAlert, Phone,
 } from "lucide-react";
 import tristarLogo from "@assets/tristar-logo-transparent.png";
 import {
@@ -49,6 +49,8 @@ const analyticsItems = [
 
 const opsItems = [
   { title: "Front Desk", url: "/frontdesk", icon: UserCheck, roles: ["OWNER", "DIRECTOR", "FRONT_DESK"] as string[] },
+  { title: "Aging Queue", url: "/referral-aging-queue", icon: Phone },
+  { title: "Auth Alerts", url: "/auth-expiration-alerts", icon: ShieldAlert, roles: ["OWNER", "DIRECTOR", "ANALYST"] as string[] },
   { title: "Goals", url: "/goals", icon: Target, roles: ["OWNER", "DIRECTOR", "MARKETER"] as string[] },
   { title: "Map", url: "/map", icon: Map, roles: ["OWNER", "DIRECTOR", "MARKETER", "ANALYST"] as string[] },
   { title: "Territories", url: "/territories", icon: UserCheck, roles: ["OWNER", "DIRECTOR"] as string[] },
@@ -58,16 +60,20 @@ const opsItems = [
 ];
 
 const financeItems = [
+  { title: "EBITDA Rollup", url: "/unit-economics/ebitda-rollup", icon: TrendingUp },
   { title: "Unit Economics", url: "/unit-economics", icon: DollarSign },
   { title: "Provider Productivity", url: "/unit-economics/providers", icon: Activity },
   { title: "Econ Alerts", url: "/unit-economics/alerts", icon: AlertTriangle },
   { title: "Econ Targets", url: "/unit-economics/targets", icon: Target },
   { title: "Revenue Dashboard", url: "/revenue", icon: Scale },
   { title: "Claims", url: "/revenue/claims", icon: FileText },
+  { title: "Referral Claims", url: "/revenue/referral-claims", icon: Link2 },
+  { title: "Payer Profitability", url: "/revenue/payer-profitability", icon: BarChart3 },
   { title: "Denials", url: "/revenue/denials", icon: XCircle },
   { title: "BCBS Audit", url: "/revenue/bcbs-audit", icon: ShieldCheck },
   { title: "Billing Lag", url: "/revenue/billing-lag", icon: Clock },
   { title: "Appeals", url: "/revenue/appeals", icon: Scale },
+  { title: "Marketer ROI", url: "/marketer-roi", icon: LineChart, roles: ["OWNER", "DIRECTOR"] as string[] },
 ];
 
 const adminItems = [
@@ -103,8 +109,8 @@ const roleBadgeVariant: Record<string, string> = {
 
 const outreachUrls = ["/quick-log", "/interactions", "/tasks", "/activity"];
 const analyticsUrls = ["/dashboards/", "/rpv-analytics", "/referral-intelligence", "/roi-calculator", "/leaderboard", "/tiering", "/declining", "/providers-gone-dark", "/referral-trends", "/practices", "/provider-productivity-v2", "/lifecycle", "/cash-flow"];
-const opsUrls = ["/frontdesk", "/goals", "/map", "/territories", "/referral-explorer", "/provider-offices", "/provider-office-linker"];
-const financeUrls = ["/unit-economics", "/revenue"];
+const opsUrls = ["/frontdesk", "/goals", "/map", "/territories", "/referral-explorer", "/provider-offices", "/provider-office-linker", "/referral-aging-queue", "/auth-expiration-alerts"];
+const financeUrls = ["/unit-economics", "/revenue", "/marketer-roi"];
 const adminUrls = ["/admin/", "/import"];
 
 function CollapsibleGroup({
