@@ -91,6 +91,8 @@ location-scoping gaps). R2-2 includes the BCBS panel shipped this session.
 `locationPreference` (scoped staff see their locations plus unrouted intakes; OWNER/DIRECTOR see all).
 **R2-4 DONE** — Zod validation (`insertClaimSchema`/`insertPayerRateSchema`/`insertAppealTemplateSchema`)
 on `POST /api/revenue/claims`, `/claims/bulk`, `/rates`, and `/appeal-templates`; invalid bodies now 400.
+**R2-6 DONE** — deleted the dead root `src/` Next.js port (24 files) and dropped its only dependency
+`@supabase/supabase-js` (8 packages removed from the lockfile).
 
 ### Open questions
 - R2-1: does a `claim_number` unique constraint already exist in the live DB out-of-band? If not, imports are currently failing.
