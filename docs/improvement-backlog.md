@@ -89,6 +89,8 @@ location-scoping gaps). R2-2 includes the BCBS panel shipped this session.
 `/api/revenue/*` claims/denials/underpayments/BCBS read + single-claim detail; storage gained a
 `locationIds` scope filter. **R2-3 DONE** — `/api/frontdesk/requests` + `/stats` scoped by
 `locationPreference` (scoped staff see their locations plus unrouted intakes; OWNER/DIRECTOR see all).
+**R2-4 DONE** — Zod validation (`insertClaimSchema`/`insertPayerRateSchema`/`insertAppealTemplateSchema`)
+on `POST /api/revenue/claims`, `/claims/bulk`, `/rates`, and `/appeal-templates`; invalid bodies now 400.
 
 ### Open questions
 - R2-1: does a `claim_number` unique constraint already exist in the live DB out-of-band? If not, imports are currently failing.

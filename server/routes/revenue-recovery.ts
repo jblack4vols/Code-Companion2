@@ -11,6 +11,7 @@ import { storage } from "../storage";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { z } from "zod";
+import { insertClaimSchema, insertPayerRateSchema } from "@shared/schema";
 import { requireRole, qstr, getUserLocationScope } from "./shared";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate } from "../storage-revenue-recovery";
 import { getBcbsAuditStatus } from "../storage-bcbs-audit";
@@ -199,7 +200,11 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   // POST /api/revenue/claims — create/upsert claim
   app.post("/api/revenue/claims", WRITE, async (req, res) => {
     try {
-      const claim = await storage.upsertClaim(req.body);
+      const parsed = insertClaimSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
+      }
+      const claim = await storage.upsertClaim(parsed.data);
       res.status(201).json(claim);
     } catch (err: any) {
       console.error(err);
@@ -210,8 +215,11 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   // POST /api/revenue/claims/bulk — bulk upsert claims
   app.post("/api/revenue/claims/bulk", WRITE, async (req, res) => {
     try {
-      if (!Array.isArray(req.body)) return res.status(400).json({ message: "Expected array" });
-      const result = await storage.bulkUpsertClaims(req.body);
+      const parsed = z.array(insertClaimSchema).safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten() });
+      }
+      const result = await storage.bulkUpsertClaims(parsed.data);
       res.json(result);
     } catch (err: any) {
       console.error(err);
@@ -456,7 +464,11 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   // POST /api/revenue/rates — upsert a single rate
   app.post("/api/revenue/rates", WRITE, async (req, res) => {
     try {
-      const rate = await storage.upsertPayerRate(req.body);
+      const parsed = insertPayerRateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
+      }
+      const rate = await storage.upsertPayerRate(parsed.data);
       res.status(201).json(rate);
     } catch (err: any) {
       console.error(err);
