@@ -319,37 +319,46 @@ export async function calculateExpectedAmount(claimId: string): Promise<number> 
 }
 
 export async function flagUnderpaidClaims(filters?: { locationId?: string }): Promise<number> {
+  // Set-based flagging: one pass instead of the old per-claim + per-CPT N+1 loop,
+  // which ran synchronously inside the claims-import request. Mirrors the prior
+  // logic exactly — expected = units * Σ(latest rate per CPT), units floored at 1,
+  // underpaid when paid < expected * 0.95 (5% tolerance), rounded to cents.
   const locationFilter = filters?.locationId
     ? sql`AND c.location_id = ${filters.locationId}`
     : sql``;
   const result = await db.execute(sql`
-    SELECT c.id FROM claims c
-    WHERE c.status IN ('PAID', 'PARTIAL')
-      AND c.cpt_codes IS NOT NULL
-      AND c.payer IS NOT NULL
-      ${locationFilter}
+    WITH latest_rates AS (
+      SELECT DISTINCT ON (payer, cpt_code) payer, cpt_code, expected_rate
+      FROM payer_rate_schedule
+      ORDER BY payer, cpt_code, updated_at DESC
+    ),
+    expected AS (
+      SELECT
+        c.id,
+        COALESCE(c.paid_amount, 0)::numeric AS paid,
+        ROUND(SUM(lr.expected_rate::numeric) * GREATEST(COALESCE(c.units, 0), 1), 2) AS expected_amount
+      FROM claims c
+      CROSS JOIN LATERAL unnest(string_to_array(c.cpt_codes, ',')) AS code(cpt)
+      JOIN latest_rates lr ON lr.payer = c.payer AND lr.cpt_code = TRIM(code.cpt)
+      WHERE c.status IN ('PAID', 'PARTIAL')
+        AND c.cpt_codes IS NOT NULL
+        AND c.payer IS NOT NULL
+        ${locationFilter}
+      GROUP BY c.id, c.paid_amount, c.units
+      HAVING ROUND(SUM(lr.expected_rate::numeric) * GREATEST(COALESCE(c.units, 0), 1), 2) > 0
+    )
+    UPDATE claims c
+    SET expected_amount = e.expected_amount,
+        is_underpaid = (e.paid < e.expected_amount * 0.95),
+        underpaid_amount = CASE WHEN e.paid < e.expected_amount * 0.95
+                                THEN ROUND(e.expected_amount - e.paid, 2) ELSE NULL END,
+        updated_at = NOW()
+    FROM expected e
+    WHERE c.id = e.id
+    RETURNING (e.paid < e.expected_amount * 0.95) AS flagged
   `);
 
-  let flagged = 0;
-  for (const r of result.rows as any[]) {
-    const expected = await calculateExpectedAmount(r.id);
-    if (expected <= 0) continue;
-
-    const [claim] = await db.select().from(claims).where(eq(claims.id, r.id));
-    const paid = parseFloat(String(claim?.paidAmount ?? 0));
-    const isUnderpaid = paid < expected * 0.95; // 5% tolerance
-    const underpaidAmt = isUnderpaid ? Math.round((expected - paid) * 100) / 100 : 0;
-
-    await db.update(claims).set({
-      expectedAmount: String(expected),
-      isUnderpaid,
-      underpaidAmount: isUnderpaid ? String(underpaidAmt) : null,
-      updatedAt: new Date(),
-    }).where(eq(claims.id, r.id));
-
-    if (isUnderpaid) flagged++;
-  }
-  return flagged;
+  return (result.rows as any[]).filter(r => r.flagged === true).length;
 }
 
 // ---- Payer Profitability Matrix ----
