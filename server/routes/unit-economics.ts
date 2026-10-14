@@ -6,6 +6,7 @@ import type { Express } from "express";
 import { storage } from "../storage";
 import * as unitEconomicsStorage from "../storage-unit-economics";
 import { requireRole, getClientIp, getUserLocationScope } from "./shared";
+import { parseNum, parseDateValue } from "../import-parse";
 import { evaluateAlerts, evaluateProviderAlerts } from "../unit-economics-alert-engine";
 import os from "os";
 import path from "path";
@@ -83,32 +84,6 @@ export async function registerUnitEconomicsRoutes(app: Express) {
       };
     }
     return {};
-  }
-
-  // Parse numeric value from string or number cell
-  function parseNum(val: any): number {
-    if (typeof val === "number") return val;
-    if (typeof val === "string") return parseFloat(val.replace(/[$,\s]/g, "")) || 0;
-    return 0;
-  }
-
-  // Parse date from Excel serial, Date object, or string
-  function parseDateValue(val: any): string | null {
-    if (!val) return null;
-    if (val instanceof Date) return val.toISOString().slice(0, 10);
-    if (typeof val === "number") {
-      const utcDays = Math.floor(val - 25569);
-      return new Date(utcDays * 86400000).toISOString().slice(0, 10);
-    }
-    const s = String(val).trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) {
-      const [m, d, y] = s.split("/");
-      const yr = y.length === 2 ? "20" + y : y;
-      return `${yr}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    const dt = new Date(s);
-    return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
   }
 
   // GET /api/unit-economics/dashboard — aggregated per-location summary

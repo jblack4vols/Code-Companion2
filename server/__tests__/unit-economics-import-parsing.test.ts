@@ -1,46 +1,12 @@
 import { describe, it, expect } from "vitest";
+import { parseNum, parseDateValue } from "../import-parse";
 
 /**
- * Pure parsing function tests mirroring the import pipeline logic.
- * These functions replicate the inline helpers from server/routes/import.ts
- * and the equivalent logic used in any unit-economics financial import flow.
- * Tested independently of HTTP/storage/file-system.
+ * Tests for the shared import parsers (server/import-parse.ts) — the real
+ * functions the claims + unit-economics import routes run, not re-implemented
+ * copies. autoDetectMapping below remains a local mirror of the unit-economics
+ * header heuristic.
  */
-
-// ---------------------------------------------------------------------------
-// parseNum — strips currency formatting and converts to float
-// ---------------------------------------------------------------------------
-
-function parseNum(val: any): number {
-  if (typeof val === "number") return val;
-  if (typeof val === "string") return parseFloat(val.replace(/[$,\s]/g, "")) || 0;
-  return 0;
-}
-
-// ---------------------------------------------------------------------------
-// parseDateValue — normalises various date representations to YYYY-MM-DD
-// Mirrors the parseDate() helper in server/routes/import.ts plus the
-// Excel-serial path used in the financial import pipeline.
-// ---------------------------------------------------------------------------
-
-function parseDateValue(val: any): string | null {
-  if (!val) return null;
-  if (val instanceof Date) return val.toISOString().slice(0, 10);
-  if (typeof val === "number") {
-    // Excel serial: days since 1899-12-30 (with Lotus 1-2-3 leap-year bug offset of 25569 to Unix epoch)
-    const utcDays = Math.floor(val - 25569);
-    return new Date(utcDays * 86400000).toISOString().slice(0, 10);
-  }
-  const s = String(val).trim();
-  if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-  if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) {
-    const [m, d, y] = s.split("/");
-    const yr = y.length === 2 ? "20" + y : y;
-    return `${yr}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-  }
-  const d = new Date(s);
-  return isNaN(d.getTime()) ? null : d.toISOString().slice(0, 10);
-}
 
 // ---------------------------------------------------------------------------
 // autoDetectMapping — heuristically maps spreadsheet headers to schema fields
