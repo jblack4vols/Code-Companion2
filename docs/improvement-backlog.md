@@ -95,6 +95,11 @@ on `POST /api/revenue/claims`, `/claims/bulk`, `/rates`, and `/appeal-templates`
 `@supabase/supabase-js` (8 packages removed from the lockfile).
 **R2-5 DONE** — `flagUnderpaidClaims` rewritten from a per-claim + per-CPT N+1 loop into one set-based
 `UPDATE … FROM` (latest-rate CTE); import no longer degrades with claim volume. Logic unchanged.
+**R2-10 DONE** — `GET /api/revenue/underpaid` now bounded: default 200 rows (highest-variance first),
+hard cap 500, optional `page`/`pageSize`. No client consumer (UI uses `/revenue/claims?isUnderpaid=true`).
+**R2-15 DONE** — removed unused `ws` dependency (no imports, no neon-serverless driver) and its two
+esbuild `external` entries. **R2-9 was already satisfied** (`referral_updated_at_idx` +
+`collection_updated_at_idx` already in schema) — audit false positive.
 
 ### Open questions
 - R2-1: does a `claim_number` unique constraint already exist in the live DB out-of-band? If not, imports are currently failing.

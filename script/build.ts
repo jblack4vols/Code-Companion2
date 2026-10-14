@@ -50,7 +50,6 @@ const allowlist = [
   "pg",
   "stripe",
   "uuid",
-  "ws",
   "exceljs",
   "zod",
   "zod-validation-error",

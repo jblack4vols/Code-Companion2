@@ -136,6 +136,8 @@ export async function getUnderpaidClaims(filters: {
   dateFrom?: string;
   dateTo?: string;
   minVariance?: number;
+  page?: number;
+  pageSize?: number;
 }): Promise<UnderpaidClaim[]> {
   const conditions: ReturnType<typeof sql>[] = [sql`c.is_underpaid = true`];
   if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
@@ -144,6 +146,9 @@ export async function getUnderpaidClaims(filters: {
   if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
   const minVar = filters.minVariance ?? 0;
+  // Bound the payload: default 200 rows (highest-variance first), hard cap 500.
+  const pageSize = Math.min(Math.max(filters.pageSize ?? 200, 1), 500);
+  const offset = (Math.max(filters.page ?? 1, 1) - 1) * pageSize;
 
   const result = await db.execute(sql`
     SELECT
@@ -160,6 +165,7 @@ export async function getUnderpaidClaims(filters: {
     WHERE ${sql.join(conditions, sql` AND `)}
       AND COALESCE(c.underpaid_amount, 0) >= ${minVar}
     ORDER BY c.underpaid_amount DESC
+    LIMIT ${pageSize} OFFSET ${offset}
   `);
 
   return result.rows.map((r: any) => ({
