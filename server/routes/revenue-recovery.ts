@@ -215,9 +215,10 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
   // POST /api/revenue/claims/bulk — bulk upsert claims
   app.post("/api/revenue/claims/bulk", WRITE, async (req, res) => {
     try {
-      const parsed = z.array(insertClaimSchema).safeParse(req.body);
+      const arraySchema = z.array(insertClaimSchema).min(1, "At least one claim required").max(500, "Max 500 claims per batch");
+      const parsed = arraySchema.safeParse(req.body);
       if (!parsed.success) {
-        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten() });
+        return res.status(400).json({ message: "Validation failed", errors: parsed.error.flatten().fieldErrors });
       }
       const result = await storage.bulkUpsertClaims(parsed.data);
       res.json(result);

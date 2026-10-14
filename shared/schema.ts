@@ -200,6 +200,7 @@ export const referrals = pgTable("referrals", {
   index("referral_date_idx").on(table.referralDate),
   index("referral_status_idx").on(table.status),
   index("referral_patient_account_idx").on(table.patientAccountNumber),
+  index("referral_updated_at_idx").on(table.updatedAt),
 ]);
 
 export const tasks = pgTable("tasks", {
@@ -303,6 +304,7 @@ export const collections = pgTable("collections", {
 }, (table) => [
   index("collection_physician_date_idx").on(table.physicianId, table.collectionDate),
   index("collection_location_date_idx").on(table.locationId, table.collectionDate),
+  index("collection_updated_at_idx").on(table.updatedAt),
 ]);
 
 export const physicianMonthlySummary = pgTable("physician_monthly_summary", {
