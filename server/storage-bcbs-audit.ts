@@ -49,10 +49,12 @@ function payerCondition(payer?: string) {
 
 export async function getBcbsAuditStatus(filters: {
   payer?: string;
+  locationIds?: string[]; // role-based scope; [] = no accessible locations
   dateFrom?: string;
   dateTo?: string;
 }): Promise<BcbsAuditStatus> {
   const conditions: ReturnType<typeof sql>[] = [payerCondition(filters.payer)];
+  if (filters.locationIds) conditions.push(sql`c.location_id = ANY(${filters.locationIds})`);
   if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
   const where = sql.join(conditions, sql` AND `);

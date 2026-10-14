@@ -85,6 +85,11 @@ performance/data-layer, maintainability/tests). Evidence from codebase only; ran
 **Recommended first three:** R2-1 (XS, possible broken import), then R2-2 + R2-3 (the two Critical HIPAA
 location-scoping gaps). R2-2 includes the BCBS panel shipped this session.
 
+**Shipped:** R2-1 (unique index, PR #70) · **R2-2 DONE** — `getUserLocationScope()` wired into every
+`/api/revenue/*` claims/denials/underpayments/BCBS read + single-claim detail; storage gained a
+`locationIds` scope filter. **R2-3 DONE** — `/api/frontdesk/requests` + `/stats` scoped by
+`locationPreference` (scoped staff see their locations plus unrouted intakes; OWNER/DIRECTOR see all).
+
 ### Open questions
 - R2-1: does a `claim_number` unique constraint already exist in the live DB out-of-band? If not, imports are currently failing.
 - R2-2/R2-3: is ANALYST / FRONT_DESK *intended* to see all-location revenue & intake data? `permissions.md` is silent on `/api/revenue/*` and `/api/frontdesk/*` — looks like newer surfaces simply not yet wired to scope.

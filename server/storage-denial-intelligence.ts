@@ -45,11 +45,13 @@ export interface DenialTrend {
 
 export async function getDenialSummary(filters: {
   locationId?: string;
+  locationIds?: string[];
   dateFrom?: string;
   dateTo?: string;
 }): Promise<DenialSummary> {
   const conditions: ReturnType<typeof sql>[] = [];
   if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
+  if (filters.locationIds) conditions.push(sql`c.location_id = ANY(${filters.locationIds})`);
   if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
   const whereClause = conditions.length
@@ -96,11 +98,14 @@ export async function getDenialSummary(filters: {
 
 export async function getTopDenialCodes(filters: {
   locationId?: string;
+  locationIds?: string[];
   limit?: number;
 }): Promise<DenialCodeStat[]> {
   const locationFilter = filters.locationId
     ? sql`AND c.location_id = ${filters.locationId}`
-    : sql``;
+    : filters.locationIds
+      ? sql`AND c.location_id = ANY(${filters.locationIds})`
+      : sql``;
   const limit = filters.limit ?? 20;
 
   const result = await db.execute(sql`
@@ -127,10 +132,12 @@ export async function getTopDenialCodes(filters: {
 }
 
 export async function getProviderDenialOutliers(filters: {
+  locationIds?: string[];
   dateFrom?: string;
   dateTo?: string;
 }): Promise<ProviderDenialOutlier[]> {
   const conditions: ReturnType<typeof sql>[] = [sql`c.provider_id IS NOT NULL`];
+  if (filters.locationIds) conditions.push(sql`c.location_id = ANY(${filters.locationIds})`);
   if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
   const whereClause = sql`WHERE ${sql.join(conditions, sql` AND `)}`;
@@ -179,11 +186,14 @@ export async function getProviderDenialOutliers(filters: {
 
 export async function getDenialTrends(filters: {
   locationId?: string;
+  locationIds?: string[];
   months?: number;
 }): Promise<DenialTrend[]> {
   const locationFilter = filters.locationId
     ? sql`AND c.location_id = ${filters.locationId}`
-    : sql``;
+    : filters.locationIds
+      ? sql`AND c.location_id = ANY(${filters.locationIds})`
+      : sql``;
   const months = filters.months ?? 12;
   const intervalStr = `${months} months`;
 

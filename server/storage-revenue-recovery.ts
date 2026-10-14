@@ -42,6 +42,7 @@ export interface ReimbursementSummary {
 
 export async function getClaims(filters: {
   locationId?: string;
+  locationIds?: string[]; // role-based scope; [] = no accessible locations
   payer?: string;
   status?: string;
   dateFrom?: string;
@@ -56,6 +57,10 @@ export async function getClaims(filters: {
   const conditions: any[] = [];
 
   if (filters.locationId) conditions.push(eq(claims.locationId, filters.locationId));
+  // Location scope: empty array = see nothing; omit = unscoped (OWNER/DIRECTOR).
+  if (filters.locationIds) {
+    conditions.push(filters.locationIds.length ? inArray(claims.locationId, filters.locationIds) : sql`false`);
+  }
   if (filters.payer) conditions.push(eq(claims.payer, filters.payer));
   if (filters.status) conditions.push(eq(claims.status, filters.status as any));
   if (filters.dateFrom) conditions.push(gte(claims.dos, filters.dateFrom));
@@ -126,6 +131,7 @@ export async function bulkUpsertClaims(rows: InsertClaim[]): Promise<{ inserted:
 
 export async function getUnderpaidClaims(filters: {
   locationId?: string;
+  locationIds?: string[];
   payer?: string;
   dateFrom?: string;
   dateTo?: string;
@@ -133,6 +139,7 @@ export async function getUnderpaidClaims(filters: {
 }): Promise<UnderpaidClaim[]> {
   const conditions: ReturnType<typeof sql>[] = [sql`c.is_underpaid = true`];
   if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
+  if (filters.locationIds) conditions.push(sql`c.location_id = ANY(${filters.locationIds})`);
   if (filters.payer) conditions.push(sql`c.payer = ${filters.payer}`);
   if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
@@ -172,11 +179,13 @@ export async function getUnderpaidClaims(filters: {
 
 export async function getReimbursementSummary(filters: {
   locationId?: string;
+  locationIds?: string[];
   dateFrom?: string;
   dateTo?: string;
 }): Promise<ReimbursementSummary[]> {
   const conditions: ReturnType<typeof sql>[] = [sql`c.status IN ('PAID', 'PARTIAL')`];
   if (filters.locationId) conditions.push(sql`c.location_id = ${filters.locationId}`);
+  if (filters.locationIds) conditions.push(sql`c.location_id = ANY(${filters.locationIds})`);
   if (filters.dateFrom) conditions.push(sql`c.dos >= ${filters.dateFrom}`);
   if (filters.dateTo) conditions.push(sql`c.dos <= ${filters.dateTo}`);
 
