@@ -107,6 +107,11 @@ instead of a SELECT per row (O(2N)→O(N+1)); counts preserved, including in-bat
 and unit-economics routes import it, and `unit-economics-import-parsing.test.ts` now tests the real
 functions (ending the 3-copy drift). (`routes/import.ts` has its own copy — follow-up.)
 
+**R2-7 DONE** — added pure-logic tests for the ETL month helpers
+(`etl-summary-dates.test.ts`) and the cash-flow projection math + `weekStart`
+(`cash-flow-projection-logic.test.ts`); reimplemented hermetically per repo convention
+(importing those modules pulls in `./db`, which requires `DATABASE_URL`).
+
 **R2-12 deferred (not a clean refactor):** the global handler is already registered (`app.ts:82`), and the
 63 `{ message: err.message }` sites across 18 route files are mostly *intentional 400 validation
 messages*, not 500 leaks — a blind `next(err)` conversion would turn helpful 400s into generic 500s.
