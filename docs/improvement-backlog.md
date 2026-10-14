@@ -100,11 +100,19 @@ hard cap 500, optional `page`/`pageSize`. No client consumer (UI uses `/revenue/
 **R2-15 DONE** — removed unused `ws` dependency (no imports, no neon-serverless driver) and its two
 esbuild `external` entries. **R2-9 was already satisfied** (`referral_updated_at_idx` +
 `collection_updated_at_idx` already in schema) — audit false positive.
-**R2-8 DONE** — all 4 bulk upsert functions (`bulkUpsertClaims`, `bulkUpsertPayerRates`,
-`bulkUpsertClinicFinancials`, `bulkUpsertProviderProductivity`) now batch-fetch existing keys in one
-query instead of per-row SELECTs. O(2N) → O(N+1) round-trips.
+**R2-8 DONE** — the four bulk upserts (`bulkUpsertClaims`, `bulkUpsertPayerRates`,
+`bulkUpsertClinicFinancials`, `bulkUpsertProviderProductivity`) now do one batched existence probe
+instead of a SELECT per row (O(2N)→O(N+1)); counts preserved, including in-batch duplicates.
+**R2-11 DONE** — extracted `parseNum`/`parseDateValue` into `server/import-parse.ts`; revenue-recovery
+and unit-economics routes import it, and `unit-economics-import-parsing.test.ts` now tests the real
+functions (ending the 3-copy drift). (`routes/import.ts` has its own copy — follow-up.)
 **R2-14 DONE** — replaced `xlsx` 0.18.5 (prototype-pollution + ReDoS advisories, no fix available)
 with `exceljs` 4.4.0 (MIT, actively maintained). Removed `xlsx` from deps + esbuild externals.
+
+**R2-12 deferred (not a clean refactor):** the global handler is already registered (`app.ts:82`), and the
+63 `{ message: err.message }` sites across 18 route files are mostly *intentional 400 validation
+messages*, not 500 leaks — a blind `next(err)` conversion would turn helpful 400s into generic 500s.
+Needs per-handler judgment; recommend a scoped pass (or fold into R2-13 file splits) rather than bulk edit.
 
 ### Open questions
 - R2-1: does a `claim_number` unique constraint already exist in the live DB out-of-band? If not, imports are currently failing.

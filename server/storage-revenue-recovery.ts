@@ -116,17 +116,17 @@ export async function upsertClaim(data: InsertClaim): Promise<Claim> {
 }
 
 export async function bulkUpsertClaims(rows: InsertClaim[]): Promise<{ inserted: number; updated: number }> {
-  const claimNumbers = rows.map(r => r.claimNumber).filter((v): v is string => !!v);
-  const existingSet = new Set<string>();
-  if (claimNumbers.length > 0) {
-    const existing = await db.select({ cn: claims.claimNumber }).from(claims)
-      .where(inArray(claims.claimNumber, claimNumbers));
-    for (const e of existing) if (e.cn) existingSet.add(e.cn);
-  }
-  let inserted = 0, updated = 0;
+  if (!rows.length) return { inserted: 0, updated: 0 };
+  // One batched existence probe instead of a SELECT per row (was O(2N) round-trips).
+  const existingRows = await db.select({ claimNumber: claims.claimNumber }).from(claims)
+    .where(inArray(claims.claimNumber, rows.map(r => r.claimNumber)));
+  const existing = new Set(existingRows.map(r => r.claimNumber));
+  let inserted = 0;
+  let updated = 0;
   for (const row of rows) {
+    if (existing.has(row.claimNumber)) updated++;
+    else { inserted++; existing.add(row.claimNumber); } // count in-batch dupes as updates
     await upsertClaim(row);
-    if (existingSet.has(row.claimNumber)) updated++; else inserted++;
   }
   return { inserted, updated };
 }
@@ -260,18 +260,20 @@ export async function upsertPayerRate(data: InsertPayerRate): Promise<PayerRate>
 }
 
 export async function bulkUpsertPayerRates(rows: InsertPayerRate[]): Promise<{ inserted: number; updated: number }> {
-  const keys = rows.map(r => `${r.payer}|${r.cptCode}`);
-  const existingSet = new Set<string>();
-  if (keys.length > 0) {
-    const existing = await db.select({ p: payerRateSchedule.payer, c: payerRateSchedule.cptCode })
-      .from(payerRateSchedule)
-      .where(inArray(payerRateSchedule.payer, Array.from(new Set(rows.map(r => r.payer)))));
-    for (const e of existing) existingSet.add(`${e.p}|${e.c}`);
-  }
-  let inserted = 0, updated = 0;
+  if (!rows.length) return { inserted: 0, updated: 0 };
+  const key = (payer: string, cpt: string) => `${payer}\u0000${cpt}`;
+  // One batched existence probe (keyed on payer+cptCode) instead of a SELECT per row.
+  const payers = Array.from(new Set(rows.map(r => r.payer)));
+  const existingRows = await db.select({ payer: payerRateSchedule.payer, cptCode: payerRateSchedule.cptCode })
+    .from(payerRateSchedule).where(inArray(payerRateSchedule.payer, payers));
+  const existing = new Set(existingRows.map(r => key(r.payer, r.cptCode)));
+  let inserted = 0;
+  let updated = 0;
   for (const row of rows) {
+    const k = key(row.payer, row.cptCode);
+    if (existing.has(k)) updated++;
+    else { inserted++; existing.add(k); }
     await upsertPayerRate(row);
-    if (existingSet.has(`${row.payer}|${row.cptCode}`)) updated++; else inserted++;
   }
   return { inserted, updated };
 }

@@ -13,6 +13,7 @@ import { sql } from "drizzle-orm";
 import { z } from "zod";
 import { insertClaimSchema, insertPayerRateSchema } from "@shared/schema";
 import { requireRole, qstr, getUserLocationScope } from "./shared";
+import { parseNum, parseDateValue } from "../import-parse";
 import { flagUnderpaidClaims, upsertClaim, upsertPayerRate, getPayerProfitability } from "../storage-revenue-recovery";
 import { getBcbsAuditStatus } from "../storage-bcbs-audit";
 import { evaluateBillingLagAlerts } from "../billing-lag-alert-engine";
@@ -50,32 +51,6 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
       fs.unlink(file.path, () => {});
     }
     return workbook;
-  }
-
-  // Parse numeric value from cell
-  function parseNum(val: any): number {
-    if (typeof val === "number") return val;
-    if (typeof val === "string") return parseFloat(val.replace(/[$,\s]/g, "")) || 0;
-    return 0;
-  }
-
-  // Parse date from Excel serial, Date object, or string
-  function parseDateVal(val: any): string | null {
-    if (!val) return null;
-    if (val instanceof Date) return val.toISOString().slice(0, 10);
-    if (typeof val === "number") {
-      const utcDays = Math.floor(val - 25569);
-      return new Date(utcDays * 86400000).toISOString().slice(0, 10);
-    }
-    const s = String(val).trim();
-    if (/^\d{4}-\d{2}-\d{2}/.test(s)) return s.slice(0, 10);
-    if (/^\d{1,2}\/\d{1,2}\/\d{2,4}$/.test(s)) {
-      const [m, d, y] = s.split("/");
-      const yr = y.length === 2 ? "20" + y : y;
-      return `${yr}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    }
-    const dt = new Date(s);
-    return isNaN(dt.getTime()) ? null : dt.toISOString().slice(0, 10);
   }
 
   // Auto-detect column mapping based on import type and column headers
@@ -311,7 +286,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
               errors.push(`Row ${i + 2}: Missing claim number`);
               continue;
             }
-            const dos = parseDateVal(row[columnMapping.dos]);
+            const dos = parseDateValue(row[columnMapping.dos]);
             if (!dos) {
               errors.push(`Row ${i + 2}: Invalid date of service`);
               continue;
@@ -357,7 +332,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
               errors.push(`Row ${i + 2}: Claim not found for "${claimNumber}"`);
               continue;
             }
-            const paymentDate = parseDateVal(row[columnMapping.paymentDate]);
+            const paymentDate = parseDateValue(row[columnMapping.paymentDate]);
             await db.insert(claimPayments).values({
               claimId: claim.id,
               paymentDate: paymentDate || new Date().toISOString().slice(0, 10),
@@ -378,7 +353,7 @@ export async function registerRevenueRecoveryRoutes(app: Express) {
               errors.push(`Row ${i + 2}: Missing payer or CPT code`);
               continue;
             }
-            const effectiveDate = parseDateVal(row[columnMapping.effectiveDate]);
+            const effectiveDate = parseDateValue(row[columnMapping.effectiveDate]);
             await upsertPayerRate({
               payer,
               cptCode,
