@@ -1,6 +1,6 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import * as path from "path";
 
 const locationMap: Record<string, string> = {
@@ -14,10 +14,35 @@ const locationMap: Record<string, string> = {
   "Tristar PT - Rogersville": "d06e8d70-deed-4bfd-a909-9ec7665a34ea",
 };
 
+function sheetToJson(worksheet: ExcelJS.Worksheet): Record<string, any>[] {
+  const rows: Record<string, any>[] = [];
+  const headers: string[] = [];
+  worksheet.eachRow((row, rowNumber) => {
+    const values = row.values as any[];
+    if (rowNumber === 1) {
+      for (let i = 1; i < values.length; i++) headers[i] = String(values[i] ?? "");
+      return;
+    }
+    const obj: Record<string, any> = {};
+    for (let i = 1; i < values.length; i++) {
+      if (headers[i]) obj[headers[i]] = values[i] instanceof Date ? values[i] : values[i];
+    }
+    rows.push(obj);
+  });
+  return rows;
+}
+
 function excelDateToISO(serial: number): string {
   const epoch = new Date(1899, 11, 30);
   const d = new Date(epoch.getTime() + serial * 86400000);
   return d.toISOString().split("T")[0];
+}
+
+function toDateString(val: any): string | null {
+  if (!val) return null;
+  if (val instanceof Date) return val.toISOString().split("T")[0];
+  if (typeof val === "number") return excelDateToISO(val);
+  return String(val);
 }
 
 function safeNum(val: any): number {
@@ -70,13 +95,17 @@ export async function importRealFinancials() {
   const opsFile = path.resolve("attached_assets/Operations_Report_-_01-01-26_to_03-26-26_1774554438487.xlsx");
 
   console.log("[Import] Reading Revenue Report...");
-  const revWb = XLSX.readFile(revenueFile);
-  const revData: any[] = XLSX.utils.sheet_to_json(revWb.Sheets["All Data"]);
+  const revWb = new ExcelJS.Workbook();
+  await revWb.xlsx.readFile(revenueFile);
+  const revSheet = revWb.getWorksheet("All Data");
+  const revData = revSheet ? sheetToJson(revSheet) : [];
   console.log(`[Import] Revenue report: ${revData.length} rows`);
 
   console.log("[Import] Reading Operations Report...");
-  const opsWb = XLSX.readFile(opsFile);
-  const opsData: any[] = XLSX.utils.sheet_to_json(opsWb.Sheets["All Data"]);
+  const opsWb = new ExcelJS.Workbook();
+  await opsWb.xlsx.readFile(opsFile);
+  const opsSheet = opsWb.getWorksheet("All Data");
+  const opsData = opsSheet ? sheetToJson(opsSheet) : [];
   console.log(`[Import] Operations report: ${opsData.length} rows`);
 
   const physicianRows = await db.execute(sql`SELECT id, first_name, last_name FROM physicians`);
@@ -107,8 +136,8 @@ export async function importRealFinancials() {
 
   async function flushBatch() {
     if (batchValues.length === 0) return;
-    const insertSql = `INSERT INTO claims (claim_number, location_id, physician_id, patient_account_number, dos, 
-      payer, payer_type, billed_amount, expected_amount, paid_amount, adjustment_amount, 
+    const insertSql = `INSERT INTO claims (claim_number, location_id, physician_id, patient_account_number, dos,
+      payer, payer_type, billed_amount, expected_amount, paid_amount, adjustment_amount,
       patient_responsibility, status, submission_date, payment_date,
       is_underpaid, underpaid_amount, source)
       VALUES ${batchValues.join(",")}
@@ -125,7 +154,8 @@ export async function importRealFinancials() {
     const claimNum = row["Prompt Claim Number"] || `IMPORT-${row["Patient Account Number"]}-${row["DOS"]}`;
     const dosRaw = row["DOS"];
     if (!dosRaw) continue;
-    const dos = typeof dosRaw === "number" ? excelDateToISO(dosRaw) : String(dosRaw);
+    const dos = toDateString(dosRaw);
+    if (!dos) continue;
 
     const physicianId = findPhysician(row["Referring Provider"]);
     const patientAcct = row["Patient Account Number"] || null;
@@ -138,15 +168,12 @@ export async function importRealFinancials() {
     const totalPaid = safeNum(row["Total Paid"]);
     const patientPaid = safeNum(row["Patient Paid"]);
     const hanging = safeNum(row["Hanging"]);
-    const insPosted = safeNum(row["Ins. Posted"]);
-    const insNotPosted = safeNum(row["Ins. Not Posted"]);
 
     const status = mapStatus(row["Visit Stage"], totalPaid, hanging);
     const isUnderpaid = hanging > 5;
     const underpaidAmt = isUnderpaid ? hanging : 0;
 
-    const lastRemitRaw = row["Last Remit Date"];
-    const paymentDate = lastRemitRaw && typeof lastRemitRaw === "number" ? excelDateToISO(lastRemitRaw) : null;
+    const paymentDate = toDateString(row["Last Remit Date"]);
 
     const esc = (v: any) => {
       if (v === null || v === undefined) return "NULL";
@@ -169,9 +196,9 @@ export async function importRealFinancials() {
 
   console.log("[Import] Computing clinic financials from real data...");
   await db.execute(sql`
-    INSERT INTO clinic_financials (location_id, period_date, period_type, gross_revenue, total_visits, total_units, 
+    INSERT INTO clinic_financials (location_id, period_date, period_type, gross_revenue, total_visits, total_units,
       labor_cost, rent_cost, supplies_cost, other_fixed_costs, net_contribution, source)
-    SELECT 
+    SELECT
       location_id,
       date_trunc('week', dos::date)::date as period_date,
       'WEEKLY' as period_type,
@@ -179,18 +206,18 @@ export async function importRealFinancials() {
       COUNT(*) as total_visits,
       COUNT(*) * 6 as total_units,
       COALESCE(SUM(paid_amount::numeric), 0) * 0.40 as labor_cost,
-      CASE 
+      CASE
         WHEN COUNT(*) > 60 THEN 1400
         WHEN COUNT(*) > 40 THEN 1050
         ELSE 750
       END as rent_cost,
-      CASE 
+      CASE
         WHEN COUNT(*) > 60 THEN 420
         WHEN COUNT(*) > 40 THEN 280
         ELSE 185
       END as supplies_cost,
       250 as other_fixed_costs,
-      COALESCE(SUM(paid_amount::numeric), 0) * 0.60 - 
+      COALESCE(SUM(paid_amount::numeric), 0) * 0.60 -
         CASE WHEN COUNT(*) > 60 THEN 2070 WHEN COUNT(*) > 40 THEN 1580 ELSE 1185 END as net_contribution,
       'prompt-import' as source
     FROM claims
@@ -206,9 +233,9 @@ export async function importRealFinancials() {
   console.log(`[Import] Created ${finCount.rows[0].cnt} clinic financial records`);
 
   console.log("[Import] Building revenue summary from real Prompt data...");
-  const revSummarySheet = revWb.Sheets["Summary"];
+  const revSummarySheet = revWb.getWorksheet("Summary");
   if (revSummarySheet) {
-    const summaryData: any[] = XLSX.utils.sheet_to_json(revSummarySheet);
+    const summaryData = sheetToJson(revSummarySheet);
     for (const row of summaryData) {
       const payerName = row["Primary Payer"];
       if (!payerName) continue;

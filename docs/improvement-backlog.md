@@ -73,13 +73,13 @@ performance/data-layer, maintainability/tests). Evidence from codebase only; ran
 | R2-5 | P1 | **Fix `flagUnderpaidClaims` N+1 run inside the import request** | Per-claim re-fetch ×2 + per-CPT rate SELECT, all sync in the HTTP path → claims-import latency grows ~quadratically, timeouts at scale | M | `storage-revenue-recovery.ts:312-344,291-310`; invoked `routes/revenue-recovery.ts:322` |
 | R2-6 | P1 | **Delete dead root `src/` dir (24 files) + drop `@supabase/supabase-js`** | Abandoned Next.js port never built/typechecked (tsconfig excludes it); live versions live in `client/src/pages`; `src/lib/supabase.ts` is the dep's only importer | S | `/src/**`; `tsconfig.json` include; `vite.config.ts` root |
 | R2-7 | P1 | **Add pure-logic tests for ETL summaries & cash-flow** | Two financially-significant modules with testable pure helpers have zero tests | M | `etl-summary-generation.ts` (225 ln), `routes/cash-flow.ts` (295 ln) |
-| R2-8 | P2 | **Drop per-row probe loops in bulk upserts** | `bulkUpsertClaims`/`bulkUpsertPayerRates`/unit-econ imports do a per-row `SELECT` before each upsert (ON CONFLICT already covers it) → O(2N) round-trips | S | `storage-revenue-recovery.ts:116-122,246-253`; `storage-unit-economics.ts:127-133,180-186` |
+| R2-8 | P2 | ~~**Drop per-row probe loops in bulk upserts**~~ | `bulkUpsertClaims`/`bulkUpsertPayerRates`/unit-econ imports do a per-row `SELECT` before each upsert (ON CONFLICT already covers it) → O(2N) round-trips | S | `storage-revenue-recovery.ts:116-122,246-253`; `storage-unit-economics.ts:127-133,180-186` | **DONE** — batch-fetch existing keys in one query, then upsert without per-row probes |
 | R2-9 | P2 | ~~**Index `referrals.updatedAt` + `collections.updatedAt`**~~ | Incremental nightly ETL filters by `updated_at` with no index → seq scans that worsen with data growth | XS | `etl.ts:43-44`; `shared/schema.ts:193-197,299-300` | **DONE** — `referral_updated_at_idx` + `collection_updated_at_idx` added |
 | R2-10 | P2 | **Paginate/cap `GET /api/revenue/underpaid`** | Returns all underpaid claims, no limit (unlike `getClaims`) → unbounded dashboard payload | S | `storage-revenue-recovery.ts:141-156` |
 | R2-11 | P2 | **Extract shared CSV/XLSX parse helpers; kill test drift** | `parseNum`/date parser duplicated & drifted across `revenue-recovery.ts` & `unit-economics.ts`; the import-parsing test reimplements a 3rd copy, so it validates logic the routes don't run | S | `routes/revenue-recovery.ts:55,62`; `routes/unit-economics.ts:88,95`; `__tests__/unit-economics-import-parsing.test.ts:14,26` |
 | R2-12 | P2 | **Standardize error handling via `next(err)` + global handler** | 0 routes use the documented global handler; ~9 handlers return raw `err.message` (leaks internals, diverges from CLAUDE.md) | S | `routes/revenue-recovery.ts:175,187,198,…` |
 | R2-13 | P2 | **Split files well over the 200-line convention** | Maintainability; clean endpoint seams | M | `sharepoint.ts` 818, `storage.ts` 810, `routes/dashboard.ts` 693, `routes/import.ts` 647, `routes/revenue-recovery.ts` 626 |
-| R2-14 | P2 | **Upgrade/replace `xlsx` 0.18.5** | Known npm advisories (prototype-pollution / ReDoS) in that pinned version | S | `package.json`; used in `server/import-real-financials.ts` |
+| R2-14 | P2 | ~~**Upgrade/replace `xlsx` 0.18.5**~~ | Known npm advisories (prototype-pollution / ReDoS) in that pinned version | S | `package.json`; used in `server/import-real-financials.ts` | **DONE** — replaced with `exceljs` 4.4.0 (MIT, actively maintained); removed `xlsx` from deps + esbuild externals |
 | R2-15 | P2 | **Remove likely-unused `ws` dependency** (verify first) | No import anywhere; app uses `pg` not neon-serverless | XS | `package.json:96`; only an esbuild `external` |
 
 **Recommended first three:** R2-1 (XS, possible broken import), then R2-2 + R2-3 (the two Critical HIPAA
@@ -106,6 +106,8 @@ instead of a SELECT per row (O(2N)→O(N+1)); counts preserved, including in-bat
 **R2-11 DONE** — extracted `parseNum`/`parseDateValue` into `server/import-parse.ts`; revenue-recovery
 and unit-economics routes import it, and `unit-economics-import-parsing.test.ts` now tests the real
 functions (ending the 3-copy drift). (`routes/import.ts` has its own copy — follow-up.)
+**R2-14 DONE** — replaced `xlsx` 0.18.5 (prototype-pollution + ReDoS advisories, no fix available)
+with `exceljs` 4.4.0 (MIT, actively maintained). Removed `xlsx` from deps + esbuild externals.
 
 **R2-7 DONE** — added pure-logic tests for the ETL month helpers
 (`etl-summary-dates.test.ts`) and the cash-flow projection math + `weekStart`
