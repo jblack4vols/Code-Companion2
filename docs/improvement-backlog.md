@@ -114,6 +114,11 @@ with `exceljs` 4.4.0 (MIT, actively maintained). Removed `xlsx` from deps + esbu
 (`cash-flow-projection-logic.test.ts`); reimplemented hermetically per repo convention
 (importing those modules pulls in `./db`, which requires `DATABASE_URL`).
 
+**R2-13 (partial):** split `routes/revenue-recovery.ts` 660→380 lines by extracting the CSV/XLSX
+template + import-preview + import-commit endpoints into `routes/revenue-recovery-import.ts`
+(registered from the main registrar; behavior unchanged). Remaining oversized files —
+`sharepoint.ts`, `storage.ts`, `routes/dashboard.ts`, `routes/import.ts` — still pending.
+
 **R2-12 deferred (not a clean refactor):** the global handler is already registered (`app.ts:82`), and the
 63 `{ message: err.message }` sites across 18 route files are mostly *intentional 400 validation
 messages*, not 500 leaks — a blind `next(err)` conversion would turn helpful 400s into generic 500s.
