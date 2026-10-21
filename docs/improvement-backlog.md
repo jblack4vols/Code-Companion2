@@ -119,8 +119,11 @@ template + import-preview + import-commit endpoints into `routes/revenue-recover
 (registered from the main registrar; behavior unchanged). Also split `routes/dashboard.ts`
 693→490 lines by extracting the four location-level performance scorecards (`/api/dashboard/kpis`,
 `/alerts`, `/location-conversion`, `/location-performance`) into `routes/dashboard-performance.ts`
-(registered from `registerDashboardRoutes`; routes/logic unchanged). Remaining oversized files —
-`sharepoint.ts`, `storage.ts`, `routes/import.ts` — still pending.
+(registered from `registerDashboardRoutes`; routes/logic unchanged). Also split `routes/import.ts`
+647→430 lines by extracting the provider/NPI endpoints (`/api/import/enrich-npis`, `/verify-npis`,
+`/npi-lookup`, `/bulk-link-offices`) — plain JSON handlers with no multer/ExcelJS dependency — into
+`routes/import-providers.ts` (registered from `registerImportRoutes`; routes/logic unchanged).
+Remaining oversized files — `sharepoint.ts`, `storage.ts` — still pending.
 
 **R2-12 deferred (not a clean refactor):** the global handler is already registered (`app.ts:82`), and the
 63 `{ message: err.message }` sites across 18 route files are mostly *intentional 400 validation
